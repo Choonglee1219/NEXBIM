@@ -11,6 +11,8 @@ self.onmessage = async (e) => {
   await ifcApi.Init();
 
   const elementsData = new Map();
+  // 각 모델의 오프닝 관계(Voider-Filler)를 저장할 맵
+  const allModelVoiders = new Map<string, Map<number, Set<number>>>();
 
   // Main Thread에서 넘어온 Set이 일반 객체로 풀릴 수 있으므로 복원 (Rehydration)
   const toSet = (obj: any) => {
@@ -31,6 +33,48 @@ self.onmessage = async (e) => {
     const modelID = ifcApi.OpenModel(new Uint8Array(model.buffer), { USE_FAST_BOOLS: true } as any);
     const idsA = mapA.get(model.id);
     const idsB = mapB.get(model.id);
+
+    // 오프닝 관통으로 인한 오탐지를 필터링하기 위해 IFC 관계를 사전 처리합니다.
+    const voiderToFillersMap = new Map<number, Set<number>>();
+    try {
+      const openingData = new Map<number, { voider: number, fillers: Set<number> }>();
+
+      // 1. 어떤 요소가 오프닝을 '채우는지' 관계(IfcRelFillsElement)를 찾습니다.
+      const relFills = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELFILLSELEMENT);
+      for (let i = 0; i < relFills.size(); i++) {
+        const rel = await ifcApi.GetLine(modelID, relFills.get(i));
+        if (rel.RelatingOpeningElement?.value && rel.RelatedBuildingElement?.value) {
+          const openingId = rel.RelatingOpeningElement.value;
+          const fillerId = rel.RelatedBuildingElement.value;
+          if (!openingData.has(openingId)) {
+            openingData.set(openingId, { voider: -1, fillers: new Set() });
+          }
+          openingData.get(openingId)!.fillers.add(fillerId);
+        }
+      }
+
+      // 2. 어떤 요소가 오프닝에 의해 '뚫리는지' 관계(IfcRelVoidsElement)를 찾습니다.
+      const relVoids = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELVOIDSELEMENT);
+      for (let i = 0; i < relVoids.size(); i++) {
+        const rel = await ifcApi.GetLine(modelID, relVoids.get(i));
+        if (rel.RelatingBuildingElement?.value && rel.RelatedOpeningElement?.value) {
+          const voiderId = rel.RelatingBuildingElement.value;
+          const openingId = rel.RelatedOpeningElement.value;
+          if (openingData.has(openingId)) {
+            openingData.get(openingId)!.voider = voiderId;
+          }
+        }
+      }
+
+      // 3. 최종적으로 '뚫리는 요소(Voider) ID -> 채우는 요소(Filler) ID Set' 맵을 생성합니다.
+      for (const data of openingData.values()) {
+        if (data.voider !== -1 && data.fillers.size > 0) {
+          if (!voiderToFillersMap.has(data.voider)) voiderToFillersMap.set(data.voider, new Set());
+          data.fillers.forEach(filler => voiderToFillersMap.get(data.voider)!.add(filler));
+        }
+      }
+    } catch (err) {}
+    allModelVoiders.set(model.id, voiderToFillersMap);
 
     // 오프닝(Opening), 공간(Space) 등 형상이 없는/가상의 요소를 필터링하여 오탐지(Ghost Clash) 방지
     const skipTypes = new Set([3588315303, 3856911033, 2769231204, 1674181508, 3009204131]);
@@ -248,18 +292,23 @@ self.onmessage = async (e) => {
         let isActualClash = false;
         let position = new THREE.Vector3().addVectors(itemA.obb.center, itemB.obb.center).multiplyScalar(0.5);
 
+        const tolerance = options.tolerance ?? 0;
+
         // Soft Clash vs Hard Clash 정밀 검사 분기
         if (options.clearance && options.clearance > 0) {
           const softPairBuf = [0,0,0,0,0,0];
+          // 이격 거리 검사 시에는 허용 오차(tolerance)를 적용하여 불필요한 오탐지를 줄입니다.
           const dist = meshMinDist(itemA.tris, itemB.tris, options.clearance, softPairBuf);
-          if (dist <= options.clearance) {
+          if (dist <= options.clearance - tolerance) {
             isActualClash = true;
             position.set((softPairBuf[0] + softPairBuf[3]) / 2, (softPairBuf[1] + softPairBuf[4]) / 2, (softPairBuf[2] + softPairBuf[5]) / 2);
           }
         } else {
           if (bvhA && bvhB) {
             const intersection = meshesIntersect(bvhA, bvhB, itemA.aabb, itemB.aabb);
-            if (intersection) {
+            // Hard-clash 검사 시, 실제 침투 깊이(penetration depth)가 허용 오차(tolerance)보다 클 때만 간섭으로 판정합니다.
+            // intersection[3]은 bvhTraverseAll에서 계산된 최대 침투 깊이입니다.
+            if (intersection && intersection[3] > tolerance) {
               isActualClash = true;
               position.set(intersection[0], intersection[1], intersection[2]);
             }
@@ -267,19 +316,35 @@ self.onmessage = async (e) => {
         }
 
         if (isActualClash) {
-          checkedPairs.add(pairKey);
-
-          // NaN 값이 발생하여 Three.js 카메라 이동 시 앱이 멈추는 현상 방지 (방어 코드)
-          if (Number.isNaN(position.x) || Number.isNaN(position.y) || Number.isNaN(position.z)) {
-            position = new THREE.Vector3().addVectors(itemA.obb.center, itemB.obb.center).multiplyScalar(0.5);
-            if (Number.isNaN(position.x)) position.set(0, 0, 0);
+          // 실제 간섭이지만, 오프닝을 통한 정상적인 관통인지 확인합니다.
+          let isOpeningClash = false;
+          const voidersA = allModelVoiders.get(itemA.modelId);
+          if (voidersA?.get(itemA.expressID)?.has(itemB.expressID)) {
+            isOpeningClash = true;
+          }
+          if (!isOpeningClash) {
+            const voidersB = allModelVoiders.get(itemB.modelId);
+            if (voidersB?.get(itemB.expressID)?.has(itemA.expressID)) {
+              isOpeningClash = true;
+            }
           }
 
-          results.push({
-            id1: { modelId: itemA.modelId, expressID: itemA.expressID, obb: itemA.obb, aabb: itemA.aabb },
-            id2: { modelId: itemB.modelId, expressID: itemB.expressID, obb: itemB.obb, aabb: itemB.aabb },
-            position: { x: position.x, y: position.y, z: position.z }
-          });
+          // 오프닝을 통한 관통이 아닐 경우에만 최종 간섭으로 처리합니다.
+          if (!isOpeningClash) {
+            checkedPairs.add(pairKey);
+
+            // NaN 값이 발생하여 Three.js 카메라 이동 시 앱이 멈추는 현상 방지 (방어 코드)
+            if (Number.isNaN(position.x) || Number.isNaN(position.y) || Number.isNaN(position.z)) {
+              position = new THREE.Vector3().addVectors(itemA.obb.center, itemB.obb.center).multiplyScalar(0.5);
+              if (Number.isNaN(position.x)) position.set(0, 0, 0);
+            }
+
+            results.push({
+              id1: { modelId: itemA.modelId, expressID: itemA.expressID, obb: itemA.obb, aabb: itemA.aabb },
+              id2: { modelId: itemB.modelId, expressID: itemB.expressID, obb: itemB.obb, aabb: itemB.aabb },
+              position: { x: position.x, y: position.y, z: position.z }
+            });
+          }
         }
       }
     }
