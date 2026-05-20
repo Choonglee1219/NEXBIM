@@ -694,6 +694,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
         }
       }
       applyFilters();
+      setTimeout(() => updatePage(), 0);
     }
   });
   updateMatrixFn = updateMatrix;
