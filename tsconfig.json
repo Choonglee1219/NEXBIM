@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2022",
+    // "target": "ES2020", // original
+    "useDefineForClassFields": false, // originally, true
+    "module": "ESNext",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "outDir": "dist", // add
+    "rootDir": "src", // add
+    "esModuleInterop": true, // add
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    // "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": false,
+
+    "experimentalDecorators": true, // add
+    "emitDecoratorMetadata": true, // add
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true // add
+  },
+  "include": ["src/**/*", "bundle-icons.js"],
+  "ts-node": {
+    "esm": true
+  },
+  "exclude": ["node_modules"] // add
+}
