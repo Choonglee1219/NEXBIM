@@ -24,6 +24,7 @@ let activeExclusions = new Set<string>();
 let filteredClashData: any[] = [];
 let searchQuery = "";
 let isMarkersVisible = false;
+let isClashClearRegistered = false;
 
 export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState> = (state) => {
   const { components } = state;
@@ -33,21 +34,9 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
   const classifier = components.get(OBC.Classifier);
 
   const clashTable = document.createElement("bim-table") as BUI.Table<any>;
-  clashTable.hiddenColumns = ["id", "raw", "rawGroup", "isGroup"];
   clashTable.headersHidden = false;
   clashTable.preserveStructureOnFilter = true;
   if (setupBIMTable) setupBIMTable(clashTable);
-
-  clashTable.columns = [
-    { name: "Model1", width: "1.5fr" },
-    { name: "Entity1", width: "1.5fr" },
-    { name: "Object1", width: "2fr" },
-    { name: "Model2", width: "1.5fr" },
-    { name: "Entity2", width: "1.5fr" },
-    { name: "Object2", width: "2fr" },
-    { name: "Position", width: "1.5fr" },
-    { name: "Action", width: "120px" },
-  ];
 
   let clashSection: BUI.PanelSection;
 
@@ -250,7 +239,26 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
   const updatePage = () => {
     const start = currentPage * pageSize;
     const end = start + pageSize;
-    clashTable.data = filteredClashData.slice(start, end);
+
+    // 항상 데이터가 비워질 때를 대비하여 컬럼과 숨김 컬럼을 명시적으로 재설정합니다.
+    if (filteredClashData.length === 0) {
+      clashTable.data = [];
+      // 컬럼 정의도 비워주어 테이블이 이전 구조를 기억하지 않도록 합니다.
+      clashTable.columns = [];
+    } else {
+      clashTable.columns = [
+        { name: "Model1", width: "1.5fr" },
+        { name: "Entity1", width: "1.5fr" },
+        { name: "Object1", width: "2fr" },
+        { name: "Model2", width: "1.5fr" },
+        { name: "Entity2", width: "1.5fr" },
+        { name: "Object2", width: "2fr" },
+        { name: "Position", width: "1.5fr" },
+        { name: "Action", width: "120px" },
+      ];
+      clashTable.hiddenColumns = ["id", "raw", "rawGroup", "isGroup"];
+      clashTable.data = filteredClashData.slice(start, end);
+    }
 
     if (clashSection) clashSection.label = `Clash List (${totalItems})`;
     
@@ -352,25 +360,50 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     let setA: OBC.ModelIdMap = {};
     let setB: OBC.ModelIdMap = {};
 
-    // 1. 전체 모델의 모든 객체(Set B) 추출 (API 활용)
+    // Classifier를 이용한 카테고리 정보 추출
+    try {
+      await classifier.byCategory({ classificationName: "entities" });
+    } catch (err) {
+      console.warn("Classifier grouping error:", err);
+    }
+    const entitiesClass = classifier.list.get("entities");
+
+    const basicExclusions = new Set(["REINFORCINGBAR", "OPENING", "SITE", "SPACE", "SPATIALZONE", "VOID"]);
+
+    // 각 카테고리 그룹의 ModelIdMap 데이터를 미리 비동기로 추출 (성능 최적화)
+    const preFetchedCategories = new Map<string, OBC.ModelIdMap>();
+    if (entitiesClass) {
+      for (const [catName, group] of entitiesClass.entries()) {
+        try {
+          const mapData = await (group as any).get();
+          if (mapData) {
+            let hasActiveItems = false;
+            for (const modelId in mapData) {
+              if (fragmentsManager.list.has(modelId) && mapData[modelId].size > 0) {
+                hasActiveItems = true;
+                break;
+              }
+            }
+            const cleanCatName = catName.replace(/^IFC/i, "");
+            // 현재 활성화된 모델에 존재하는 카테고리이면서, 기본 제외 항목이 아닌 경우에만 캐싱합니다.
+            if (hasActiveItems && !basicExclusions.has(cleanCatName.toUpperCase())) {
+              preFetchedCategories.set(cleanCatName, mapData);
+            }
+          }
+        } catch (e) {}
+      }
+    }
+    cachedAllCategories = Array.from(preFetchedCategories.keys()).sort();
+
     const allModelIdMap: OBC.ModelIdMap = {};
+    
+    for (const modelIdMap of preFetchedCategories.values()) {
+      OBC.ModelIdMapUtils.add(allModelIdMap, modelIdMap);
+    }
+
     let totalItems = 0;
-
-    for (const [modelId, model] of fragmentsManager.list.entries()) {
-      const ids = new Set<number>();
-      try {
-        const itemsWithGeometry = await (model as any).getItemsWithGeometry();
-        for (const item of itemsWithGeometry) {
-          ids.add(await item.getLocalId());
-        }
-      } catch (e) {
-        console.warn(`getItemsWithGeometry not found for ${modelId}`);
-      }
-
-      if (ids.size > 0) {
-        allModelIdMap[modelId] = ids;
-        totalItems += ids.size;
-      }
+    for (const modelId in allModelIdMap) {
+      totalItems += allModelIdMap[modelId].size;
     }
 
     const selection = highlighter.selection.select;
@@ -411,26 +444,6 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     console.log(`✅ 간섭 검토 완료! (소요 시간: ${(endTime - startTime).toFixed(2)}ms)`);
     console.log(`💥 총 ${results.length}개의 간섭이 발견되었습니다.`);
     
-    // Classifier를 이용한 카테고리 정보 추출
-    try {
-      await classifier.byCategory({ classificationName: "entities" });
-    } catch (err) {
-      console.warn("Classifier grouping error:", err);
-    }
-    const entitiesClass = classifier.list.get("entities");
-
-    // 각 카테고리 그룹의 ModelIdMap 데이터를 미리 비동기로 추출 (성능 최적화)
-    const preFetchedCategories = new Map<string, OBC.ModelIdMap>();
-    if (entitiesClass) {
-      for (const [catName, group] of entitiesClass.entries()) {
-        try {
-          const mapData = await (group as any).get();
-          if (mapData) preFetchedCategories.set(catName.replace(/^IFC/i, ""), mapData);
-        } catch (e) {}
-      }
-    }
-    cachedAllCategories = Array.from(preFetchedCategories.keys());
-
     const getCategory = (modelId: string, expressID: number) => {
       for (const [catName, mapData] of preFetchedCategories.entries()) {
         if (mapData[modelId] && mapData[modelId].has(expressID)) {
@@ -440,24 +453,12 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
       return "Unknown";
     };
 
-    // --- 간섭 결과 중 특정 카테고리 조합 제외 필터링 ---
+    // 간섭 결과에 카테고리 정보를 첨부합니다.
     const validResults: ClashResult[] = [];
     for (const res of results) {
-      const cat1 = getCategory(res.id1.modelId, res.id1.expressID);
-      const cat2 = getCategory(res.id2.modelId, res.id2.expressID);
-      
-      const c1 = cat1.toUpperCase();
-      const c2 = cat2.toUpperCase();
-      
-      // 사용자 설정 불가능한 기본 제외 조합
-      const isExcluded = 
-        c1 === "REINFORCINGBAR" || c2 === "REINFORCINGBAR";
-
-      if (!isExcluded) {
-        (res.id1 as any).category = cat1;
-        (res.id2 as any).category = cat2;
-        validResults.push(res);
-      }
+      (res.id1 as any).category = getCategory(res.id1.modelId, res.id1.expressID);
+      (res.id2 as any).category = getCategory(res.id2.modelId, res.id2.expressID);
+      validResults.push(res);
     }
 
     // 성능 최적화: 필요한 객체 이름 일괄 가져오기 및 모델 이름 캐싱
@@ -581,21 +582,32 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     applyFilters();
   };
 
+  const clearClashDataSilent = () => {
+    rawValidResults = null;
+    cachedClashData = null;
+    cachedAllCategories = [];
+    activeExclusions.clear();
+    clashTable.selection.clear();
+    if (deleteBtn) deleteBtn.disabled = true;
+    currentPage = 0;
+    applyFilters();
+    if (isMarkersVisible) {
+      isMarkersVisible = false;
+      if (markerBtn) markerBtn.active = false;
+      updateMarkers();
+    }
+  };
+
+  if (!isClashClearRegistered) {
+    fragmentsManager.list.onItemDeleted.add(() => {
+      clearClashDataSilent();
+    });
+    isClashClearRegistered = true;
+  }
+
   const onClearAll = () => {
     if (confirm("모든 간섭 검토 결과를 삭제하시겠습니까?")) {
-      rawValidResults = null;
-      cachedClashData = null;
-      cachedAllCategories = [];
-      activeExclusions.clear();
-      clashTable.selection.clear();
-      if (deleteBtn) deleteBtn.disabled = true;
-      currentPage = 0;
-      applyFilters();
-      if (isMarkersVisible) {
-        isMarkersVisible = false;
-        if (markerBtn) markerBtn.active = false;
-        updateMarkers();
-      }
+      clearClashDataSilent();
     }
   };
 

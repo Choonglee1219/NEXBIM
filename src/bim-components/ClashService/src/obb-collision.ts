@@ -30,8 +30,10 @@ export function checkOBBIntersection(
   options: ClashOptions = {}
 ): boolean {
   const clearance = options.clearance ?? 0;
-  // tolerance(허용 오차)가 클수록 작은 겹침을 무시해야 하므로 마진에서 뺍니다.
-  const tolerance = options.tolerance ?? 0.1;
+  // 허용 오차(tolerance)를 적용하여 작은 겹침이나 이격 거리를 무시합니다.
+  // clearance: 이격 거리 검사 시 필요한 최소 거리
+  // tolerance: 무시할 수 있는 오차 범위
+  const tolerance = options.tolerance ?? 0;
   const totalMargin = clearance - tolerance;
 
   // 1. 중심점 간의 거리 벡터 계산

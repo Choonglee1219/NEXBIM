@@ -36,8 +36,19 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
   const hasData = (clashData && clashData.length > 0) || (allCategories && allCategories.length > 0);
 
   const updateTable = (animate: boolean = false) => {
-    if (!currentTable || !hasData) return;
+    if (!currentTable) return;
     const table = currentTable;
+
+    // 데이터가 비워졌을 때 내부 캐시와 테이블을 확실하게 초기화합니다.
+    if (!hasData) {
+      table.data = [];
+      table.columns = [];
+      currentSortedItems = [];
+      currentClashMatrix = {};
+      selectedCell = null;
+      if (selectionLabel) selectionLabel.textContent = "None";
+      return;
+    }
 
     if (animate) {
       table.style.animation = "none";
