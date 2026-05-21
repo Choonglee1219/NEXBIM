@@ -27,6 +27,9 @@ export const queriesListTemplate: BUI.StatefullComponent<QueriesListState> = (
 
   const tableData = [...finder.list.keys()]
     .filter((key) => {
+      if (key.startsWith("IFC") || key.startsWith("dash_")) {
+        return false;
+      }
       if (!queryString) return true;
       return key.toLowerCase().includes(queryString.toLowerCase());
     })
