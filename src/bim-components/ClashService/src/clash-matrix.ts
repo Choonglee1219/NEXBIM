@@ -356,7 +356,20 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "clash_matrix.csv";
+
+    const modelNamesSet = new Set<string>();
+    for (const row of clashData) {
+      const d = row.data;
+      if (d) {
+        if (d.Model1) modelNamesSet.add(d.Model1);
+        if (d.Model2) modelNamesSet.add(d.Model2);
+      }
+    }
+    modelNamesSet.delete("Multi");
+    modelNamesSet.delete("Unknown");
+    const modelNames = modelNamesSet.size > 0 ? Array.from(modelNamesSet).join("_") : "UnknownModel";
+
+    a.download = `clash_matrix-${modelNames}-${matrixViewMode}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -408,7 +421,7 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
         </div>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
           <bim-label ${BUI.ref(e => selectionLabel = e)} style="color: var(--bim-ui_main-contrast); margin: 0;">${selectedCell ? `${selectedCell.c1} vs ${selectedCell.c2}` : "None"}</bim-label>
-          <bim-button @click=${onExportCSV} icon=${appIcons.EXPORT} tooltip-title="Export to CSV"></bim-button>
+          <bim-button @click=${onExportCSV} icon=${appIcons.EXPORT} title="Export to CSV"></bim-button>
         </div>
       </div>
       <div class="matrix-scroll-wrapper" style="${hasData ? 'flex: 1; min-height: 0; display: flex; flex-direction: column;' : 'display: none;'} overflow-x: auto; overflow-y: hidden; padding-bottom: 0.25rem;">
