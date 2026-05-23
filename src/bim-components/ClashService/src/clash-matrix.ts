@@ -313,7 +313,7 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
       return;
     }
 
-    const headers = ["Category", ...currentSortedItems];
+    const headers = ["", ...currentSortedItems];
     const csvRows = [headers.join(",")];
 
     for (let i = 0; i < currentSortedItems.length; i++) {

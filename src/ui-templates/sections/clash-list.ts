@@ -127,6 +127,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
           const name2 = itemNamesCache.get(`${res.id2.modelId}-${res.id2.expressID}`) || "Unknown";
           return {
             id: `clash-${groupCounter}-${i}`,
+            Badge: (res as any).badge || "New",
             Model1: modelNamesCache.get(res.id1.modelId),
             Entity1: cat1,
             Object1: name1,
@@ -160,9 +161,23 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
           const model2Name = model2Set.size === 1 ? (modelNamesCache.get(Array.from(model2Set)[0]) || "Unknown") : "Multi";
 
           const pos = group.center;
+          
+          let groupBadge = "New";
+          if (items.length > 0) {
+            const hasNew = items.some(item => ((item as any).badge || "New") === "New");
+            if (hasNew) {
+              groupBadge = "New";
+            } else {
+              const hasHold = items.some(item => (item as any).badge === "Hold");
+              groupBadge = hasHold ? "Hold" : "Ignore";
+            }
+          }
+          (items as any).badge = groupBadge;
+
           const groupRowData = {
             id: `group-${groupCounter}`,
             isGroup: true,
+            Badge: groupBadge,
             Model1: model1Name,
             Entity1: entityStr,
             Object1: `${uniqueObjects.size} objects, ${items.length} clashes`,
@@ -247,14 +262,15 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
       clashTable.columns = [];
     } else {
       clashTable.columns = [
+        { name: "Badge", width: "100px" },
         { name: "Model1", width: "1.5fr" },
         { name: "Entity1", width: "1.5fr" },
         { name: "Object1", width: "2fr" },
         { name: "Model2", width: "1.5fr" },
         { name: "Entity2", width: "1.5fr" },
         { name: "Object2", width: "2fr" },
-        { name: "Position", width: "1.5fr" },
-        { name: "Action", width: "120px" },
+        { name: "Position", width: "2fr" },
+        { name: "Action", width: "140px" },
       ];
       clashTable.hiddenColumns = ["id", "raw", "rawGroup", "isGroup"];
       clashTable.data = filteredClashData.slice(start, end);
@@ -283,6 +299,43 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
   });
 
   clashTable.dataTransform = {
+    Badge: (value, row) => {
+      const currentBadge = (value as string) || "New";
+      const colors: Record<string, string> = {
+        "Ignore": "hsl(147, 65%, 40%)",
+        "Hold": "hsl(45, 65%, 40%)",
+        "New": "hsl(0, 65%, 40%)"
+      };
+      const color = colors[currentBadge] || colors["New"];
+      
+      return BUI.html`
+        <bim-dropdown
+          @change=${(e: Event) => {
+            e.stopPropagation();
+            const dp = e.target as BUI.Dropdown;
+            dp.visible = false;
+            const newVal = (dp.value[0] as string) || "New";
+            row.Badge = newVal;
+            dp.style.color = colors[newVal];
+            dp.style.setProperty("--bim-ui_bg-contrast-100", colors[newVal]);
+            
+            if (row.isGroup) {
+              (row.rawGroup as any).badge = newVal;
+              for (const res of (row.rawGroup as any[])) {
+                res.badge = newVal;
+              }
+            } else {
+              (row.raw as any).badge = newVal;
+            }
+          }}
+          style="width: 100%; min-width: 90px; color: ${color}; --bim-ui_bg-contrast-100: ${color}; font-weight: bold; background: transparent;"
+        >
+          <bim-option label="New" value="New" style="color: ${colors["New"]}; --bim-ui_bg-contrast-100: ${colors["New"]}; font-weight: bold;" ?checked=${currentBadge === "New"}></bim-option>
+          <bim-option label="Hold" value="Hold" style="color: ${colors["Hold"]}; --bim-ui_bg-contrast-100: ${colors["Hold"]}; font-weight: bold;" ?checked=${currentBadge === "Hold"}></bim-option>
+          <bim-option label="Ignore" value="Ignore" style="color: ${colors["Ignore"]}; --bim-ui_bg-contrast-100: ${colors["Ignore"]}; font-weight: bold;" ?checked=${currentBadge === "Ignore"}></bim-option>
+        </bim-dropdown>
+      `;
+    },
     Action: (_, row) => {
       if (row.isGroup) {
         return BUI.html`
@@ -553,12 +606,17 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     const btn = e ? e.target as BUI.Button : null;
     if (btn) btn.loading = true;
     
-    // 전체 데이터가 아닌 검색 필터링된 결과 데이터만 BCF로 내보냅니다.
-    const results = cachedFlatData ? cachedFlatData.map(row => row.data.raw as ClashResult) : [];
-    if (results.length === 0) {
-      alert("변환할 간섭 결과가 없습니다.");
+    // 평탄화된 데이터 중에서 Badge 값이 "New"인 간섭 결과만 추출하여 BCF로 내보냅니다.
+    const newResults = cachedFlatData
+      ? cachedFlatData
+          .filter(row => row.data.Badge === "New")
+          .map(row => row.data.raw as ClashResult)
+      : [];
+
+    if (newResults.length === 0) {
+      alert("변환할 'New' 상태의 간섭 결과가 없습니다.");
     } else {
-      await clashService.saveAllToTopics(results);
+      await clashService.saveAllToTopics(newResults);
     }
     if (btn) btn.loading = false;
   };
@@ -655,6 +713,41 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     onClearSearch();
   };
 
+  const onExportCSV = () => {
+    if (!cachedFlatData || cachedFlatData.length === 0) {
+      alert("내보낼 데이터가 없습니다.");
+      return;
+    }
+    const headers = ["Badge", "Model1", "Entity1", "Object1", "Model2", "Entity2", "Object2", "Position"];
+    const csvRows = [headers.join(",")];
+
+    for (const row of cachedFlatData) {
+      const d = row.data;
+      if (d.isGroup) continue; // 그룹 행 제외
+
+      const escapeCSV = (val: any) => `"${String(val ?? "").replace(/"/g, '""')}"`;
+      csvRows.push([
+        escapeCSV(d.Badge),
+        escapeCSV(d.Model1),
+        escapeCSV(d.Entity1),
+        escapeCSV(d.Object1),
+        escapeCSV(d.Model2),
+        escapeCSV(d.Entity2),
+        escapeCSV(d.Object2),
+        escapeCSV(d.Position)
+      ].join(","));
+    }
+
+    const csvString = csvRows.join("\n");
+    const blob = new Blob(["\uFEFF" + csvString], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "clash_list.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const [matrixPanel, updateMatrix] = clashMatrix({ 
     components,
     clashData: filteredClashData,
@@ -746,6 +839,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
             <bim-button ${BUI.ref(e => deleteBtn = e as BUI.Button)} label="Delete" icon=${appIcons.DELETE} @click=${onDeleteSelected} disabled style="flex: 1;"></bim-button>
             <bim-button label="Clear" icon=${appIcons.CLEAR} @click=${onClearAll} style="flex: 1;"></bim-button>
             <bim-button label="To Topic" icon=${appIcons.SAVE} @click=${saveAllToTopics} style="flex: 1;"></bim-button>
+            <bim-button label="Export" icon=${appIcons.EXPORT} @click=${onExportCSV} style="flex: 1;"></bim-button>
           </div>
           <div style="display: flex; gap: 0.25rem; flex: 1; align-items: center;">
             <bim-text-input ${BUI.ref((e) => { searchInput = e as BUI.TextInput; })} @input=${onSearch} vertical placeholder="Search Model or Entity..." debounce="200" style="flex: 1;"></bim-text-input>
