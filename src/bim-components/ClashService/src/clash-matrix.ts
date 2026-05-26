@@ -43,11 +43,13 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
     if (!hasData) {
       table.data = [];
       table.columns = [];
+      table.dataTransform = {};
       currentSortedItems = [];
       currentClashMatrix = {};
       currentClashDataMap = {};
       selectedCell = null;
       if (selectionLabel) selectionLabel.textContent = "None";
+      highlighter.clear("select");
       return;
     }
 
@@ -494,7 +496,12 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
           </label>
         </div>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
-          <bim-label ${BUI.ref(e => selectionLabel = e)} style="color: var(--bim-ui_main-contrast); margin: 0;">${selectedCell ? `${selectedCell.c1} vs ${selectedCell.c2}` : "None"}</bim-label>
+          <bim-label ${BUI.ref(e => {
+            selectionLabel = e;
+            if (selectionLabel) {
+              selectionLabel.textContent = selectedCell ? `${selectedCell.c1} vs ${selectedCell.c2}` : "None";
+            }
+          })} style="color: var(--bim-ui_main-contrast); margin: 0;"></bim-label>
           <bim-button @click=${onExportCSV} icon=${appIcons.EXPORT} title="Export to CSV"></bim-button>
         </div>
       </div>

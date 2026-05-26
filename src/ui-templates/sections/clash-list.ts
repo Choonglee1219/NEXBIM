@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { ClashService, ClashResult, clashMatrix } from "../../bim-components/ClashService";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { tableButtonStyle, setupBIMTable, appIcons, createPaginationTemplate, PaginationRefs } from "../../globals";
+import { restoreModelMaterials } from "../toolbars/viewer-toolbar";
 
 export interface ClashListPanelState {
   components: OBC.Components;
@@ -747,35 +748,47 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     applyFilters();
   };
 
-  const clearClashDataSilent = () => {
+  const clearClashDataSilent = async () => {
     rawValidResults = null;
     cachedClashData = null;
     cachedAllCategories = [];
+    itemNamesCache.clear();
+    itemGuidsCache.clear();
+    modelNamesCache.clear();
     clashTable.selection.clear();
     if (deleteBtn) deleteBtn.disabled = true;
     currentPage = 0;
-          searchQuery = "";
-          if (searchInput) searchInput.value = "";
-          badgeFilter = "All";
-          if (badgeFilterDropdown) badgeFilterDropdown.value = ["All"];
+    searchQuery = "";
+    if (searchInput) searchInput.value = "";
+    badgeFilter = "All";
+    if (badgeFilterDropdown) badgeFilterDropdown.value = ["All"];
     applyFilters();
     if (isMarkersVisible) {
       isMarkersVisible = false;
       if (markerBtn) markerBtn.active = false;
       updateMarkers();
     }
+    await highlighter.clear("select");
+    const clashPalette = [
+      "#C00000", "#00B050", "#0070C0", "#FFC000", "#7030A0", 
+      "#FF66CC", "#00CCFF", "#FF9933", "#99CC00", "#3399FF"
+    ];
+    for (const color of clashPalette) {
+      await highlighter.clear(color);
+    }
+    restoreModelMaterials(components);
   };
 
   if (!isClashClearRegistered) {
-    fragmentsManager.list.onItemDeleted.add(() => {
-      clearClashDataSilent();
+    fragmentsManager.list.onItemDeleted.add(async () => {
+      await clearClashDataSilent();
     });
     isClashClearRegistered = true;
   }
 
-  const onClearAll = () => {
+  const onClearAll = async () => {
     if (confirm("모든 간섭 검토 결과를 삭제하시겠습니까?")) {
-      clearClashDataSilent();
+      await clearClashDataSilent();
     }
   };
 
@@ -917,15 +930,45 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
               <bim-option label="Hard Clash" value="Hard" ?checked=${cachedClashMode === "Hard"}></bim-option>
               <bim-option label="Soft Clash" value="Soft" ?checked=${cachedClashMode === "Soft"}></bim-option>
             </bim-dropdown>
-            <bim-label ${BUI.ref(e => clashValueLabel = e as BUI.Label)} style="white-space: nowrap; margin: 0 0.25rem;">
-              ${cachedClashMode === "Hard" ? "Tolerance (m)" : "Clearance (m)"}
+            <bim-label ${BUI.ref(e => {
+              clashValueLabel = e as BUI.Label;
+              if (clashValueLabel) {
+                clashValueLabel.textContent = cachedClashMode === "Hard" ? "Tolerance (m)" : "Clearance (m)";
+              }
+              })} style="white-space: nowrap; margin: 0 0.25rem;">
             </bim-label>
             <bim-text-input 
               ${BUI.ref((e) => { 
                 clashValueInput = e as BUI.TextInput; 
                 if (clashValueInput) { clashValueInput.value = cachedClashValue; }
               })} 
-              @input=${(e: Event) => { cachedClashValue = (e.target as BUI.TextInput).value; }} type="number" style="width: 60px; flex-shrink: 0;"></bim-text-input>
+              @input=${(e: Event) => { cachedClashValue = (e.target as BUI.TextInput).value; }} 
+              type="number" style="width: 60px; flex-shrink: 0;">
+            </bim-text-input>
+            <bim-button label="Run Clash" icon=${appIcons.CLASH} @click=${runClash} style="flex: 1; background-color: var(--bim-ui_main-base); color: var(--bim-ui_main-contrast); font-weight: bold;"></bim-button>
+            <bim-button ${BUI.ref(e => markerBtn = e as BUI.Button)} label="Markers" ?active=${isMarkersVisible} icon=${appIcons.MAP} @click=${toggleMarkers} style="flex: 1;"></bim-button>
+            <bim-button ${BUI.ref(e => deleteBtn = e as BUI.Button)} label="Delete" icon=${appIcons.DELETE} @click=${onDeleteSelected} disabled style="flex: 1;"></bim-button>
+            <bim-button label="Clear" icon=${appIcons.CLEAR} @click=${onClearAll} style="flex: 1;"></bim-button>
+            <bim-button label="To Topic" icon=${appIcons.SAVE} @click=${saveAllToTopics} style="flex: 1;"></bim-button>
+            <bim-button label="Export" icon=${appIcons.EXPORT} @click=${onExportCSV} style="flex: 1;"></bim-button>
+          </div>
+          <div style="display: flex; flex: 1; align-items: center;">
+            <bim-dropdown
+            ${BUI.ref(e => badgeFilterDropdown = e as BUI.Dropdown)}
+            @change=${(e: Event) => {
+              const dp = e.target as BUI.Dropdown;
+              dp.visible = false;
+              badgeFilter = (dp.value[0] as string) || "All";
+              currentPage = 0;
+              applyFilters();
+            }}
+            style="width: 100px; flex-shrink: 0;"
+            >
+            <bim-option label="All" value="All" ?checked=${badgeFilter === "All"}></bim-option>
+            <bim-option label="New" value="New" ?checked=${badgeFilter === "New"} style="font-weight: bold;"></bim-option>
+            <bim-option label="Hold" value="Hold" ?checked=${badgeFilter === "Hold"} style="font-weight: bold;"></bim-option>
+            <bim-option label="Exclude" value="Exclude" ?checked=${badgeFilter === "Exclude"} style="font-weight: bold;"></bim-option>
+            </bim-dropdown>
             <bim-label style="white-space: nowrap; margin: 0 0.25rem;">Group Dist. (m)</bim-label>
             <bim-text-input 
               ${BUI.ref((e) => { 
@@ -936,30 +979,6 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
                 cachedGroupDistance = (e.target as BUI.TextInput).value; 
                 applyFilters();
               }} type="number" style="width: 60px; flex-shrink: 0;" title="근접한 간섭 마커를 하나로 묶을 반경 거리 (m)"></bim-text-input>
-            <bim-button label="Run Clash" icon=${appIcons.CLASH} @click=${runClash} style="flex: 1; background-color: var(--bim-ui_main-base); color: var(--bim-ui_main-contrast); font-weight: bold;"></bim-button>
-            <bim-button ${BUI.ref(e => markerBtn = e as BUI.Button)} label="Markers" ?active=${isMarkersVisible} icon=${appIcons.MAP} @click=${toggleMarkers} style="flex: 1;"></bim-button>
-            <bim-button ${BUI.ref(e => deleteBtn = e as BUI.Button)} label="Delete" icon=${appIcons.DELETE} @click=${onDeleteSelected} disabled style="flex: 1;"></bim-button>
-            <bim-button label="Clear" icon=${appIcons.CLEAR} @click=${onClearAll} style="flex: 1;"></bim-button>
-            <bim-button label="To Topic" icon=${appIcons.SAVE} @click=${saveAllToTopics} style="flex: 1;"></bim-button>
-            <bim-button label="Export" icon=${appIcons.EXPORT} @click=${onExportCSV} style="flex: 1;"></bim-button>
-          </div>
-          <div style="display: flex; flex: 1; align-items: center;">
-            <bim-dropdown
-              ${BUI.ref(e => badgeFilterDropdown = e as BUI.Dropdown)}
-              @change=${(e: Event) => {
-                const dp = e.target as BUI.Dropdown;
-                dp.visible = false;
-                badgeFilter = (dp.value[0] as string) || "All";
-                currentPage = 0;
-                applyFilters();
-              }}
-              style="width: 100px; flex-shrink: 0;"
-            >
-              <bim-option label="All" value="All" ?checked=${badgeFilter === "All"}></bim-option>
-              <bim-option label="New" value="New" ?checked=${badgeFilter === "New"} style="font-weight: bold;"></bim-option>
-              <bim-option label="Hold" value="Hold" ?checked=${badgeFilter === "Hold"} style="font-weight: bold;"></bim-option>
-              <bim-option label="Exclude" value="Exclude" ?checked=${badgeFilter === "Exclude"} style="font-weight: bold;"></bim-option>
-            </bim-dropdown>
             <bim-text-input ${BUI.ref((e) => { searchInput = e as BUI.TextInput; })} @input=${onSearch} vertical placeholder="Search Model or Entity..." debounce="200" style="flex: 1;"></bim-text-input>
             <bim-button @click=${onClearSearch} icon=${appIcons.CLEAR} tooltip-title="Clear Search" style="flex: 0 0 auto;"></bim-button>
             <bim-button @click=${onExcludeSearch} icon=${appIcons.EXCLUDE} tooltip-title="Remove search results from list" style="flex: 0 0 auto;"></bim-button>
