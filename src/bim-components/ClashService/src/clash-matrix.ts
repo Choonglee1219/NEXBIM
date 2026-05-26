@@ -8,9 +8,8 @@ export interface ClashMatrixState {
   components: OBC.Components;
   clashData?: any[];
   allCategories?: string[];
-  activeExclusions?: Set<string>;
   onCellClicked?: (clashRows: any[] | null) => void;
-  onExcludeToggled?: (pairs: [string, string][]) => void;
+  onBadgeChanged?: (pairs: [string, string][], badge: string) => void;
 }
 
 // 리렌더링 시 상태 유지를 위한 모듈 레벨 변수
@@ -19,6 +18,7 @@ let matrixViewMode: string = "Entity";
 let currentSortedItems: string[] = [];
 let currentClashMatrix: Record<string, Record<string, number>> = {};
 let currentTable: BUI.Table<any> | null = null;
+let currentClashDataMap: Record<string, Record<string, any[]>> = {};
 let selectionLabel: any = null;
 
 // 수동으로 Discipline 정렬 순서를 지정 (배열에 맞춰 정렬되며 ETC는 항상 맨 끝)
@@ -30,7 +30,7 @@ const getRank = (item: string) => {
 };
 
 export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (state) => {
-  const { components, clashData = [], allCategories = [], activeExclusions = new Set() } = state;
+  const { components, clashData = [], allCategories = [] } = state;
   const highlighter = components.get(Highlighter);
 
   const hasData = (clashData && clashData.length > 0) || (allCategories && allCategories.length > 0);
@@ -45,6 +45,7 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
       table.columns = [];
       currentSortedItems = [];
       currentClashMatrix = {};
+      currentClashDataMap = {};
       selectedCell = null;
       if (selectionLabel) selectionLabel.textContent = "None";
       return;
@@ -136,6 +137,7 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
 
     currentSortedItems = sortedItems;
     currentClashMatrix = clashMatrix;
+    currentClashDataMap = clashDataMap;
 
     // 카테고리 갯수에 비례하여 테이블의 전체 최소 너비 설정 (횡 스크롤 유도)
     table.style.minWidth = `calc(${sortedItems.length * 3.6}rem + 3rem)`;
@@ -197,16 +199,21 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
         
         const count = value as number;
         
-        let isExcluded = false;
-
-        if (matrixViewMode === "Entity") {
-          isExcluded = activeExclusions.has(`${c1.toUpperCase()}|${c2.toUpperCase()}`) || activeExclusions.has(`${c2.toUpperCase()}|${c1.toUpperCase()}`);
-        } else {
-          const discKey1 = `${c1.toUpperCase()}|${c2.toUpperCase()}`;
-          const discKey2 = `${c2.toUpperCase()}|${c1.toUpperCase()}`;
-          
-          if (activeExclusions.has(discKey1) || activeExclusions.has(discKey2)) {
-            isExcluded = true;
+        let cellBadge = "New";
+        const cellItems = clashDataMap[c1]?.[c2];
+        if (cellItems && cellItems.length > 0) {
+          const hasNew = cellItems.some(item => {
+            const badge = (item.raw && item.raw.badge) || item.Badge || "New";
+            return badge === "New";
+          });
+          if (hasNew) {
+            cellBadge = "New";
+          } else {
+            const hasHold = cellItems.some(item => {
+              const badge = (item.raw && item.raw.badge) || item.Badge || "New";
+              return badge === "Hold";
+            });
+            cellBadge = hasHold ? "Hold" : "Exclude";
           }
         }
 
@@ -215,17 +222,22 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
         let textColor = "var(--bim-ui_main-contrast)";
         let cursor = "default";
 
-        if (isExcluded) {
-            displayValue = "E";
-            bgColor = "#FFC000"; // 노란색
-            textColor = "#000000"; // 노란 바탕에 잘 보이도록 검은색 사용
-        } else if (count === 0) {
+        if (count === 0) {
             displayValue = "OK";
-            bgColor = "#00B050"; // 초록색
+            bgColor = "hsl(147, 65%, 40%)"; // 초록색
             textColor = "#ffffff";
+        } else if (cellBadge === "Exclude") {
+            displayValue = "E";
+            bgColor = "hsl(205, 65%, 40%)"; // 파란색 (Exclude)
+            textColor = "#ffffff";
+        } else if (cellBadge === "Hold") {
+            displayValue = "H";
+            bgColor = "hsl(45, 65%, 40%)"; // 노란색 (Hold)
+            textColor = "#ffffff";
+            cursor = "pointer";
         } else {
             displayValue = count.toString();
-            bgColor = "#C00000"; // 빨간색
+            bgColor = "hsl(0, 65%, 40%)"; // 빨간색
             textColor = "#ffffff";
             cursor = "pointer";
         }
@@ -235,37 +247,91 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
         
         return BUI.html`
           <div 
-            title="${c1} vs ${c2}${selectedCell ? ' (선택 해제 후 우클릭 제외 가능)' : ' (우클릭하여 제외 필터 토글)'}"
-            @click=${() => { if (count > 0 && !isExcluded) onCellClick(c1, c2); }}
-            @contextmenu=${(e: Event) => {
+            title="${c1} vs ${c2}${selectedCell ? ' (선택 해제 후 상태 변경 가능)' : ' (우클릭하여 상태 변경 메뉴 호출)'}"
+            @click=${() => { if (count > 0 && cellBadge !== "Exclude") onCellClick(c1, c2); }}
+            @contextmenu=${(e: MouseEvent) => {
               e.preventDefault();
               if (selectedCell) return;
-              if (state.onExcludeToggled) {
-                // 렌더링 시 매번 계산하던 무거운 로직을 우클릭 이벤트 발생 시점으로 지연시켜 즉시 계산
-                let pairs: [string, string][] = [];
-                if (matrixViewMode === "Entity") {
-                  pairs = [[c1, c2]];
-                } else {
-                  pairs.push([c1, c2]);
-                  const cats1 = catsByDiscipline[c1] || [];
-                  const cats2 = catsByDiscipline[c2] || [];
-                  const uniquePairs = new Set<string>();
-                  for (const catA of cats1) {
-                    for (const catB of cats2) {
-                      const key1 = `${catA.toUpperCase()}|${catB.toUpperCase()}`;
-                      const key2 = `${catB.toUpperCase()}|${catA.toUpperCase()}`;
-                      if (!uniquePairs.has(key1) && !uniquePairs.has(key2)) {
-                        uniquePairs.add(key1);
-                        uniquePairs.add(key2);
-                        pairs.push([catA, catB]);
+              if (state.onBadgeChanged) {
+                const existingMenu = document.getElementById("clash-matrix-context-menu");
+                if (existingMenu) existingMenu.remove();
+                
+                const menu = document.createElement("div");
+                menu.id = "clash-matrix-context-menu";
+                menu.style.position = "fixed";
+                menu.style.left = e.clientX + "px";
+                menu.style.top = e.clientY + "px";
+                menu.style.zIndex = "9999";
+                menu.style.background = "var(--bim-ui_bg-base)";
+                menu.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
+                menu.style.borderRadius = "4px";
+                menu.style.boxShadow = "0 2px 10px rgba(0,0,0,0.5)";
+                menu.style.display = "flex";
+                menu.style.flexDirection = "column";
+                menu.style.overflow = "hidden";
+                
+                const options = [
+                  { label: "New", value: "New", color: "hsl(0, 65%, 40%)" },
+                  { label: "Hold", value: "Hold", color: "hsl(45, 65%, 40%)" },
+                  { label: "Exclude", value: "Exclude", color: "hsl(205, 65%, 40%)" }
+                ];
+                
+                options.forEach(opt => {
+                  const btn = document.createElement("bim-button") as any;
+                  btn.label = opt.label;
+                  btn.style.color = opt.color;
+                  btn.style.setProperty("--bim-ui_bg-contrast-100", opt.color);
+                  btn.style.margin = "0";
+                  btn.style.borderRadius = "0";
+                  btn.style.borderBottom = "1px solid var(--bim-ui_bg-contrast-20)";
+                  btn.style.background = "transparent";
+                  btn.style.width = "100px";
+                  
+                  btn.onmouseover = () => btn.style.background = "var(--bim-ui_bg-contrast-20)";
+                  btn.onmouseout = () => btn.style.background = "transparent";
+                  
+                  btn.addEventListener("click", () => {
+                    let pairs: [string, string][] = [];
+                    if (matrixViewMode === "Entity") {
+                      pairs = [[c1, c2]];
+                    } else {
+                      const cats1 = catsByDiscipline[c1] || [];
+                      const cats2 = catsByDiscipline[c2] || [];
+                      const uniquePairs = new Set<string>();
+                      for (const catA of cats1) {
+                        for (const catB of cats2) {
+                          const key1 = catA.toUpperCase() + "|" + catB.toUpperCase();
+                          const key2 = catB.toUpperCase() + "|" + catA.toUpperCase();
+                          if (!uniquePairs.has(key1) && !uniquePairs.has(key2)) {
+                            uniquePairs.add(key1);
+                            uniquePairs.add(key2);
+                            pairs.push([catA, catB]);
+                          }
+                        }
                       }
                     }
-                  }
-                }
+                    
+                    if (pairs.length > 0) {
+                      state.onBadgeChanged!(pairs, opt.value);
+                    }
+                    menu.remove();
+                  });
+                  menu.appendChild(btn);
+                });
                 
-                if (pairs.length > 0) {
-                  state.onExcludeToggled(pairs);
-                }
+                document.body.appendChild(menu);
+                
+                const closeMenu = (evt: Event) => {
+                  if (!menu.contains(evt.target as Node)) {
+                    menu.remove();
+                    document.removeEventListener("click", closeMenu);
+                    document.removeEventListener("contextmenu", closeMenu);
+                  }
+                };
+                setTimeout(() => {
+                  document.addEventListener("click", closeMenu);
+                  document.addEventListener("contextmenu", closeMenu);
+                }, 0);
               }
             }}
             style="display: flex; width: 100%; height: 100%; min-height: 1.5rem; align-items: center; justify-content: center; background-color: ${bgColor}; color: ${textColor}; font-size: 0.75rem; font-weight: bold; border-radius: 4px; cursor: ${cursor}; border: ${border}; transition: filter 0.2s, border 0.2s; box-sizing: border-box;"
@@ -331,18 +397,26 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
           
           const count = currentClashMatrix[c1]?.[c2] || 0;
 
-          let isExcluded = false;
-          if (matrixViewMode === "Entity") {
-            isExcluded = activeExclusions.has(`${c1.toUpperCase()}|${c2.toUpperCase()}`) || activeExclusions.has(`${c2.toUpperCase()}|${c1.toUpperCase()}`);
-          } else {
-            const discKey1 = `${c1.toUpperCase()}|${c2.toUpperCase()}`;
-            const discKey2 = `${c2.toUpperCase()}|${c1.toUpperCase()}`;
-            if (activeExclusions.has(discKey1) || activeExclusions.has(discKey2)) {
-              isExcluded = true;
+          let cellBadge = "New";
+          const cellItems = currentClashDataMap[c1]?.[c2];
+          if (cellItems && cellItems.length > 0) {
+            const hasNew = cellItems.some(item => {
+              const badge = (item.raw && item.raw.badge) || item.Badge || "New";
+              return badge === "New";
+            });
+            if (hasNew) {
+              cellBadge = "New";
+            } else {
+              const hasHold = cellItems.some(item => {
+                const badge = (item.raw && item.raw.badge) || item.Badge || "New";
+                return badge === "Hold";
+              });
+              cellBadge = hasHold ? "Hold" : "Exclude";
             }
           }
 
-          if (isExcluded) rowValues.push("Excluded");
+          if (cellBadge === "Exclude") rowValues.push("Excluded");
+          else if (cellBadge === "Hold") rowValues.push("Hold");
           else if (count === 0) rowValues.push("0");
           else rowValues.push(count.toString());
         }

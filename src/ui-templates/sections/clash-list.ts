@@ -14,17 +14,19 @@ let cachedClashData: any[] | null = null;
 let cachedFlatData: any[] = [];
 let rawValidResults: ClashResult[] | null = null;
 let itemNamesCache = new Map<string, string>();
+let itemGuidsCache = new Map<string, string>();
 let modelNamesCache = new Map<string, string>();
 let cachedAllCategories: string[] = [];
 let cachedClashMode = "Hard";
 let cachedClashValue = "0.05";
 let cachedGroupDistance = "0.5";
 let currentPage = 0;
-let activeExclusions = new Set<string>();
 let filteredClashData: any[] = [];
 let searchQuery = "";
 let isMarkersVisible = false;
 let isClashClearRegistered = false;
+let badgeFilter = "All";
+let badgeFilterDropdown: BUI.Dropdown;
 
 export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState> = (state) => {
   const { components } = state;
@@ -56,10 +58,37 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
 
   let updateMatrixFn: any;
 
+  const updateClashCountLabel = () => {
+    if (!clashSection) return;
+    let newCount = 0;
+    let holdCount = 0;
+    let excludeCount = 0;
+    
+    // 화면의 행(Row) 기준이 아닌 실제 모든 간섭 아이템(Flat Data) 기준으로 집계
+    for (const row of cachedFlatData) {
+      const badge = (row.data.raw as any).badge || row.data.Badge || "New";
+      if (badge === "Hold") holdCount++;
+      else if (badge === "Exclude") excludeCount++;
+      else newCount++;
+    }
+    
+    clashSection.label = `Clash List ( Total(${cachedFlatData.length}) = New(${newCount}) + Hold(${holdCount}) + Exclude(${excludeCount}) )`;
+  };
+
   const updateMarkers = () => {
     if (isMarkersVisible) {
-      const positions = cachedFlatData.map(row => row.data.raw.position);
-      clashService.drawClashMarkers(positions);
+      const markerData = cachedFlatData.map(row => {
+        const badge = (row.data.raw as any).badge || row.data.Badge || "New";
+        let colorStr = "hsl(0, 65%, 40%)"; // New
+        if (badge === "Hold") colorStr = "hsl(45, 65%, 40%)";
+        else if (badge === "Exclude") colorStr = "hsl(205, 65%, 40%)";
+        
+        return {
+          position: row.data.raw.position,
+          color: new THREE.Color(colorStr)
+        };
+      });
+      clashService.drawClashMarkers(markerData);
     } else {
       clashService.clearClashMarkers();
     }
@@ -85,12 +114,8 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
       cachedFlatData = [];
       cachedClashData = null;
     } else {
-      // 1. 제외 필터(activeExclusions) 적용하여 유효한 결과만 추출
-      const effectiveResults = rawValidResults.filter(res => {
-        const cat1 = String((res.id1 as any).category || "").toUpperCase();
-        const cat2 = String((res.id2 as any).category || "").toUpperCase();
-        return !activeExclusions.has(`${cat1}|${cat2}`) && !activeExclusions.has(`${cat2}|${cat1}`);
-      });
+      // 1. 제외 필터(activeExclusions) 제거하고 모든 유효한 결과를 리스트에 반영
+      const effectiveResults = rawValidResults;
 
       // 2. 동적 그룹화 (거리 기반 계산)
       const parsedDist = parseFloat(cachedGroupDistance);
@@ -169,7 +194,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
               groupBadge = "New";
             } else {
               const hasHold = items.some(item => (item as any).badge === "Hold");
-              groupBadge = hasHold ? "Hold" : "Ignore";
+              groupBadge = hasHold ? "Hold" : "Exclude";
             }
           }
           (items as any).badge = groupBadge;
@@ -201,28 +226,39 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
       cachedClashData = treeData;
 
       // 4. 검색 필터 적용 (트리 구조 유지)
-      if (searchQuery) {
+      if (searchQuery || badgeFilter !== "All") {
         const lowerQ = searchQuery.toLowerCase();
         const filterTree = (nodes: any[]): any[] => {
           return nodes.map(node => {
             const d = node.data;
-            let match = false;
-            if (d.isGroup) {
-              match = String(d.Entity1 || "").toLowerCase().includes(lowerQ);
-            } else {
-              match = (
-                String(d.Model1 || "").toLowerCase().includes(lowerQ) ||
-                String(d.Model2 || "").toLowerCase().includes(lowerQ) ||
-                String(d.Entity1 || "").toLowerCase().includes(lowerQ) ||
-                String(d.Entity2 || "").toLowerCase().includes(lowerQ) ||
-                String(d.Object1 || "").toLowerCase().includes(lowerQ) ||
-                String(d.Object2 || "").toLowerCase().includes(lowerQ)
-              );
+            
+            let matchSearch = true;
+            if (searchQuery) {
+              if (d.isGroup) {
+                matchSearch = String(d.Entity1 || "").toLowerCase().includes(lowerQ);
+              } else {
+                matchSearch = (
+                  String(d.Model1 || "").toLowerCase().includes(lowerQ) ||
+                  String(d.Model2 || "").toLowerCase().includes(lowerQ) ||
+                  String(d.Entity1 || "").toLowerCase().includes(lowerQ) ||
+                  String(d.Entity2 || "").toLowerCase().includes(lowerQ) ||
+                  String(d.Object1 || "").toLowerCase().includes(lowerQ) ||
+                  String(d.Object2 || "").toLowerCase().includes(lowerQ)
+                );
+              }
             }
+            
+            let matchBadge = true;
+            if (badgeFilter !== "All") {
+              matchBadge = d.Badge === badgeFilter;
+            }
+            
+            const match = matchSearch && matchBadge;
 
             if (node.children) {
               const filteredChildren = filterTree(node.children);
-              if (match || filteredChildren.length > 0) {
+              // 그룹 노드라면 반드시 조건에 맞는 유효한 자식이 하나 이상 있을 때만 표시
+              if (filteredChildren.length > 0) {
                 return { ...node, children: filteredChildren };
               }
               return null;
@@ -246,7 +282,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     updatePage();
 
     if (updateMatrixFn) {
-      updateMatrixFn({ components, clashData: matrixClashData, allCategories: cachedAllCategories, activeExclusions });
+      updateMatrixFn({ components, clashData: matrixClashData, allCategories: cachedAllCategories });
     }
     updateMarkers();
   };
@@ -276,7 +312,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
       clashTable.data = filteredClashData.slice(start, end);
     }
 
-    if (clashSection) clashSection.label = `Clash List (${totalItems})`;
+    updateClashCountLabel();
     
     if (paginationRefs.container) paginationRefs.container.style.display = totalPages > 1 ? "flex" : "none";
     if (paginationRefs.label) paginationRefs.label.textContent = `${currentPage + 1} / ${totalPages}`;
@@ -302,7 +338,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     Badge: (value, row) => {
       const currentBadge = (value as string) || "New";
       const colors: Record<string, string> = {
-        "Ignore": "hsl(147, 65%, 40%)",
+        "Exclude": "hsl(205, 65%, 40%)",
         "Hold": "hsl(45, 65%, 40%)",
         "New": "hsl(0, 65%, 40%)"
       };
@@ -327,12 +363,16 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
             } else {
               (row.raw as any).badge = newVal;
             }
+            
+            // 마커 색상 즉시 업데이트
+            updateMarkers();
+            updateClashCountLabel();
           }}
           style="width: 100%; min-width: 90px; color: ${color}; --bim-ui_bg-contrast-100: ${color}; font-weight: bold; background: transparent;"
         >
           <bim-option label="New" value="New" style="color: ${colors["New"]}; --bim-ui_bg-contrast-100: ${colors["New"]}; font-weight: bold;" ?checked=${currentBadge === "New"}></bim-option>
           <bim-option label="Hold" value="Hold" style="color: ${colors["Hold"]}; --bim-ui_bg-contrast-100: ${colors["Hold"]}; font-weight: bold;" ?checked=${currentBadge === "Hold"}></bim-option>
-          <bim-option label="Ignore" value="Ignore" style="color: ${colors["Ignore"]}; --bim-ui_bg-contrast-100: ${colors["Ignore"]}; font-weight: bold;" ?checked=${currentBadge === "Ignore"}></bim-option>
+          <bim-option label="Exclude" value="Exclude" style="color: ${colors["Exclude"]}; --bim-ui_bg-contrast-100: ${colors["Exclude"]}; font-weight: bold;" ?checked=${currentBadge === "Exclude"}></bim-option>
         </bim-dropdown>
       `;
     },
@@ -538,6 +578,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     for (const [k, v] of modelNames) modelNamesCache.set(k, v);
 
     itemNamesCache.clear();
+    itemGuidsCache.clear();
     for (const modelId in idMap) {
       const model = fragmentsManager.list.get(modelId);
       if (model) {
@@ -552,16 +593,42 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
              const itemAny = itemsData[i] as any;
              const expressId = itemAny.expressID ?? itemAny.id ?? itemAny._localId?.value ?? itemAny._localId ?? idsArray[i];
              let name = "Unknown";
+             let guid = "Unknown";
              if (itemAny.Name) {
                name = typeof itemAny.Name === "object" && itemAny.Name.value !== undefined ? String(itemAny.Name.value) : String(itemAny.Name);
              }
+             if (itemAny._guid) {
+               guid = typeof itemAny._guid === "object" && itemAny._guid.value !== undefined ? String(itemAny._guid.value) : String(itemAny._guid);
+             } else if (itemAny.GlobalId) {
+               guid = typeof itemAny.GlobalId === "object" && itemAny.GlobalId.value !== undefined ? String(itemAny.GlobalId.value) : String(itemAny.GlobalId);
+             }
              itemNamesCache.set(`${modelId}-${expressId}`, name);
+             itemGuidsCache.set(`${modelId}-${expressId}`, guid);
           }
         } catch (e) {
           console.warn("Error fetching item names:", e);
         }
       }
     }
+
+    // 4. DB에서 이전에 저장된 Hold/Exclude 상태 가져와서 복원하기 (모델 개정 시 상태 유지 기능)
+    try {
+      const dbRes = await fetch("/api/clash-manager");
+      if (dbRes.ok) {
+        const dbStatuses = await dbRes.json();
+        const dbMap = new Map();
+        for (const row of dbStatuses) dbMap.set(`${row.guid1}|${row.guid2}`, row.badge);
+        
+        for (const res of validResults) {
+          const g1 = itemGuidsCache.get(`${res.id1.modelId}-${res.id1.expressID}`) || "";
+          const g2 = itemGuidsCache.get(`${res.id2.modelId}-${res.id2.expressID}`) || "";
+          if (g1 && g2) {
+            const key = [g1, g2].sort().join("|");
+            if (dbMap.has(key)) (res as any).badge = dbMap.get(key);
+          }
+        }
+      }
+    } catch (e) { console.error("Error syncing clash statuses from DB:", e); }
 
     rawValidResults = validResults;
     currentPage = 0;
@@ -606,10 +673,50 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     const btn = e ? e.target as BUI.Button : null;
     if (btn) btn.loading = true;
     
+    // 1. Hold 및 Exclude 상태인 간섭들을 DB에 백업하여 모델 개정 시 유지되도록 처리 (UPSERT)
+    const statusPayload: any[] = [];
+    if (cachedFlatData) {
+      for (const row of cachedFlatData) {
+        const badge = ((row.data.raw as any).badge || row.data.Badge || "New");
+        if (badge === "Hold" || badge === "Exclude") {
+          const raw = row.data.raw as ClashResult;
+          const g1 = itemGuidsCache.get(`${raw.id1.modelId}-${raw.id1.expressID}`) || "Unknown";
+          const g2 = itemGuidsCache.get(`${raw.id2.modelId}-${raw.id2.expressID}`) || "Unknown";
+          
+          // 순서 무결성을 위해 GUID를 알파벳 순으로 정렬합니다.
+          const [sortedG1, sortedG2] = [g1, g2].sort();
+          const isSwapped = sortedG1 !== g1;
+          
+          statusPayload.push({
+            guid1: sortedG1,
+            guid2: sortedG2,
+            badge: badge,
+            entity1: isSwapped ? row.data.Entity2 : row.data.Entity1,
+            object1: isSwapped ? row.data.Object2 : row.data.Object1,
+            entity2: isSwapped ? row.data.Entity1 : row.data.Entity2,
+            object2: isSwapped ? row.data.Object1 : row.data.Object2,
+            x_coord: Number(raw.position.x.toFixed(2)),
+            y_coord: Number(raw.position.y.toFixed(2)),
+            z_coord: Number(raw.position.z.toFixed(2))
+          });
+        }
+      }
+    }
+
+    if (statusPayload.length > 0) {
+      try {
+        await fetch("/api/clash-manager/upsert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(statusPayload)
+        });
+      } catch (e) { console.error("Error saving clash statuses to DB:", e); }
+    }
+
     // 평탄화된 데이터 중에서 Badge 값이 "New"인 간섭 결과만 추출하여 BCF로 내보냅니다.
     const newResults = cachedFlatData
       ? cachedFlatData
-          .filter(row => row.data.Badge === "New")
+          .filter(row => ((row.data.raw as any).badge || row.data.Badge || "New") === "New")
           .map(row => row.data.raw as ClashResult)
       : [];
 
@@ -644,10 +751,13 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     rawValidResults = null;
     cachedClashData = null;
     cachedAllCategories = [];
-    activeExclusions.clear();
     clashTable.selection.clear();
     if (deleteBtn) deleteBtn.disabled = true;
     currentPage = 0;
+          searchQuery = "";
+          if (searchInput) searchInput.value = "";
+          badgeFilter = "All";
+          if (badgeFilterDropdown) badgeFilterDropdown.value = ["All"];
     applyFilters();
     if (isMarkersVisible) {
       isMarkersVisible = false;
@@ -679,6 +789,8 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
   const onClearSearch = () => {
     if (searchInput) searchInput.value = "";
     searchQuery = "";
+    badgeFilter = "All";
+    if (badgeFilterDropdown) badgeFilterDropdown.value = ["All"];
     currentPage = 0;
     applyFilters();
   };
@@ -752,7 +864,6 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     components,
     clashData: filteredClashData,
     allCategories: cachedAllCategories,
-    activeExclusions,
     onCellClicked: (clashRows: any[] | null) => {
       clashTable.selection.clear();
       if (clashRows) {
@@ -762,28 +873,19 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
       }
       clashTable.dispatchEvent(new Event("change"));
     },
-    onExcludeToggled: (pairs: [string, string][]) => {
+    onBadgeChanged: (pairs: [string, string][], badge: string) => {
       if (pairs.length === 0) return;
-      let allExcluded = true;
-      for (const [c1, c2] of pairs) {
-        const key1 = `${c1.toUpperCase()}|${c2.toUpperCase()}`;
-        const key2 = `${c2.toUpperCase()}|${c1.toUpperCase()}`;
-        if (!activeExclusions.has(key1) && !activeExclusions.has(key2)) {
-          allExcluded = false;
-          break;
-        }
-      }
       
-      if (allExcluded) {
-        for (const [c1, c2] of pairs) {
-          const key1 = `${c1.toUpperCase()}|${c2.toUpperCase()}`;
-          const key2 = `${c2.toUpperCase()}|${c1.toUpperCase()}`;
-          activeExclusions.delete(key1);
-          activeExclusions.delete(key2);
-        }
-      } else {
-        for (const [c1, c2] of pairs) {
-          activeExclusions.add(`${c1.toUpperCase()}|${c2.toUpperCase()}`);
+      if (rawValidResults) {
+        for (const res of rawValidResults) {
+          const cat1 = String((res.id1 as any).category || "").toUpperCase();
+          const cat2 = String((res.id2 as any).category || "").toUpperCase();
+          for (const [pc1, pc2] of pairs) {
+            if ((cat1 === pc1.toUpperCase() && cat2 === pc2.toUpperCase()) || 
+                (cat1 === pc2.toUpperCase() && cat2 === pc1.toUpperCase())) {
+              (res as any).badge = badge;
+            }
+          }
         }
       }
       applyFilters();
@@ -799,7 +901,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     <bim-panel-section ${BUI.ref((el) => { 
         clashSection = el as BUI.PanelSection; 
         setTimeout(() => applyFilters(), 0); 
-      })} fixed label="Clash List (0)" icon=${appIcons.CLASH}>
+      })} fixed label="Clash List ( Total(0) = New(0) + Hold(0) + Exclude(0) )" icon=${appIcons.CLASH}>
       <div style="display: flex; flex-direction: column; gap: 0.5rem; height: 100%;">
         <div style="display: flex; gap: 0.5rem; flex-shrink: 0; align-items: center; position: relative; z-index: 10;">
           <div style="display: flex; gap: 0.25rem; flex: 1;">
@@ -841,7 +943,23 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
             <bim-button label="To Topic" icon=${appIcons.SAVE} @click=${saveAllToTopics} style="flex: 1;"></bim-button>
             <bim-button label="Export" icon=${appIcons.EXPORT} @click=${onExportCSV} style="flex: 1;"></bim-button>
           </div>
-          <div style="display: flex; gap: 0.25rem; flex: 1; align-items: center;">
+          <div style="display: flex; flex: 1; align-items: center;">
+            <bim-dropdown
+              ${BUI.ref(e => badgeFilterDropdown = e as BUI.Dropdown)}
+              @change=${(e: Event) => {
+                const dp = e.target as BUI.Dropdown;
+                dp.visible = false;
+                badgeFilter = (dp.value[0] as string) || "All";
+                currentPage = 0;
+                applyFilters();
+              }}
+              style="width: 100px; flex-shrink: 0;"
+            >
+              <bim-option label="All" value="All" ?checked=${badgeFilter === "All"}></bim-option>
+              <bim-option label="New" value="New" ?checked=${badgeFilter === "New"} style="font-weight: bold;"></bim-option>
+              <bim-option label="Hold" value="Hold" ?checked=${badgeFilter === "Hold"} style="font-weight: bold;"></bim-option>
+              <bim-option label="Exclude" value="Exclude" ?checked=${badgeFilter === "Exclude"} style="font-weight: bold;"></bim-option>
+            </bim-dropdown>
             <bim-text-input ${BUI.ref((e) => { searchInput = e as BUI.TextInput; })} @input=${onSearch} vertical placeholder="Search Model or Entity..." debounce="200" style="flex: 1;"></bim-text-input>
             <bim-button @click=${onClearSearch} icon=${appIcons.CLEAR} tooltip-title="Clear Search" style="flex: 0 0 auto;"></bim-button>
             <bim-button @click=${onExcludeSearch} icon=${appIcons.EXCLUDE} tooltip-title="Remove search results from list" style="flex: 0 0 auto;"></bim-button>

@@ -202,14 +202,14 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
   /**
    * 현재 표시 중인 전체 간섭 목록의 위치들에 다중 마커(InstancedMesh)를 렌더링합니다.
    */
-  public drawClashMarkers(positions: THREE.Vector3[]) {
+  public drawClashMarkers(markers: (THREE.Vector3 | { position: THREE.Vector3, color?: THREE.Color })[]) {
     const worlds = this.components.get(OBC.Worlds);
     const world = worlds.list.values().next().value;
     if (!world) return;
 
     this.clearClashMarkers();
 
-    if (positions.length === 0) return;
+    if (markers.length === 0) return;
 
     if (!this._clashMarkersGroup) {
       this._clashMarkersGroup = new THREE.Group();
@@ -218,16 +218,31 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
     }
 
     const geometry = new THREE.SphereGeometry(0.2, 16, 16);
-    const material = new THREE.MeshBasicMaterial({ color: 0xff0000, depthTest: false, transparent: true, opacity: 0.85 });
+    // 마커의 개별 색상(InstanceColor)을 정상적으로 렌더링하기 위해 기본 Material 색상을 흰색(0xffffff)으로 설정합니다.
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.85 });
     
-    const instancedMesh = new THREE.InstancedMesh(geometry, material, positions.length);
+    const instancedMesh = new THREE.InstancedMesh(geometry, material, markers.length);
     const dummy = new THREE.Object3D();
 
-    for (let i = 0; i < positions.length; i++) {
-      dummy.position.copy(positions[i]);
+    for (let i = 0; i < markers.length; i++) {
+      const item = markers[i];
+      let pos: THREE.Vector3;
+      let col: THREE.Color | undefined;
+      
+      if (item instanceof THREE.Vector3) {
+        pos = item;
+      } else {
+        pos = item.position;
+        col = item.color;
+      }
+
+      dummy.position.copy(pos);
       dummy.updateMatrix();
       instancedMesh.setMatrixAt(i, dummy.matrix);
+      instancedMesh.setColorAt(i, col || new THREE.Color(0xff0000));
     }
+
+    if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
 
     this._clashMarkersGroup.add(instancedMesh);
     this._clashMarkersGroup.visible = true;
@@ -431,6 +446,12 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       const cat2 = (res.id2 as any).category || "Unknown";
       const title = `Clash: ${cat1}(${res.id1.expressID}) vs ${cat2}(${res.id2.expressID})`;
       const description = `Detected clash at X: ${res.position.x.toFixed(2)}, Y: ${res.position.y.toFixed(2)}, Z: ${res.position.z.toFixed(2)}`;
+      
+      const formattedPosition = new THREE.Vector3(
+        Number(res.position.x.toFixed(2)),
+        Number(res.position.y.toFixed(2)),
+        Number(res.position.z.toFixed(2))
+      );
 
       // ThatOpen의 공식 API를 우선적으로 사용하여 안전한 토픽 객체 생성
       let newTopic: any = null;
@@ -446,7 +467,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
          newTopic.creationAuthor = appState.currentUser || "System";
          newTopic.topicType = "Clash";
          newTopic.topicStatus = "Open";
-         newTopic.clashPoint = res.position;
+         newTopic.clashPoint = formattedPosition;
          newTopic.guid1 = res.id1.expressID;
          newTopic.guid2 = res.id2.expressID;
          newTopic.category1 = cat1;
@@ -472,7 +493,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
             viewpoints: new Set<string>(), // 에러 방지: 뷰포인트 컨테이너 초기화
             labels: new Set<string>(),
             comments: [],
-            clashPoint: res.position,
+            clashPoint: formattedPosition,
             guid1: res.id1.expressID,
             guid2: res.id2.expressID,
             category1: cat1,
@@ -573,6 +594,12 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       const entityStr = Array.from(entities).join(", ");
       const title = `Group Clash: ${entityStr} (${results.length} items)`;
       const description = `Grouped clash detected at X: ${groupPosition.x.toFixed(2)}, Y: ${groupPosition.y.toFixed(2)}, Z: ${groupPosition.z.toFixed(2)}`;
+      
+      const formattedPosition = new THREE.Vector3(
+        Number(groupPosition.x.toFixed(2)),
+        Number(groupPosition.y.toFixed(2)),
+        Number(groupPosition.z.toFixed(2))
+      );
 
       // 기존 토픽 생성 로직을 재사용하되 단일 항목의 경우와 달리 처리합니다.
       const topicId = `clash-group-${Date.now()}`;
@@ -590,7 +617,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
          newTopic.creationAuthor = appState.currentUser || "System";
          newTopic.topicType = "Clash";
          newTopic.topicStatus = "Open";
-         newTopic.clashPoint = groupPosition;
+         newTopic.clashPoint = formattedPosition;
          // 그룹의 특성상 첫 번째 객체 정보를 대표값으로 저장
          newTopic.guid1 = results[0].id1.expressID;
          newTopic.guid2 = results[0].id2.expressID;
@@ -617,7 +644,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
             viewpoints: new Set<string>(),
             labels: new Set<string>(),
             comments: [],
-            clashPoint: groupPosition,
+            clashPoint: formattedPosition,
             guid1: results[0].id1.expressID,
             guid2: results[0].id2.expressID,
             category1: (results[0].id1 as any).category || "Unknown",
@@ -660,6 +687,12 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       const cat2 = (res.id2 as any).category || "Unknown";
       const title = `Clash: ${cat1}(${res.id1.expressID}) vs ${cat2}(${res.id2.expressID})`;
       const description = `Detected clash at X: ${res.position.x.toFixed(2)}, Y: ${res.position.y.toFixed(2)}, Z: ${res.position.z.toFixed(2)}`;
+      
+      const formattedPosition = new THREE.Vector3(
+        Number(res.position.x.toFixed(2)),
+        Number(res.position.y.toFixed(2)),
+        Number(res.position.z.toFixed(2))
+      );
 
       let capturedViewpoint: any = null;
       let capturedSnapshot: string | null = null;
@@ -715,7 +748,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
          newTopic.creationAuthor = appState.currentUser || "System";
          newTopic.topicType = "Clash";
          newTopic.topicStatus = "Open";
-         newTopic.clashPoint = res.position;
+         newTopic.clashPoint = formattedPosition;
          newTopic.guid1 = res.id1.expressID;
          newTopic.guid2 = res.id2.expressID;
          newTopic.category1 = cat1;
@@ -741,7 +774,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
             viewpoints: new Set<string>(), 
             labels: new Set<string>(),
             comments: [],
-            clashPoint: res.position,
+            clashPoint: formattedPosition,
             guid1: res.id1.expressID,
             guid2: res.id2.expressID,
             category1: cat1,

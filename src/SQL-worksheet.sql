@@ -82,3 +82,20 @@ SELECT status FROM v$instance;
 ALTER DATABASE OPEN;
 ALTER PLUGGABLE DATABASE ALL SAVE STATE;
 SELECT name, open_mode, restricted FROM v$pdbs;
+
+-- Clash Manager (간섭 상태 유지 테이블)
+CREATE TABLE "clash_manager" (
+    "guid1" VARCHAR2(255) NOT NULL,
+    "guid2" VARCHAR2(255) NOT NULL,
+    "badge" VARCHAR2(50) NOT NULL,
+    "entity1" VARCHAR2(255),
+    "object1" VARCHAR2(255),
+    "entity2" VARCHAR2(255),
+    "object2" VARCHAR2(255),
+    "x_coord" NUMBER,
+    "y_coord" NUMBER,
+    "z_coord" NUMBER,
+    CONSTRAINT "pk_clash_manager" PRIMARY KEY ("guid1", "guid2")
+);
+
+TRUNCATE TABLE "clash_manager";

@@ -869,4 +869,80 @@ app.post("/api/process-properties", upload.single("file"), async (req: Request, 
   }
 });
 
+// Get Saved Clash Statuses
+app.get("/api/clash-manager", async (_req: Request, res: Response): Promise<void> => {
+  let connection: OracleDB.Connection | undefined;
+  try {
+    connection = await getConnection();
+    const result = await connection.execute(
+      `SELECT "guid1", "guid2", "badge" FROM "clash_manager"`,
+      [],
+      { outFormat: OracleDB.OUT_FORMAT_OBJECT }
+    );
+    res.json(result.rows || []);
+  } catch (err) {
+    console.error("Error fetching clash statuses:", err);
+    res.status(500).json({ error: "Failed to fetch clash statuses" });
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (err) { console.error(err); }
+    }
+  }
+});
+
+// Upsert Clash Statuses (MERGE INTO)
+app.post("/api/clash-manager/upsert", async (req: Request, res: Response): Promise<void> => {
+  let connection: OracleDB.Connection | undefined;
+  try {
+    const payload = req.body; // Array of objects
+    if (!Array.isArray(payload) || payload.length === 0) {
+      res.status(400).json({ error: "Empty payload" });
+      return;
+    }
+
+    connection = await getConnection();
+    
+    const sql = `
+      MERGE INTO "clash_manager" dest
+      USING (SELECT :guid1 AS "guid1", :guid2 AS "guid2", :badge AS "badge", 
+                    :entity1 AS "entity1", :object1 AS "object1", 
+                    :entity2 AS "entity2", :object2 AS "object2",
+                    :x_coord AS "x_coord", :y_coord AS "y_coord", :z_coord AS "z_coord" FROM DUAL) src
+      ON (dest."guid1" = src."guid1" AND dest."guid2" = src."guid2")
+      WHEN MATCHED THEN
+        UPDATE SET "badge" = src."badge", "x_coord" = src."x_coord", "y_coord" = src."y_coord", "z_coord" = src."z_coord"
+      WHEN NOT MATCHED THEN
+        INSERT ("guid1", "guid2", "badge", "entity1", "object1", "entity2", "object2", "x_coord", "y_coord", "z_coord")
+        VALUES (src."guid1", src."guid2", src."badge", src."entity1", src."object1", src."entity2", src."object2", src."x_coord", src."y_coord", src."z_coord")
+    `;
+
+    const options = {
+      autoCommit: true,
+      bindDefs: {
+        guid1: { type: OracleDB.STRING, maxSize: 255 },
+        guid2: { type: OracleDB.STRING, maxSize: 255 },
+        badge: { type: OracleDB.STRING, maxSize: 50 },
+        entity1: { type: OracleDB.STRING, maxSize: 255 },
+        object1: { type: OracleDB.STRING, maxSize: 255 },
+        entity2: { type: OracleDB.STRING, maxSize: 255 },
+        object2: { type: OracleDB.STRING, maxSize: 255 },
+        x_coord: { type: OracleDB.NUMBER },
+        y_coord: { type: OracleDB.NUMBER },
+        z_coord: { type: OracleDB.NUMBER }
+      }
+    };
+
+    await connection.executeMany(sql, payload, options);
+    
+    res.status(200).json({ message: "Clash statuses synchronized successfully." });
+  } catch (err) {
+    console.error("Error upserting clash statuses:", err);
+    res.status(500).json({ error: "Failed to upsert clash statuses" });
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (err) { console.error(err); }
+    }
+  }
+});
+
 initPools();
