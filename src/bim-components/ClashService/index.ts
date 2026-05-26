@@ -29,7 +29,10 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
   
   enabled = true;
   readonly onDisposed = new OBC.Event<string>();
-  private _activeWorkers = new Set<Worker>();
+  private _workers: Worker[] = [];
+  private _workerCacheStatus = new Map<Worker, Set<string>>();
+  private _jobCounter = 0;
+  private _pendingJobs = new Map<number, { resolve: Function; reject: Function }>();
   private _originalIfcBuffers = new Map<string, Uint8Array>();
 
   private _clashMarker?: THREE.Mesh;
@@ -60,14 +63,73 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
 
   public removeIfcBuffer(modelId: string) {
     this._originalIfcBuffers.delete(modelId);
+    for (const worker of this._workers) {
+      worker.postMessage({ action: "clear", modelId });
+      this._workerCacheStatus.get(worker)?.delete(modelId);
+    }
+  }
+
+  private _initWorkers() {
+    if (this._workers.length === 0) {
+      const numWorkers = Math.min(navigator.hardwareConcurrency || 4, 4); // 최대 4코어 분산 (메모리 낭비 방지)
+      for (let i = 0; i < numWorkers; i++) {
+        const worker = new Worker(new URL('./src/raw-ifc-clash-worker.ts', import.meta.url), { type: 'module' });
+        this._workerCacheStatus.set(worker, new Set<string>());
+        
+        worker.onmessage = (e) => {
+        const { jobId, results, error } = e.data;
+        const job = this._pendingJobs.get(jobId);
+        if (job) {
+          this._pendingJobs.delete(jobId);
+          if (error) {
+            job.reject(new Error(error));
+          } else {
+            // Worker에서 넘어온 raw 결과를 Three.js 객체(Vector3)와 BCF 카메라 데이터로 매핑
+            const transformedResults = results.map((r: any) => {
+              const pos = new THREE.Vector3(r.position.x, r.position.y, r.position.z);
+              if (r.id1.obb) r.id1.obb.center = new THREE.Vector3(r.id1.obb.center.x, r.id1.obb.center.y, r.id1.obb.center.z);
+              if (r.id2.obb) r.id2.obb.center = new THREE.Vector3(r.id2.obb.center.x, r.id2.obb.center.y, r.id2.obb.center.z);
+              
+              const bx = pos.x; const by = -pos.z; const bz = pos.y;
+              const D = 1.5; 
+              const clipping_planes: ViewpointClippingPlane[] = [
+                { location: { x: bx + D, y: by, z: bz }, direction: { x: 1, y: 0, z: 0 } },
+                { location: { x: bx - D, y: by, z: bz }, direction: { x: -1, y: 0, z: 0 } },
+                { location: { x: bx, y: by + D, z: bz }, direction: { x: 0, y: 1, z: 0 } },
+                { location: { x: bx, y: by - D, z: bz }, direction: { x: 0, y: -1, z: 0 } },
+                { location: { x: bx, y: by, z: bz + D }, direction: { x: 0, y: 0, z: 1 } },
+                { location: { x: bx, y: by, z: bz - D }, direction: { x: 0, y: 0, z: -1 } },
+              ];
+              const cx = bx + 2; const cy = by - 2; const cz = bz + 2;
+              const dirVec = new THREE.Vector3(bx - cx, by - cy, bz - cz).normalize();
+              
+              return { ...r, position: pos, camera_view_point: { x: cx, y: cy, z: cz }, camera_direction: { x: dirVec.x, y: dirVec.y, z: dirVec.z }, camera_up_vector: { x: 0, y: 0, z: 1 }, clipping_planes };
+            });
+            job.resolve(transformedResults);
+          }
+        }
+      };
+      worker.onerror = (err) => {
+        for (const job of this._pendingJobs.values()) job.reject(err);
+        this._pendingJobs.clear();
+      };
+        this._workers.push(worker);
+      }
+    }
   }
 
   async dispose() {
     // 진행 중인 모든 백그라운드 연산(워커) 즉시 강제 종료 (메모리 누수 방지)
-    for (const worker of this._activeWorkers) {
+    for (const worker of this._workers) {
       worker.terminate();
     }
-    this._activeWorkers.clear();
+    this._workers = [];
+    this._workerCacheStatus.clear();
+
+    for (const job of this._pendingJobs.values()) {
+      job.reject(new Error("ClashService disposed"));
+    }
+    this._pendingJobs.clear();
 
     if (this._clashMarker) {
       const worlds = this.components.get(OBC.Worlds);
@@ -117,66 +179,78 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       return [];
     }
 
-    // 3. 원본 IFC 버퍼를 raw-ifc-clash-worker로 전송하여 백그라운드 연산 수행
-    return new Promise((resolve, reject) => {
-      const worker = new Worker(new URL('./src/raw-ifc-clash-worker.ts', import.meta.url), { type: 'module' });
-      
-      // 워커 추적 목록에 추가
-      this._activeWorkers.add(worker);
-      
-      worker.onmessage = (e) => {
-        const results: ClashResult[] = e.data.results.map((r: any) => {
-          const pos = new THREE.Vector3(r.position.x, r.position.y, r.position.z);
-          
-          // 워커에서 넘어온 OBB 중심점(Vector3) 객체를 재인스턴스화
-          if (r.id1.obb) r.id1.obb.center = new THREE.Vector3(r.id1.obb.center.x, r.id1.obb.center.y, r.id1.obb.center.z);
-          if (r.id2.obb) r.id2.obb.center = new THREE.Vector3(r.id2.obb.center.x, r.id2.obb.center.y, r.id2.obb.center.z);
+    // 3. 워커 풀(Worker Pool)을 초기화하고 멀티스레드 분산 처리를 위한 청크(Chunk) 분할
+    this._initWorkers();
 
-          // BCF Z-up 좌표계 변환 (Three.js: x, y, z -> BCF: x, -z, y)
-          const bx = pos.x;
-          const by = -pos.z;
-          const bz = pos.y;
-          
-          // 간섭 지점 반경 1.5m의 6방향 단면 박스(Clipping Planes) 자동 생성
-          const D = 1.5; 
-          const clipping_planes: ViewpointClippingPlane[] = [
-            { location: { x: bx + D, y: by, z: bz }, direction: { x: 1, y: 0, z: 0 } },
-            { location: { x: bx - D, y: by, z: bz }, direction: { x: -1, y: 0, z: 0 } },
-            { location: { x: bx, y: by + D, z: bz }, direction: { x: 0, y: 1, z: 0 } },
-            { location: { x: bx, y: by - D, z: bz }, direction: { x: 0, y: -1, z: 0 } },
-            { location: { x: bx, y: by, z: bz + D }, direction: { x: 0, y: 0, z: 1 } },
-            { location: { x: bx, y: by, z: bz - D }, direction: { x: 0, y: 0, z: -1 } },
-          ];
+    const flatSetA: { modelId: string, id: number }[] = [];
+    for (const [modelId, ids] of Object.entries(setA)) {
+      for (const id of ids) {
+        flatSetA.push({ modelId, id });
+      }
+    }
 
-          // 뷰포인트 카메라 위치 및 방향 계산 (Three.js (x+2, y+2, z+2)의 BCF 역변환)
-          const cx = bx + 2;
-          const cy = by - 2;
-          const cz = bz + 2;
-          const dirVec = new THREE.Vector3(bx - cx, by - cy, bz - cz).normalize();
+    if (flatSetA.length === 0) return [];
 
-          return {
-            ...r,
-            position: pos,
-            camera_view_point: { x: cx, y: cy, z: cz },
-            camera_direction: { x: dirVec.x, y: dirVec.y, z: dirVec.z },
-            camera_up_vector: { x: 0, y: 0, z: 1 },
-            clipping_planes
-          };
-        });
-        worker.terminate();
-        this._activeWorkers.delete(worker); // 완료된 워커 추적 해제
-        resolve(results);
-      };
-      
-      worker.onerror = (err) => {
-        worker.terminate();
-        this._activeWorkers.delete(worker); // 에러난 워커 추적 해제
-        reject(err);
-      };
-      
-      // raw-ifc-clash-worker.ts가 기대하는 데이터 구조로 전송
-      worker.postMessage({ modelsData, setA, setB, isSelfClash, options });
-    });
+    // 전체 검사 대상 요소를 현재 띄워진 워커 개수만큼 균등 분할합니다.
+    const numWorkers = Math.min(this._workers.length, flatSetA.length);
+    const chunkSize = Math.ceil(flatSetA.length / numWorkers);
+    const promises: Promise<ClashResult[]>[] = [];
+
+    for (let i = 0; i < numWorkers; i++) {
+      const chunk = flatSetA.slice(i * chunkSize, (i + 1) * chunkSize);
+      if (chunk.length === 0) continue;
+
+      const subSetA: OBC.ModelIdMap = {};
+      for (const item of chunk) {
+        if (!subSetA[item.modelId]) subSetA[item.modelId] = new Set();
+        subSetA[item.modelId].add(item.id);
+      }
+
+      const worker = this._workers[i];
+      const cacheStatus = this._workerCacheStatus.get(worker)!;
+
+      // 지능적 버퍼 전송: 각 워커가 이미 캐싱한 모델이라면 거대한 ArrayBuffer를 전송하지 않습니다.
+      const modelsDataForWorker: { id: string; buffer?: ArrayBuffer }[] = [];
+      for (const modelId of targetModelIds) {
+        if (!cacheStatus.has(modelId)) {
+          const uint8Buffer = this.getIfcBuffer(modelId);
+          if (uint8Buffer) {
+            modelsDataForWorker.push({ id: modelId, buffer: uint8Buffer.slice().buffer });
+            cacheStatus.add(modelId);
+          }
+        } else {
+          modelsDataForWorker.push({ id: modelId }); // ID만 전송 (Worker는 이미 캐싱함)
+        }
+      }
+
+      const jobId = ++this._jobCounter;
+      promises.push(new Promise((resolve, reject) => {
+        this._pendingJobs.set(jobId, { resolve, reject });
+        // 분산 처리 시 isSelfClash를 강제로 false로 설정하여 각 워커가 할당받은 부분 집합(subSetA)과 전체 집합(setB)을 누락 없이 교차 검증하도록 합니다.
+        worker.postMessage({ action: "detect", jobId, modelsData: modelsDataForWorker, setA: subSetA, setB, isSelfClash: false, options });
+      }));
+    }
+
+    // 모든 워커의 병렬 연산 결과를 기다린 후 배열로 합칩니다. (Reduce)
+    const resultsArray = await Promise.all(promises);
+    const flatResults = resultsArray.flat();
+
+    // 분산 처리로 인해 발생할 수 있는 중복 결과(A-B, B-A 교차)를 최종 병합(Deduplication)합니다.
+    const uniqueResults: ClashResult[] = [];
+    const seen = new Set<string>();
+
+    for (const res of flatResults) {
+      const id1 = `${res.id1.modelId}-${res.id1.expressID}`;
+      const id2 = `${res.id2.modelId}-${res.id2.expressID}`;
+      // 순서에 상관없이 동일한 쌍을 유니크하게 필터링
+      const key = id1 < id2 ? `${id1}::${id2}` : `${id2}::${id1}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueResults.push(res);
+      }
+    }
+
+    return uniqueResults;
   }
 
   /**
