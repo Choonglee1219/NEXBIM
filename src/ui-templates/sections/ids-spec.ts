@@ -2,10 +2,11 @@ import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import * as THREE from "three";
-import { appIcons, onToggleSection, setupBIMTable, tableButtonStyle } from "../../globals";
+import { appIcons, onToggleSection, setupBIMTable, tableButtonStyle, appState } from "../../globals";
 import { setModelTransparent, restoreModelMaterials } from "../toolbars/viewer-toolbar";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { IDSSpecDefinition, predefinedSpecs } from "../../setup/specs";
+import { BCFTopics } from "../../bim-components/BCFTopics";
 
 export interface IDSSpecPanelState {
   components: OBC.Components;
@@ -427,6 +428,117 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
     await highlighter.highlightByID("select", latestResultsMap);
   };
 
+  const onFailToTopic = async () => {
+    if (!resultsTable.data || resultsTable.data.length === 0) {
+      alert("검사 결과가 없습니다.");
+      return;
+    }
+
+    const failData = resultsTable.data.filter(r => (r.data as IDSTableData).Status === "Fail");
+    if (failData.length === 0) {
+      alert("Fail 항목이 없습니다.");
+      return;
+    }
+
+    const bcfTopics = components.get(BCFTopics);
+    const worlds = components.get(OBC.Worlds);
+    const world = worlds.list.values().next().value;
+    const viewpoints = components.get(OBC.Viewpoints);
+
+    const failMap: OBC.ModelIdMap = {};
+    for (const row of failData) {
+      const d = row.data as IDSTableData;
+      if (!failMap[d.ModelID]) failMap[d.ModelID] = new Set();
+      failMap[d.ModelID].add(d.ExpressID);
+    }
+
+    // 화면을 Fail 항목으로 맞추고 반투명 및 하이라이트 처리
+    await highlighter.clear("select");
+    await highlighter.highlightByID("select", failMap);
+
+    if (world && world.camera instanceof OBC.SimpleCamera) {
+      await world.camera.fitToItems(failMap);
+      if (world.camera.hasCameraControls()) {
+        world.camera.controls.update(0);
+      }
+    }
+
+    setModelTransparent(components);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // 뷰포인트 및 스냅샷 캡처
+    let capturedViewpoint: any = null;
+    let capturedSnapshot: string | null = null;
+
+    if (world && world.renderer) {
+      world.renderer.three.render(world.scene.three, world.camera.three);
+      capturedSnapshot = world.renderer.three.domElement.toDataURL("image/jpeg", 0.4);
+    }
+
+    capturedViewpoint = viewpoints.create();
+    capturedViewpoint.title = `IDS Check Fail`;
+    capturedViewpoint.world = world;
+    await capturedViewpoint.updateCamera();
+
+    if (capturedViewpoint) {
+      const guids = await fragments.modelIdMapToGuids(failMap);
+      if (!capturedViewpoint.selectionComponents) capturedViewpoint.selectionComponents = new Set();
+      for (const guid of guids) capturedViewpoint.selectionComponents.add(guid);
+
+      if (!capturedViewpoint.componentColors) capturedViewpoint.componentColors = new Map();
+      capturedViewpoint.componentColors.set("C00000", guids); // Fail 객체를 뷰포인트 내에서 빨간색으로 매핑
+    }
+
+    try {
+      const title = `IDS Check Fail (${failData.length} items)`;
+      const description = `The following items failed the IDS specification check.`;
+      const topicId = `ids-${Date.now()}`;
+
+      let newTopic: any = null;
+      if ((bcfTopics as any)._bcf && typeof (bcfTopics as any)._bcf.create === "function") {
+        newTopic = (bcfTopics as any)._bcf.create();
+      } else if (typeof (bcfTopics as any).create === "function") {
+        newTopic = (bcfTopics as any).create();
+      }
+
+      if (newTopic) {
+        newTopic.title = title;
+        newTopic.description = description;
+        newTopic.creationAuthor = appState.currentUser || "System";
+        newTopic.topicType = "Issue";
+        newTopic.topicStatus = "Open";
+        if (capturedViewpoint) {
+          if (!newTopic.viewpoints) newTopic.viewpoints = new Set();
+          newTopic.viewpoints.add(capturedViewpoint.guid);
+        }
+        if (capturedSnapshot) newTopic.snapshot = capturedSnapshot;
+        if (!bcfTopics.list.has(newTopic.guid)) bcfTopics.list.set(newTopic.guid, newTopic);
+      } else {
+        newTopic = {
+          guid: topicId,
+          title,
+          description,
+          creationAuthor: appState.currentUser || "System",
+          creationDate: new Date().toISOString(),
+          topicType: "Issue",
+          topicStatus: "Open",
+          viewpoints: new Set(),
+          labels: new Set(),
+          comments: [],
+          snapshot: capturedSnapshot,
+        };
+        if (capturedViewpoint) newTopic.viewpoints.add(capturedViewpoint.guid);
+        bcfTopics.list.set(topicId, newTopic);
+      }
+      
+      bcfTopics.onRefresh.trigger();
+      alert(`Fail 항목들이 BCF 토픽으로 성공적으로 생성되었습니다!\n제목: ${title}`);
+    } catch (e) {
+      console.error(e);
+      alert("BCF 토픽 생성 중 오류가 발생했습니다.");
+    }
+  };
+
   const onExportCSV = () => {
     if (!resultsTable.data || resultsTable.data.length === 0) {
       alert("내보낼 데이터가 없습니다.");
@@ -527,6 +639,7 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
               <bim-button style="flex: 1;" label="Check" @click=${onReviewModel} icon=${appIcons.PLAY}></bim-button>
               <bim-button style="flex: 1;" label="Save" @click=${onSaveSpec} icon=${appIcons.SAVE}></bim-button>
               <bim-button style="flex: 1;" label="Select" @click=${onSelectObjects} icon=${appIcons.SELECT}></bim-button>
+              <bim-button style="flex: 1;" label="To Topic" @click=${onFailToTopic} icon=${appIcons.SAVE}></bim-button>
               <bim-button style="flex: 1;" label="Export" @click=${onExportCSV} icon=${appIcons.EXPORT}></bim-button>
             </div>
           </div>
