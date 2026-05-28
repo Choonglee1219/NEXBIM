@@ -60,7 +60,7 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
     }
 
     // 숨겨둔 카테고리 데이터가 오른쪽 끝에 자동 생성되는 현상 방지
-    table.hiddenColumns = ["_Category"];
+    table.hiddenColumns = [];
 
     const clashItemsMap: Record<string, Record<string, OBC.ModelIdMap>> = {};
     const clashMatrix: Record<string, Record<string, number>> = {};
@@ -142,10 +142,11 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
     currentClashDataMap = clashDataMap;
 
     // 카테고리 갯수에 비례하여 테이블의 전체 최소 너비 설정 (횡 스크롤 유도)
-    table.style.minWidth = `calc(${sortedItems.length * 3.6}rem + 3rem)`;
+    table.style.minWidth = `calc(${sortedItems.length * 3.6}rem + 8rem)`;
 
     table.columns = [
-      ...sortedItems.map(item => ({ name: item, width: "3.5rem" }))
+      ...sortedItems.map(item => ({ name: item, width: "3.5rem" })), 
+      { name: "_Category", width: "8rem" },
     ];
 
     const onCellClick = async (c1: string, c2: string) => {
@@ -182,15 +183,32 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
 
     const dataTransform: Record<string, any> = {};
 
+    dataTransform["_Category"] = (value: any, row: any) => {
+      if (row._Category === "@@HEADER@@") return BUI.html`<div style="height: 120px;"></div>`;
+      return BUI.html`
+        <div style="display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 100%; padding-right: 0.5rem; font-weight: normal; color: var(--bim-ui_main-contrast); font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${value}">
+          ${value}
+        </div>
+      `;
+    };
+
     for (let j = 0; j < sortedItems.length; j++) {
       const colItem = sortedItems[j];
       dataTransform[colItem] = (value: any, row: any) => {
+        if (row._Category === "@@HEADER@@") {
+          return BUI.html`
+            <div style="display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 120px; padding-top: 12px; padding-bottom: 4px; box-sizing: border-box; font-size: 0.65rem; font-weight: normal; color: var(--bim-ui_main-contrast); writing-mode: vertical-rl; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${value}">
+              ${value}
+            </div>
+          `;
+        }
+
         const rowItem = row._Category;
         const i = sortedItems.indexOf(rowItem);
 
         if (j > i) {
           return BUI.html`
-            <div title="${rowItem} vs ${colItem}" style="display: flex; width: 100%; height: 100%; min-height: 1.5rem; align-items: center; justify-content: center; background-color: transparent; color: var(--bim-ui_gray-5); font-size: 0.75rem; font-weight: bold; cursor: default; box-sizing: border-box;">
+            <div title="${rowItem} vs ${colItem}" style="display: flex; width: 100%; height: 100%; min-height: 1.5rem; align-items: center; justify-content: center; background-color: transparent; color: var(--bim-ui_gray-5); font-size: 0.65rem; font-weight: normal; cursor: default; box-sizing: border-box;">
               -
             </div>
           `;
@@ -336,7 +354,7 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
                 }, 0);
               }
             }}
-            style="display: flex; width: 100%; height: 100%; min-height: 1.5rem; align-items: center; justify-content: center; background-color: ${bgColor}; color: ${textColor}; font-size: 0.75rem; font-weight: bold; border-radius: 4px; cursor: ${cursor}; border: ${border}; transition: filter 0.2s, border 0.2s; box-sizing: border-box;"
+            style="display: flex; width: 100%; height: 100%; min-height: 1.5rem; align-items: center; justify-content: center; background-color: ${bgColor}; color: ${textColor}; font-size: 0.65rem; font-weight: normal; border-radius: 4px; cursor: ${cursor}; border: ${border}; transition: filter 0.2s, border 0.2s; box-sizing: border-box;"
             onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter='none'">
             ${displayValue}
           </div>
@@ -346,16 +364,24 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
     
     table.dataTransform = dataTransform;
 
-    const tableData = sortedItems.map((rowItem, i) => {
-      const row: any = { _Category: rowItem };
-      for (let j = 0; j < sortedItems.length; j++) {
-        const colItem = sortedItems[j];
-        const c1 = rowItem < colItem ? rowItem : colItem;
-        const c2 = rowItem < colItem ? colItem : rowItem;
-        row[colItem] = j > i ? "-" : (clashMatrix[c1]?.[c2] || 0);
-      }
-      return { data: row };
-    });
+    const headerRow: any = { _Category: "@@HEADER@@" };
+    for (const colItem of sortedItems) {
+      headerRow[colItem] = colItem;
+    }
+
+    const tableData = [
+      ...sortedItems.map((rowItem, i) => {
+        const row: any = { _Category: rowItem };
+        for (let j = 0; j < sortedItems.length; j++) {
+          const colItem = sortedItems[j];
+          const c1 = rowItem < colItem ? rowItem : colItem;
+          const c2 = rowItem < colItem ? colItem : rowItem;
+          row[colItem] = j > i ? "-" : (clashMatrix[c1]?.[c2] || 0);
+        }
+        return { data: row };
+      }),
+      { data: headerRow }
+    ];
 
     table.data = tableData;
   };
@@ -456,6 +482,71 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
     updateTable(true);
   };
 
+  const openExpandModal = () => {
+    if (!currentTable) return;
+    
+    const dialog = document.createElement("dialog");
+    dialog.style.width = "95vw";
+    dialog.style.height = "95vh";
+    dialog.style.maxWidth = "1600px";
+    dialog.style.maxHeight = "1200px";
+    dialog.style.padding = "1.5rem";
+    dialog.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
+    dialog.style.borderRadius = "8px";
+    dialog.style.backgroundColor = "var(--bim-ui_bg-base)";
+    dialog.style.display = "flex";
+    dialog.style.flexDirection = "column";
+    dialog.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
+    
+    const style = document.createElement("style");
+    style.textContent = `
+      dialog::backdrop { background-color: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); }
+      .matrix-scroll-wrapper bim-table::part(cell) { overflow: visible !important; }
+    `;
+    dialog.appendChild(style);
+
+    const headerDiv = document.createElement("div");
+    headerDiv.style.display = "flex";
+    headerDiv.style.justifyContent = "space-between";
+    headerDiv.style.alignItems = "center";
+    headerDiv.style.marginBottom = "1rem";
+    
+    const title = document.createElement("bim-label");
+    title.textContent = "Clash Matrix";
+    title.style.fontSize = "1.25rem";
+    title.style.fontWeight = "bold";
+    headerDiv.appendChild(title);
+
+    const closeBtn = document.createElement("bim-button") as any;
+    closeBtn.icon = appIcons.CLEAR;
+    closeBtn.style.margin = "0";
+    closeBtn.addEventListener("click", () => {
+      dialog.close();
+    });
+    headerDiv.appendChild(closeBtn);
+    
+    dialog.appendChild(headerDiv);
+
+    const tableContainer = document.createElement("div");
+    tableContainer.style.flex = "1";
+    tableContainer.style.overflow = "auto";
+    tableContainer.className = "matrix-scroll-wrapper";
+    
+    const originalParent = currentTable.parentElement;
+    tableContainer.appendChild(currentTable);
+    dialog.appendChild(tableContainer);
+
+    dialog.addEventListener("close", () => {
+      if (originalParent && currentTable) {
+        originalParent.appendChild(currentTable);
+      }
+      dialog.remove();
+    });
+
+    document.body.appendChild(dialog);
+    dialog.showModal();
+  };
+
   return BUI.html`
     <div style="display: flex; flex-direction: column; width: 100%; height: 100%; padding: 0.5rem; box-sizing: border-box; overflow: hidden;">
       <style>
@@ -478,6 +569,9 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
         @keyframes matrixFadeIn {
           0% { opacity: 0.5; transform: translateY(4px); }
           100% { opacity: 1; transform: translateY(0); }
+        }
+        bim-table::part(cell) {
+          overflow: visible !important;
         }
       </style>
       <bim-label style="text-align: center; padding: 1rem; color: var(--bim-ui_gray-5); display: ${hasData ? 'none' : 'block'};">
@@ -502,10 +596,11 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
               selectionLabel.textContent = selectedCell ? `${selectedCell.c1} vs ${selectedCell.c2}` : "None";
             }
           })} style="color: var(--bim-ui_main-contrast); margin: 0;"></bim-label>
+          <bim-button @click=${openExpandModal} icon=${appIcons.EXPAND} tooltip-title="Expand Matrix"></bim-button>
           <bim-button @click=${onExportCSV} icon=${appIcons.EXPORT} title="Export to CSV"></bim-button>
         </div>
       </div>
-      <div class="matrix-scroll-wrapper" style="${hasData ? 'flex: 1; min-height: 0; display: flex; flex-direction: column;' : 'display: none;'} overflow-x: auto; overflow-y: hidden; padding-bottom: 0.25rem;">
+      <div class="matrix-scroll-wrapper" style="${hasData ? 'flex: 1; min-height: 0; display: flex; flex-direction: column;' : 'display: none;'} overflow-x: auto; overflow-y: hidden; padding-bottom: 0.75rem;">
         <bim-table style="flex: 1; min-height: 0;" headers-hidden no-indentation
           ${BUI.ref(onTableCreated)}
         ></bim-table>

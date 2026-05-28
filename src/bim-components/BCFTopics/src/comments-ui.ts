@@ -338,7 +338,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
     pageWrapper.style.overflow = "hidden";
 
     // 1. 고정된 스냅샷 이미지 (그룹의 첫번째 코멘트 기준)
-    let snapshotUrl = null;
+    let snapshotUrl: string | null = null;
     if (currentGroup.comments.length > 0) {
       snapshotUrl = getCommentSnapshotUrl(currentGroup.comments[0]);
     }
@@ -347,6 +347,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       snapshotUrl = getCommentSnapshotUrl({ viewpoint: currentGroup.viewpointGuid });
     }
     if (snapshotUrl) {
+      const validSnapshotUrl = snapshotUrl;
       const snapshotWrapper = document.createElement("div");
       snapshotWrapper.style.width = "12rem";
       snapshotWrapper.style.flexShrink = "0";
@@ -372,7 +373,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       img.style.transition = "filter 0.2s";
       img.onmouseover = () => img.style.filter = "brightness(1.1)";
       img.onmouseout = () => img.style.filter = "none";
-      img.addEventListener("click", () => showLightbox(snapshotUrl));
+      img.addEventListener("click", () => showLightbox(validSnapshotUrl));
 
       snapshotWrapper.append(img);
 

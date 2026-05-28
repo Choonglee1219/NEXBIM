@@ -166,9 +166,8 @@ export const topicListTemplate: BUI.StatefullComponent<
   const [newTopicForm, updateNewTopicForm] = newTopic(components);
   const { panel: updateTopicPanel, show: showUpdateTopic } = updateTopic(bcfTopics);
 
-  bcfTopics.setupTable(topicListTable);
-
-  // 테이블에서 토픽 제목(Title) 클릭 시 Viewpoint가 복원되는 기존 동작에 추가로, 해당 테이블 행이 자동으로 선택되도록 동작 확장
+  // 토픽 행 클릭 시 Viewpoint가 복원되도록 template.ts 에서 이벤트를 처리함
+  // 여기서는 restoreViewpoint를 확장하여 더블클릭(수정 패널 열기) 및 행 자동 선택 보장 로직을 추가
   let lastClickedTopicId: string | null = null;
   let lastClickTime = 0;
 

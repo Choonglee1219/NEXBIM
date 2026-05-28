@@ -333,6 +333,9 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       this._clashMarkersGroup.clear();
       this._clashMarkersGroup.visible = false;
     }
+    if (this._clashMarker) {
+      this._clashMarker.visible = false;
+    }
   }
 
   /**
@@ -431,6 +434,10 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       world.camera.controls.update(0);
       await this.applyClashColor(res, highlighter);
       setModelTransparent(this.components);
+
+      // 해당 간섭 마커 표시
+      this.clearClashMarkers();
+      this.drawClashMarker(res.position);
     }
   }
 
@@ -450,6 +457,10 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       world.camera.controls.update(0);
       await this.applyClashGroupColors(results, highlighter);
       setModelTransparent(this.components);
+
+      // 해당 그룹 간섭 마커들 표시
+      this.clearClashMarkers();
+      this.drawClashMarkers(results.map(r => r.position));
     }
   }
 

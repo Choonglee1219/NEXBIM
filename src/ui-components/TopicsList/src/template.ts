@@ -36,8 +36,36 @@ export const topicsListTemplate: BUI.StatefullComponent<TopicsListState> = (
     });
   };
 
+  const onRowCreated = (e: Event) => {
+    onTableRowCreated(e);
+    const table = e.target as BUI.Table<TopicsListTableData>;
+    const customEvent = e as CustomEvent<BUI.RowCreatedEventDetail<any>>;
+    const { row } = customEvent.detail;
+    row.style.cursor = "pointer";
+
+    row.onclick = () => {
+      const wasSelected = table.selection.has(row.data);
+      table.selection.clear();
+
+      if (!wasSelected) {
+        table.selection.add(row.data);
+      }
+
+      if (typeof table.requestUpdate === "function") table.requestUpdate();
+      table.dispatchEvent(new Event("change"));
+
+      const topic = bcfTopics.list.get(row.data.Guid);
+      if (topic) {
+        const customBcf = Array.from(components.list.values()).find((c: any) => typeof c.restoreViewpoint === "function") as any;
+        if (customBcf) {
+          customBcf.restoreViewpoint(topic);
+        }
+      }
+    };
+  };
+
   return BUI.html`
-    <bim-table no-indentation @rowcreated=${onTableRowCreated} @cellcreated=${onTableCellCreated} ${BUI.ref(onTableCreated)}>
+    <bim-table no-indentation @rowcreated=${onRowCreated} @cellcreated=${onTableCellCreated} ${BUI.ref(onTableCreated)}>
       <bim-label slot="missing-data" icon=${appIcons.WARNING} style="--bim-icon--c: gold;">${missingDataMessage}</bim-label>
     </bim-table>
   `;

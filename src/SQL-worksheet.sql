@@ -25,19 +25,35 @@ CREATE TABLE "ifc_bcf" (
     CONSTRAINT "fk_ifc_bcf_bcf" FOREIGN KEY ("bcf_id") REFERENCES "bcf"("id")
 );
 
+CREATE TABLE "clash_manager" (
+    "guid1" VARCHAR2(255) NOT NULL,
+    "guid2" VARCHAR2(255) NOT NULL,
+    "badge" VARCHAR2(50) NOT NULL,
+    "entity1" VARCHAR2(255),
+    "object1" VARCHAR2(255),
+    "entity2" VARCHAR2(255),
+    "object2" VARCHAR2(255),
+    "x_coord" NUMBER,
+    "y_coord" NUMBER,
+    "z_coord" NUMBER,
+    CONSTRAINT "pk_clash_manager" PRIMARY KEY ("guid1", "guid2")
+);
+
 SELECT
   (SELECT COUNT(*) FROM "ifc") AS ifc_total_count,
   (SELECT COUNT(*) FROM "frag") AS frag_total_count,
   (SELECT COUNT(*) FROM "bcf") AS bcf_total_count,
-  (SELECT COUNT(*) FROM "ifc_bcf") AS ifc_bcf_total_count
+  (SELECT COUNT(*) FROM "ifc_bcf") AS ifc_bcf_total_count,
+  (SELECT COUNT(*) FROM "clash_manager") AS clash_manager_total_count
 FROM DUAL;
+
+TRUNCATE TABLE "clash_manager";
 
 SELECT "id", "name" FROM "ifc";
 
 SELECT "id", "name" FROM "frag";
 
 DELETE FROM "ifc" WHERE "id" = 162;
-
 
 DROP TABLE "ifc_bcf";
 
@@ -82,20 +98,3 @@ SELECT status FROM v$instance;
 ALTER DATABASE OPEN;
 ALTER PLUGGABLE DATABASE ALL SAVE STATE;
 SELECT name, open_mode, restricted FROM v$pdbs;
-
--- Clash Manager (간섭 상태 유지 테이블)
-CREATE TABLE "clash_manager" (
-    "guid1" VARCHAR2(255) NOT NULL,
-    "guid2" VARCHAR2(255) NOT NULL,
-    "badge" VARCHAR2(50) NOT NULL,
-    "entity1" VARCHAR2(255),
-    "object1" VARCHAR2(255),
-    "entity2" VARCHAR2(255),
-    "object2" VARCHAR2(255),
-    "x_coord" NUMBER,
-    "y_coord" NUMBER,
-    "z_coord" NUMBER,
-    CONSTRAINT "pk_clash_manager" PRIMARY KEY ("guid1", "guid2")
-);
-
-TRUNCATE TABLE "clash_manager";

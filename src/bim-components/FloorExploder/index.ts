@@ -265,7 +265,7 @@ export class FloorExploder {
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
-    container.addEventListener('dblclick', (e) => {
+    container.addEventListener('dblclick', (e: MouseEvent) => {
       if (this.isExploded) {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -277,19 +277,19 @@ export class FloorExploder {
     let isDragging = false;
     let startX = 0, startY = 0;
 
-    container.addEventListener('pointerdown', (e) => {
+    container.addEventListener('pointerdown', (e: PointerEvent) => {
       isDragging = false;
       startX = e.clientX;
       startY = e.clientY;
     });
 
-    container.addEventListener('pointermove', (e) => {
+    container.addEventListener('pointermove', (e: PointerEvent) => {
       if (Math.abs(e.clientX - startX) > 3 || Math.abs(e.clientY - startY) > 3) {
         isDragging = true;
       }
     });
 
-    container.addEventListener('pointerup', async (e) => {
+    container.addEventListener('pointerup', async (e: PointerEvent) => {
       if (!this.isExploded || isDragging) return;
       
       const isCtrl = e.ctrlKey || e.metaKey;

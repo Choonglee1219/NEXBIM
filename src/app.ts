@@ -890,6 +890,46 @@ app.get("/api/clash-manager", async (_req: Request, res: Response): Promise<void
   }
 });
 
+// Filter Saved Clash Statuses by specific GUID pairs
+app.post("/api/clash-manager/filter", async (req: Request, res: Response): Promise<void> => {
+  let connection: OracleDB.Connection | undefined;
+  try {
+    const { pairs } = req.body;
+    if (!Array.isArray(pairs) || pairs.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    connection = await getConnection();
+    const results: any[] = [];
+    
+    // Oracle DB의 쿼리 길이 및 바인드 변수 제한을 우회하기 위해 500개씩 청크 분할 처리
+    const chunkSize = 500;
+    for (let i = 0; i < pairs.length; i += chunkSize) {
+      const chunk = pairs.slice(i, i + chunkSize);
+      const binds: Record<string, any> = {};
+      const conditions = chunk.map((p: string[], idx: number) => {
+        binds[`g1_${idx}`] = p[0];
+        binds[`g2_${idx}`] = p[1];
+        return `("guid1" = :g1_${idx} AND "guid2" = :g2_${idx})`;
+      });
+      
+      const sql = `SELECT "guid1", "guid2", "badge" FROM "clash_manager" WHERE ${conditions.join(" OR ")}`;
+      const result = await connection.execute(sql, binds, { outFormat: OracleDB.OUT_FORMAT_OBJECT });
+      if (result.rows) results.push(...result.rows);
+    }
+    
+    res.json(results);
+  } catch (err) {
+    console.error("Error filtering clash statuses:", err);
+    res.status(500).json({ error: "Failed to filter clash statuses" });
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (err) { console.error(err); }
+    }
+  }
+});
+
 // Upsert Clash Statuses (MERGE INTO)
 app.post("/api/clash-manager/upsert", async (req: Request, res: Response): Promise<void> => {
   let connection: OracleDB.Connection | undefined;
@@ -938,6 +978,39 @@ app.post("/api/clash-manager/upsert", async (req: Request, res: Response): Promi
   } catch (err) {
     console.error("Error upserting clash statuses:", err);
     res.status(500).json({ error: "Failed to upsert clash statuses" });
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (err) { console.error(err); }
+    }
+  }
+});
+
+// Delete specific clash statuses (when reverted to "New")
+app.post("/api/clash-manager/delete-pairs", async (req: Request, res: Response): Promise<void> => {
+  let connection: OracleDB.Connection | undefined;
+  try {
+    const payload = req.body; // Array of { guid1, guid2 }
+    if (!Array.isArray(payload) || payload.length === 0) {
+      res.status(400).json({ error: "Empty payload" });
+      return;
+    }
+
+    connection = await getConnection();
+    
+    const sql = `DELETE FROM "clash_manager" WHERE "guid1" = :guid1 AND "guid2" = :guid2`;
+    const options = {
+      autoCommit: true,
+      bindDefs: {
+        guid1: { type: OracleDB.STRING, maxSize: 255 },
+        guid2: { type: OracleDB.STRING, maxSize: 255 }
+      }
+    };
+
+    await connection.executeMany(sql, payload, options);
+    res.status(200).json({ message: "Reverted clash statuses deleted successfully." });
+  } catch (err) {
+    console.error("Error deleting clash statuses:", err);
+    res.status(500).json({ error: "Failed to delete clash statuses" });
   } finally {
     if (connection) {
       try { await connection.close(); } catch (err) { console.error(err); }
