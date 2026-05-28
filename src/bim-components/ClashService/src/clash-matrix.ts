@@ -517,15 +517,17 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
     title.style.fontWeight = "bold";
     headerDiv.appendChild(title);
 
-    const closeBtn = document.createElement("bim-button") as any;
-    closeBtn.icon = appIcons.CLEAR;
-    closeBtn.style.margin = "0";
-    closeBtn.addEventListener("click", () => {
-      dialog.close();
-    });
-    headerDiv.appendChild(closeBtn);
-    
     dialog.appendChild(headerDiv);
+
+    dialog.addEventListener("click", (e: MouseEvent) => {
+      const rect = dialog.getBoundingClientRect();
+      const isClickInside =
+        rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
+        rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
+      if (!isClickInside) {
+        dialog.close();
+      }
+    });
 
     const tableContainer = document.createElement("div");
     tableContainer.style.flex = "1";

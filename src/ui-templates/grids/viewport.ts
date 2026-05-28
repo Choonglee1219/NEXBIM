@@ -106,21 +106,21 @@ export const viewportGridTemplate: BUI.StatefullComponent<ViewportGridState> = (
     return BUI.html`
       <bim-toolbar style="align-self: start;" vertical>
         <bim-toolbar-section>
-          <bim-button @click=${onMeasurementsClick} ?active=${areMeasurementsEnabled} label="Measurements" title="Measurements" icon=${appIcons.RULER}>
+          <bim-button ?active=${areMeasurementsEnabled} label="Measurements" title="Measurements" icon=${appIcons.RULER} @click=${onMeasurementsClick}>
             <bim-context-menu>
               <div style="display: flex; gap: 0.25rem; overflow: hidden; width: max-content;">
-                <bim-button ?active=${lengthMeasurer.enabled} icon=${appIcons.LENGTH} @click=${onLengthMeasurement}></bim-button>
-                <bim-button ?active=${areaMeasurer.enabled} icon=${appIcons.AREA} @click=${onAreaMeasurement}></bim-button>
-                <bim-button icon=${appIcons.CLEARANCE} @click=${onMeasure}></bim-button>
-                <bim-button icon=${appIcons.CLEAR} @click=${onClearAllMeasurements}></bim-button>
+                <bim-button ?active=${lengthMeasurer.enabled} title="Measure Length" icon=${appIcons.LENGTH} @click=${onLengthMeasurement}></bim-button>
+                <bim-button ?active=${areaMeasurer.enabled} title="Measure Area" icon=${appIcons.AREA} @click=${onAreaMeasurement}></bim-button>
+                <bim-button icon=${appIcons.CLEARANCE} title="Measure Clearance" @click=${onMeasure}></bim-button>
+                <bim-button icon=${appIcons.CLEAR} title="All Clear" @click=${onClearAllMeasurements}></bim-button>
               </div>
             </bim-context-menu>
           </bim-button>
           <bim-button ?active=${clipper.enabled} label="Section" title="Model Section" icon=${appIcons.CLIPPING}>
             <bim-context-menu>
               <div style="display: flex; gap: 0.25rem; overflow: hidden; width: max-content;">
-                <bim-button ?active=${clipper.enabled} icon=${appIcons.CLIPPING} @click=${onModelSection}></bim-button>
-                <bim-button icon=${appIcons.CLEAR} @click=${onClipperClearAll}></bim-button>
+                <bim-button ?active=${clipper.enabled} title="Add Section" icon=${appIcons.CLIPPING} @click=${onModelSection}></bim-button>
+                <bim-button icon=${appIcons.CLEAR} title=" All Clear" @click=${onClipperClearAll}></bim-button>
               </div>
             </bim-context-menu>
           </bim-button> 
