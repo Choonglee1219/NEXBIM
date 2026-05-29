@@ -11,3 +11,4 @@ export * from "./viewpoints";
 export * from "./ids-spec";
 export * from "./quantity-table";
 export * from "./clash-list";
+export * from "./drawing";

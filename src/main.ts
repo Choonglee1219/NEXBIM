@@ -2,11 +2,13 @@ import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 import * as OBF from "@thatopen/components-front";
 import * as BUI from "@thatopen/ui";
+import * as CUI from "@thatopen/ui-obc";
 import { html } from "lit";
 import * as TEMPLATES from "./ui-templates";
 import { appIcons, CONTENT_GRID_ID } from "./globals";
 import { setupFinders } from "./setup/finders";
 import { setupViewTemplates } from "./setup/templaters";
+import { initDrawingEditor } from "./ui-templates/sections/drawing";
 import { setupViewCube } from "./ui-components/ViewCube";
 import { Highlighter } from "./bim-components/Highlighter";
 import { setupContextMenu } from "./ui-components/ContextMenu";
@@ -42,6 +44,7 @@ BUI.Label.prototype.render = function () {
 
 // 🛫Interface Initialization
 BUI.Manager.init();
+CUI.Manager.init();
 
 // 🌐Components Setup
 const components = new OBC.Components();
@@ -305,6 +308,7 @@ const [contentGrid] = BUI.Component.create<
   components,
   id: CONTENT_GRID_ID,
   viewportTemplate: viewportCardTemplate,
+  world,
 });
 
 const setInitialLayout = () => {
@@ -340,6 +344,7 @@ const contentGridIcons: Record<TEMPLATES.ContentGridLayouts[number], string> = {
   IDSCheck: appIcons.IDS_CHECK,
   QuantityTable: appIcons.TABLE,
   ClashDetection: appIcons.CLASH,
+  DrawingEditor: appIcons.DRAWING,
 };
 
 // 🏁App Grid Setup
@@ -361,6 +366,11 @@ const app = document.getElementById("app") as BUI.Grid<
   AppLayouts,
   AppGridElements
 >;
+
+// ---------------------------------------------------------
+// 📐 2D Drawing Editor 설정
+// ---------------------------------------------------------
+await initDrawingEditor(components, world);
 
 app.elements = {
   sidebar: {

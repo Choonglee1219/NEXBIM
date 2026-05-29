@@ -73,6 +73,7 @@ export const appIcons = {
   LENGTH: "/icons/lucide--ruler-dimension-line.svg",
   AREA: "/icons/radix-icons--dimensions.svg",
   CLEARANCE: "/icons/material-symbols--social-distance.svg",
+  DRAWING: "/icons/material-symbols--2d-2.svg",
 };
 
 // 테이블 내 아이콘 버튼들의 공통 컴팩트 스타일

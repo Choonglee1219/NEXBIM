@@ -173,12 +173,12 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
             <bim-button @click=${() => {
               model.object.visible = !model.object.visible;
               updateLoadedModelsList();
-          }} icon=${model.object.visible ? appIcons.SHOW : appIcons.HIDE} style=${tableButtonStyle} title="Visibility"></bim-button>
+              }} icon=${model.object.visible ? appIcons.SHOW : appIcons.HIDE} style=${tableButtonStyle} title="Visibility"></bim-button>
             <bim-button @click=${() => {
               selectedLoadedModels.delete(model);
               model.dispose();
               updateLoadedModelsList();
-          }} icon=${appIcons.CLEAR} style=${tableButtonStyle} title="Dispose"></bim-button>
+              }} icon=${appIcons.CLEAR} style=${tableButtonStyle} title="Dispose"></bim-button>
           </div>
         </div>
       `;

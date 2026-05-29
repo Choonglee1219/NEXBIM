@@ -75,6 +75,11 @@ type ClashList = {
   state: TEMPLATES.ClashListPanelState;
 };
 
+type DrawingEditor = {
+  name: "drawing";
+  state: TEMPLATES.DrawingEditorState;
+};
+
 export type ContentGridElements = [
   Viewer,
   IFCList,
@@ -90,14 +95,16 @@ export type ContentGridElements = [
   IDSSpecs,
   QuantityTable,
   ClashList,
+  DrawingEditor,
 ];
 
-export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "IDSCheck", "FullScreen", "QuantityTable"];
+export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "IDSCheck", "FullScreen", "QuantityTable", "DrawingEditor"];
 
 export interface ContentGridState {
   components: OBC.Components;
   id: string;
   viewportTemplate: BUI.StatelessComponent;
+  world: OBC.World;
 }
 
 export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
@@ -167,6 +174,10 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         template: TEMPLATES.clashListPanelTemplate,
         initialState: { components },
       },
+      drawing: {
+        template: TEMPLATES.drawingEditorTemplate,
+        initialState: { components, world: state.world },
+      },
       viewer: state.viewportTemplate,
     };
 
@@ -215,9 +226,15 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
       },
       ViewPoints: {
         template: `
-          "viewPoints viewer" var(--top-row-height, auto)
           "viewPoints viewer" 1fr
           / var(--half-col-width, 1fr) 1fr
+        `,
+      },
+      DrawingEditor: {
+        template: `
+          "ifcList drawing drawing" 1fr
+          "viewer drawing drawing" 1fr
+          / var(--left-col-width) 1fr var(--right-col-width)
         `,
       },
       QuantityTable: {
