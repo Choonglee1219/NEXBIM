@@ -19,7 +19,9 @@ export const entityTree = (state: EntityTreeState, autoUpdate = true) => {
     fragments.list.onItemSet.add(() =>
       update({ models: fragments.list.values() }),
     );
-    fragments.list.onItemDeleted.add(() => update());
+    fragments.list.onItemDeleted.add(() => 
+      update({ models: fragments.list.values() })
+    );
   }
 
   return element;

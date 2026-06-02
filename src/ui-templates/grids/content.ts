@@ -80,6 +80,16 @@ type DrawingEditor = {
   state: TEMPLATES.DrawingEditorState;
 };
 
+type Timeline = {
+  name: "timeline";
+  state: TEMPLATES.TimelinePanelState;
+};
+
+type PhaseManager = {
+  name: "phaseManager";
+  state: TEMPLATES.PhaseManagerPanelState;
+};
+
 export type ContentGridElements = [
   Viewer,
   IFCList,
@@ -96,9 +106,11 @@ export type ContentGridElements = [
   QuantityTable,
   ClashList,
   DrawingEditor,
+  Timeline,
+  PhaseManager,
 ];
 
-export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "IDSCheck", "FullScreen", "QuantityTable", "DrawingEditor"];
+export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "IDSCheck", "FullScreen", "QuantityTable", "DrawingEditor", "Timeline"];
 
 export interface ContentGridState {
   components: OBC.Components;
@@ -178,6 +190,14 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         template: TEMPLATES.drawingEditorTemplate,
         initialState: { components, world: state.world },
       },
+      timeline: {
+        template: TEMPLATES.timelinePanelTemplate,
+        initialState: { components },
+      },
+      phaseManager: {
+        template: TEMPLATES.phaseManagerPanelTemplate,
+        initialState: { components },
+      },
       viewer: state.viewportTemplate,
     };
 
@@ -206,49 +226,56 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
       },
       Queries: {
         template: `
-          "queries viewer elementData" var(--top-row-height, 1fr)
-          "queries dashboard elementData" 1fr
-          / var(--left-col-width) 1fr var(--right-col-width)
+        "queries viewer elementData" var(--top-row-height, 1fr)
+        "queries dashboard elementData" 1fr
+        / var(--left-col-width) 1fr var(--right-col-width)
         `,
       },
       IDSCheck: {
         template: `
           "idsSpecs viewer elementData" 1fr
           / var(--left-col-width) 1fr var(--right-col-width)
-        `,
+          `,
       },
       Properties: {
         template: `
-          "propsManager viewer" var(--top-row-height, auto)
-          "elementData viewer" 1fr
-          / var(--half-col-width, 1fr) 1fr
+        "propsManager viewer" var(--top-row-height, auto)
+        "elementData viewer" 1fr
+        / var(--half-col-width, 1fr) 1fr
         `,
       },
       ViewPoints: {
         template: `
-          "viewPoints viewer" 1fr
-          / var(--half-col-width, 1fr) 1fr
+        "viewPoints viewer" 1fr
+        / var(--half-col-width, 1fr) 1fr
         `,
       },
       DrawingEditor: {
         template: `
-          "ifcList drawing drawing" 1fr
-          "viewer drawing drawing" 1fr
+        "ifcList drawing drawing" 1fr
+        "viewer drawing drawing" 1fr
           / var(--left-col-width) 1fr var(--right-col-width)
         `,
       },
       QuantityTable: {
         template: `
-          "viewer quantityTable quantityTable" var(--top-row-height, 1fr)
-          "elementData quantityTable quantityTable" 1fr
-          "elementData quantityTable quantityTable" var(--bottom-row-height, auto)
-          / var(--left-col-width) 1fr var(--right-col-width)
+        "viewer quantityTable quantityTable" var(--top-row-height, 1fr)
+        "elementData quantityTable quantityTable" 1fr
+        "elementData quantityTable quantityTable" var(--bottom-row-height, auto)
+        / var(--left-col-width) 1fr var(--right-col-width)
+        `,
+      },
+      Timeline: {
+        template: `
+        "viewer phaseManager phaseManager" var(--top-row-height, 1fr)
+        "timeline timeline timeline" 1fr
+        / var(--left-col-width) 1fr var(--right-col-width)
         `,
       },
       FullScreen: {
         template: `
-          "viewer" 1fr
-          / 1fr
+        "viewer" 1fr
+        / 1fr
         `,
       },
     };

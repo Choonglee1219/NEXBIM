@@ -59,6 +59,7 @@ export const appIcons = {
   CHART: "/icons/mdi--chart-bar.svg",
   MAP: "/icons/mdi--map-marker-radius.svg",
   PLAY: "/icons/mdi--play.svg",
+  PAUSE: "/icons/mdi--pause.svg",
   IDS_CHECK: "/icons/mdi--check-bold.svg",
   TABLE: "/icons/mdi--table-filter.svg",
   BACK: "/icons/eva--arrow-ios-back-outline.svg",
@@ -74,6 +75,10 @@ export const appIcons = {
   AREA: "/icons/radix-icons--dimensions.svg",
   CLEARANCE: "/icons/material-symbols--social-distance.svg",
   DRAWING: "/icons/material-symbols--2d-2.svg",
+  GANTT: "/icons/mdi--chart-gantt.svg",
+  DRAFT: "/icons/mdi--flash.svg",
+  SORT: "/icons/mdi--sort-clock-ascending.svg",
+  REPEAT: "/icons/mdi--repeat.svg",
 };
 
 // 테이블 내 아이콘 버튼들의 공통 컴팩트 스타일

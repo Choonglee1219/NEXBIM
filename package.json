@@ -1,6 +1,6 @@
 {
-  "name": "bim-app",
-  "version": "0.0.0",
+  "name": "NEXBIM",
+  "version": "0.1.0",
   "main": "index.js",
   "type": "module",
   "scripts": {

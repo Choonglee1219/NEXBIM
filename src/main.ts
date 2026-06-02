@@ -345,6 +345,7 @@ const contentGridIcons: Record<TEMPLATES.ContentGridLayouts[number], string> = {
   QuantityTable: appIcons.TABLE,
   ClashDetection: appIcons.CLASH,
   DrawingEditor: appIcons.DRAWING,
+  Timeline: appIcons.GANTT,
 };
 
 // 🏁App Grid Setup
