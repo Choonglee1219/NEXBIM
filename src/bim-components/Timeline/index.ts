@@ -24,7 +24,7 @@ export class Timeline extends OBC.Component {
 
   currentPhase: number | null = null;
 
-  phaseIdMap: { [key: number]: number[] } = {};
+  phaseIdMap: { [key: number]: { [modelId: string]: number[] } } = {};
   phaseDates: { [key: number]: { start: number, end: number } } = {};
   phaseDescriptions: { [key: number]: string } = {};
 
@@ -32,6 +32,9 @@ export class Timeline extends OBC.Component {
   categoriesMap = new Map<string, OBC.ModelIdMap>();
   storeyElevations = new Map<string, number>();
   isDataExtracted = false;
+
+  private _isShowing = false;
+  private _pendingPhase: number | null = null;
 
   constructor(components: OBC.Components) {
     super(components);
@@ -305,10 +308,11 @@ export class Timeline extends OBC.Component {
       }
 
       if (!(rule.phase in this.phaseIdMap)) {
-        this.phaseIdMap[rule.phase] = [];
+        this.phaseIdMap[rule.phase] = {};
       }
       for (const modelId in finalMap) {
-        this.phaseIdMap[rule.phase].push(...Array.from(finalMap[modelId]));
+        if (!this.phaseIdMap[rule.phase][modelId]) this.phaseIdMap[rule.phase][modelId] = [];
+        this.phaseIdMap[rule.phase][modelId].push(...Array.from(finalMap[modelId]));
       }
       if (!this.phases.includes(rule.phase)) this.phases.push(rule.phase);
     }
@@ -318,33 +322,48 @@ export class Timeline extends OBC.Component {
   }
 
   async showElements(selectedPhase: number) {
-    const fragments = this.components.get(OBC.FragmentsManager);
-
     if (this.currentPhase === selectedPhase) return;
 
+    if (this._isShowing) {
+      this._pendingPhase = selectedPhase;
+      return;
+    }
+
+    this._isShowing = true;
     this.currentPhase = selectedPhase;
 
-    for (const [_, model] of fragments.list) {
-      const idsToShow: number[] = [];
+    try {
+      const fragments = this.components.get(OBC.FragmentsManager);
 
-      for (const [phase, localIds] of Object.entries(this.phaseIdMap)) {
-        const elementPhase = Number(phase);
+      for (const [modelId, model] of fragments.list) {
+        const idsToShow: number[] = [];
 
-        if (elementPhase <= selectedPhase) {
-          idsToShow.push(...localIds);
+        for (const [phase, modelMap] of Object.entries(this.phaseIdMap)) {
+          const elementPhase = Number(phase);
+
+          if (elementPhase <= this.currentPhase) {
+            if (modelMap[modelId]) {
+              idsToShow.push(...modelMap[modelId]);
+            }
+          }
+        }
+
+        if (idsToShow.length > 0) {
+          await model.setVisible(undefined, false);
+          await model.setVisible(idsToShow, true);
+        } else {
+          await model.setVisible(undefined, false);
         }
       }
-
-      if (idsToShow.length > 0) {
-        // 선택된 페이즈에 객체가 있는 경우
-        await model.setVisible(undefined, false);
-        await model.setVisible(idsToShow, true);
-      } else {
-        // 선택된 페이즈까지 보여줄 객체가 아예 없는 경우 모델 전체를 숨김
-        await model.setVisible(undefined, false);
+      const fragmentsManager = this.components.get(OBC.FragmentsManager);
+      await fragmentsManager.core.update(true);
+    } finally {
+      this._isShowing = false;
+      if (this._pendingPhase !== null && this._pendingPhase !== this.currentPhase) {
+        const nextPhase = this._pendingPhase;
+        this._pendingPhase = null;
+        this.showElements(nextPhase);
       }
-      
-      await fragments.core.update(true);
     }
   }
 }
