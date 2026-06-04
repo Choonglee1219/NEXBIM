@@ -133,18 +133,29 @@ export const dashboardPanelTemplate: BUI.StatefullComponent<DashboardPanelState>
       }
     }
 
-    // 3. 차트 렌더링 함수
-    // Colorhunt Gradient 테마에서 영감을 받은 다채로운 네온/파스텔 팔레트
-    const basePalettes = [
-      { h: 280, s: 85 }, // Vivid Purple
-      { h: 340, s: 85 }, // Hot Pink
-      { h: 16,  s: 90 }, // Coral/Orange
-      { h: 195, s: 90 }, // Bright Cyan
-      { h: 145, s: 80 }, // Emerald Green
-      { h: 45,  s: 95 }, // Golden Yellow
-      { h: 220, s: 85 }, // Deep Blue
-      { h: 350, s: 85 }  // Crimson
-    ];
+    // 3. 차트 색상 생성기 (color-generator.js 및 D3 interpolateCool 로직 참고)
+    const generateColorPoints = (dataLength: number) => {
+      const points = [];
+      const colorStart = 0;
+      const colorEnd = 0.65;
+      const useEndAsStart = true;
+      
+      const colorRange = colorEnd - colorStart;
+      const intervalSize = dataLength > 0 ? colorRange / dataLength : 0;
+      
+      for (let i = 0; i < dataLength; i++) {
+        const colorPoint = useEndAsStart
+          ? colorEnd - (i * intervalSize)
+          : colorStart + (i * intervalSize);
+          
+        // interpolateCool 근사치 (Purple -> Blue -> Cyan -> Green)
+        const h = 270 - (colorPoint * 150);
+        const s = 50 + (colorPoint * 40);
+        const l = 45 + (colorPoint * 25);
+        points.push({ h, s, l });
+      }
+      return points;
+    };
 
     // Category Chart용 상위 6개 필터링
     const topCategoryCounts: Record<string, number> = {};
@@ -171,7 +182,8 @@ export const dashboardPanelTemplate: BUI.StatefullComponent<DashboardPanelState>
       instance: Chart | null, 
       labelMap: Record<string, number>, 
       dataMap: Map<string, Record<string, Set<number>>>, 
-      labelTitle: string
+      labelTitle: string,
+      colorPoints: Array<{h: number, s: number, l: number}>
     ) => {
       const labels = Object.keys(labelMap);
       const data = Object.values(labelMap);
@@ -180,18 +192,9 @@ export const dashboardPanelTemplate: BUI.StatefullComponent<DashboardPanelState>
 
       if (instance) instance.destroy();
 
-      const bgColors = labels.map((_, i) => {
-        const p = basePalettes[i % basePalettes.length];
-        return `hsla(${p.h}, ${p.s}%, 55%, 0.8)`;
-      });
-      const bdColors = labels.map((_, i) => {
-        const p = basePalettes[i % basePalettes.length];
-        return `hsla(${p.h}, ${p.s}%, 55%, 1)`;
-      });
-      const hbColors = labels.map((_, i) => {
-        const p = basePalettes[i % basePalettes.length];
-        return `hsla(${p.h}, ${p.s}%, 65%, 0.9)`;
-      });
+      const bgColors = colorPoints.map(p => `hsla(${p.h}, ${p.s}%, ${p.l}%, 0.8)`);
+      const bdColors = colorPoints.map(p => `hsla(${p.h}, ${p.s}%, ${p.l}%, 1)`);
+      const hbColors = colorPoints.map(p => `hsla(${p.h}, ${p.s}%, ${p.l}%, 0.9)`);
 
       return new Chart(ctx, {
         type: 'bar',
@@ -254,7 +257,9 @@ export const dashboardPanelTemplate: BUI.StatefullComponent<DashboardPanelState>
       });
     };
 
-    categoryChart = renderChart(catCanvas, categoryChart, topCategoryCounts, categoryElementMap, 'Category Count');
+    // Category Chart용 색상 배열 먼저 생성
+    const catColorPoints = generateColorPoints(Object.keys(topCategoryCounts).length);
+    categoryChart = renderChart(catCanvas, categoryChart, topCategoryCounts, categoryElementMap, 'Category Count', catColorPoints);
 
     // 4. 카테고리별 타입 중첩 파이(Doughnut) 차트 동적 렌더링
     for (const chart of typeCharts) {
@@ -310,13 +315,14 @@ export const dashboardPanelTemplate: BUI.StatefullComponent<DashboardPanelState>
       const outerKeys: string[] = [];
 
       // 현재 카테고리(차트)의 메인 테마 색상 설정
-      const palette = basePalettes[catColorIdx % basePalettes.length];
+      const palette = catColorPoints[catColorIdx];
       const ptCount = Object.keys(catData).length;
 
       let ptIdx = 0;
       for (const [pType, ptData] of Object.entries(catData)) {
-        // 안쪽 링: 항목 수에 따라 명도(Lightness)를 75%에서 35% 사이로 점진적 변화
-        const lightness = ptCount > 1 ? 75 - (ptIdx * (40 / (ptCount - 1))) : 60;
+        // 안쪽 링: 기본 명도(palette.l)를 기준으로 밝기를 점진적으로 변화 (+15 ~ -15)
+        const lightnessOffset = ptCount > 1 ? 15 - (ptIdx * (30 / (ptCount - 1))) : 0;
+        const lightness = Math.max(10, Math.min(90, palette.l + lightnessOffset));
         const innerColor = `hsla(${palette.h}, ${palette.s}%, ${lightness}%, 0.9)`;
 
         innerLabels.push(pType);
