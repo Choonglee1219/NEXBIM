@@ -388,3 +388,167 @@ export function meshMinDist(trisA: Float32Array, trisB: Float32Array, thresholdM
   if (outPair) { outPair[0]=bq0; outPair[1]=bq1; outPair[2]=bq2; outPair[3]=bg0; outPair[4]=bg1; outPair[5]=bg2; }
   return Math.sqrt(minSq);
 }
+
+// ============================================================================
+// BVH 기반 정밀 정점-면 이격 거리(Soft Clash) 계산 로직 (대형 폴리곤/Slab 대응)
+// ============================================================================
+
+function clamp(v: number, min: number, max: number) {
+  return v < min ? min : (v > max ? max : v);
+}
+
+export function pointTriSqDist(px: number, py: number, pz: number, t: Float32Array, o: number, closestOut?: number[]): number {
+  const v0x = t[o],   v0y = t[o+1], v0z = t[o+2];
+  const v1x = t[o+3], v1y = t[o+4], v1z = t[o+5];
+  const v2x = t[o+6], v2y = t[o+7], v2z = t[o+8];
+
+  const e0x = v1x - v0x, e0y = v1y - v0y, e0z = v1z - v0z;
+  const e1x = v2x - v0x, e1y = v2y - v0y, e1z = v2z - v0z;
+  const v0px = v0x - px, v0py = v0y - py, v0pz = v0z - pz;
+
+  const a = e0x*e0x + e0y*e0y + e0z*e0z;
+  const b = e0x*e1x + e0y*e1y + e0z*e1z;
+  const c = e1x*e1x + e1y*e1y + e1z*e1z;
+  const d = e0x*v0px + e0y*v0py + e0z*v0pz;
+  const e = e1x*v0px + e1y*v0py + e1z*v0pz;
+
+  let det = a * c - b * b;
+  let s = b * e - c * d;
+  let t_param = b * d - a * e;
+
+  if (s + t_param <= det) {
+    if (s < 0) {
+      if (t_param < 0) {
+        if (d < 0) { s = clamp(-d / a, 0, 1); t_param = 0; }
+        else { s = 0; t_param = clamp(-e / c, 0, 1); }
+      } else {
+        s = 0; t_param = clamp(-e / c, 0, 1);
+      }
+    } else if (t_param < 0) {
+      s = clamp(-d / a, 0, 1); t_param = 0;
+    } else {
+      const invDet = 1 / det;
+      s *= invDet; t_param *= invDet;
+    }
+  } else {
+    if (s < 0) {
+      const tmp0 = b + d; const tmp1 = c + e;
+      if (tmp1 > tmp0) {
+        const numer = tmp1 - tmp0; const denom = a - 2 * b + c;
+        s = clamp(numer / denom, 0, 1); t_param = 1 - s;
+      } else {
+        t_param = clamp(-e / c, 0, 1); s = 0;
+      }
+    } else if (t_param < 0) {
+      if (a + d > b + e) {
+        const numer = c + e - b - d; const denom = a - 2 * b + c;
+        s = clamp(numer / denom, 0, 1); t_param = 1 - s;
+      } else {
+        s = clamp(-d / a, 0, 1); t_param = 0;
+      }
+    } else {
+      const numer = c + e - b - d; const denom = a - 2 * b + c;
+      s = clamp(numer / denom, 0, 1); t_param = 1 - s;
+    }
+  }
+
+  const cx = v0x + s * e0x + t_param * e1x;
+  const cy = v0y + s * e0y + t_param * e1y;
+  const cz = v0z + s * e0z + t_param * e1z;
+
+  if (closestOut) {
+    closestOut[0] = cx; closestOut[1] = cy; closestOut[2] = cz;
+  }
+
+  const dx = px - cx, dy = py - cy, dz = pz - cz;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+export function pointAABBSqDist(px: number, py: number, pz: number, n: BVHNode): number {
+  let dx = 0, dy = 0, dz = 0;
+  if (px < n.mnx) dx = n.mnx - px; else if (px > n.mxx) dx = px - n.mxx;
+  if (py < n.mny) dy = n.mny - py; else if (py > n.mxy) dy = py - n.mxy;
+  if (pz < n.mnz) dz = n.mnz - pz; else if (pz > n.mxz) dz = pz - n.mxz;
+  return dx*dx + dy*dy + dz*dz;
+}
+
+export function bvhMinDistSq(px: number, py: number, pz: number, n: BVHNode, tris: Float32Array, maxDistSq: number, closestOut?: number[]): number {
+  if (pointAABBSqDist(px, py, pz, n) > maxDistSq) return Infinity;
+
+  let bestSq = Infinity;
+
+  if (n.lo !== undefined && n.hi !== undefined) {
+    const cOut = closestOut ? [0,0,0] : undefined;
+    for (let i = n.lo; i < n.hi; i++) {
+      const dSq = pointTriSqDist(px, py, pz, tris, n.idx![i] * 9, cOut);
+      if (dSq < bestSq) {
+        bestSq = dSq;
+        if (closestOut && cOut) {
+          closestOut[0] = cOut[0]; closestOut[1] = cOut[1]; closestOut[2] = cOut[2];
+        }
+      }
+    }
+    return bestSq;
+  }
+
+  const distL = n.left ? pointAABBSqDist(px, py, pz, n.left) : Infinity;
+  const distR = n.right ? pointAABBSqDist(px, py, pz, n.right) : Infinity;
+
+  const first = distL < distR ? n.left : n.right;
+  const second = distL < distR ? n.right : n.left;
+  const dFirst = distL < distR ? distL : distR;
+  const dSecond = distL < distR ? distR : distL;
+
+  if (first && dFirst <= maxDistSq) {
+    const d1 = bvhMinDistSq(px, py, pz, first, tris, maxDistSq, closestOut);
+    if (d1 < bestSq) {
+      bestSq = d1;
+      maxDistSq = Math.min(maxDistSq, bestSq);
+    }
+  }
+  if (second && dSecond <= maxDistSq) {
+    const d2 = bvhMinDistSq(px, py, pz, second, tris, maxDistSq, closestOut);
+    if (d2 < bestSq) {
+      bestSq = d2;
+      maxDistSq = Math.min(maxDistSq, bestSq);
+    }
+  }
+
+  return bestSq;
+}
+
+export function meshMinDistBVH(trisA: Float32Array, trisB: Float32Array, bvhA: BVH | null, bvhB: BVH | null, thresholdM: number, outPair?: number[]): number {
+  if (!bvhA || !bvhB) return meshMinDist(trisA, trisB, thresholdM, outPair);
+  
+  let minSq = Infinity;
+  const maxSq = thresholdM * thresholdM;
+  
+  const useAasQuery = trisA.length <= trisB.length;
+  const queryTris = useAasQuery ? trisA : trisB;
+  const targetBvh = useAasQuery ? bvhB : bvhA;
+  
+  const step = queryTris.length > 30000 ? 3 * Math.ceil(queryTris.length / 30000) : 3;
+  const cOut = outPair ? [0,0,0] : undefined;
+
+  for (let i = 0; i < queryTris.length; i += step) {
+    const px = queryTris[i], py = queryTris[i+1], pz = queryTris[i+2];
+    const dSq = bvhMinDistSq(px, py, pz, targetBvh.root, targetBvh.tris, maxSq, cOut);
+    
+    if (dSq < minSq) {
+      minSq = dSq;
+      if (outPair && cOut) {
+        if (useAasQuery) {
+          outPair[0] = px; outPair[1] = py; outPair[2] = pz;
+          outPair[3] = cOut[0]; outPair[4] = cOut[1]; outPair[5] = cOut[2];
+        } else {
+          outPair[0] = cOut[0]; outPair[1] = cOut[1]; outPair[2] = cOut[2];
+          outPair[3] = px; outPair[4] = py; outPair[5] = pz;
+        }
+      }
+      if (minSq <= maxSq && !outPair) {
+        return Math.sqrt(minSq);
+      }
+    }
+  }
+  return Math.sqrt(minSq);
+}

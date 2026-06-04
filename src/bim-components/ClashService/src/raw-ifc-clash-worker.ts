@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import * as WebIFC from "web-ifc";
-import { checkOBBIntersection, getBVH, meshesIntersect, meshMinDist } from "./obb-collision";
+import { checkOBBIntersection, getBVH, meshesIntersect, meshMinDistBVH } from "./obb-collision";
 
 // Worker 메모리 상주형 데이터 캐시
 let ifcApi: WebIFC.IfcAPI | null = null;
@@ -282,18 +282,35 @@ self.onmessage = async (e) => {
             let position = new THREE.Vector3().addVectors(itemA.obb.center, itemB.obb.center).multiplyScalar(0.5);
 
             if (options.clearance && options.clearance > 0) {
-              const softPairBuf = [0,0,0,0,0,0];
-              const dist = meshMinDist(itemA.tris, itemB.tris, options.clearance, softPairBuf);
-              if (dist <= options.clearance) {
+              // Soft Clash 검사:
+              // 1. 객체가 완전히 교차하는지 먼저 확인합니다 (교차 시 거리 0으로 간주).
+              let intersection: number[] | false = false;
+              if (bvhA && bvhB) {
+                intersection = meshesIntersect(bvhA, bvhB, itemA.aabb, itemB.aabb);
+              }
+              
+              if (intersection) {
                 isActualClash = true;
-                position.set((softPairBuf[0] + softPairBuf[3]) / 2, (softPairBuf[1] + softPairBuf[4]) / 2, (softPairBuf[2] + softPairBuf[5]) / 2);
+                position.set(intersection[0], intersection[1], intersection[2]);
+              } else {
+                // 2. 교차하지 않는다면 정점 간 이격 거리(Clearance)를 확인합니다.
+                const softPairBuf = [0,0,0,0,0,0];
+                const dist = meshMinDistBVH(itemA.tris, itemB.tris, bvhA, bvhB, options.clearance, softPairBuf);
+                if (dist <= options.clearance) {
+                  isActualClash = true;
+                  position.set((softPairBuf[0] + softPairBuf[3]) / 2, (softPairBuf[1] + softPairBuf[4]) / 2, (softPairBuf[2] + softPairBuf[5]) / 2);
+                }
               }
             } else {
+              // Hard Clash 검사:
               if (bvhA && bvhB) {
                 const intersection = meshesIntersect(bvhA, bvhB, itemA.aabb, itemB.aabb);
                 if (intersection) {
-                  isActualClash = true;
-                  position.set(intersection[0], intersection[1], intersection[2]);
+                  // 허용 오차(Tolerance)보다 교차 깊이(intersection[3])가 큰 경우에만 간섭으로 판정합니다.
+                  if (!options.tolerance || intersection[3] > options.tolerance) {
+                    isActualClash = true;
+                    position.set(intersection[0], intersection[1], intersection[2]);
+                  }
                 }
               }
             }
