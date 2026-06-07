@@ -2,7 +2,7 @@
 import * as BUI from "@thatopen/ui";
 import { TopicsListState, TopicsListTableData } from "./types";
 import { appIcons, onTableCellCreated, onTableRowCreated } from "../../../globals";
-import { BCFTopics as EngineBCFTopics } from "../../../engine-components/BCFTopics";
+import { BCFTopics as EngineBCFTopics } from "../../../bim-components/BCFTopics/src/engine";
 
 export const topicsListTemplate: BUI.StatefullComponent<TopicsListState> = (
   state,

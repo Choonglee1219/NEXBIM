@@ -3,7 +3,7 @@ import JSZip from "jszip";
 import { SharedBCF } from "../../SharedBCF";
 import { SharedIFC } from "../../SharedIFC";
 import { BCFTopics } from "../index";
-import { BCFTopics as EngineBCFTopics } from "../../../engine-components/BCFTopics";
+import { BCFTopics as EngineBCFTopics } from "./engine";
 
 export class BCFFileOperations {
   private components: OBC.Components;

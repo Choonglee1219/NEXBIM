@@ -1,8 +1,8 @@
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
 import { users } from "../../../setup/users";
-import { BCFTopics as EngineBCFTopics } from "../../../engine-components/BCFTopics";
-import { Topic as EngineTopic } from "../../../engine-components/BCFTopics";
+import { BCFTopics as EngineBCFTopics } from "./engine";
+import { Topic as EngineTopic } from "./engine";
 import { topicFormTemplate, TopicFormUI } from "../../../ui-components/TopicsList/src/form-template";
 import { createCommentsUI } from "./comments-ui";
 

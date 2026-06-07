@@ -6,7 +6,7 @@ import {
   topicsListTemplate,
 } from "./src";
 import { setDefaults } from "./src/set-defaults";
-import { BCFTopics as EngineBCFTopics } from "../../engine-components/BCFTopics";
+import { BCFTopics as EngineBCFTopics } from "../../bim-components/BCFTopics/src/engine";
 
 /**
  * Creates a BCF Topics List component with the given UI state.

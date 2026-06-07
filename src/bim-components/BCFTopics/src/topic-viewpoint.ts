@@ -3,7 +3,7 @@ import * as FRAGS from "@thatopen/fragments";
 import * as THREE from "three";
 import { setModelTransparent, restoreModelMaterials } from "../../../ui-templates/toolbars/viewer-toolbar";
 import { Highlighter } from "../../Highlighter";
-import { Topic as EngineTopic } from "../../../engine-components/BCFTopics";
+import { Topic as EngineTopic } from "./engine";
 
 export class TopicViewpointManager {
   private components: OBC.Components;

@@ -5,7 +5,7 @@ import { BCFTopics, newTopic, updateTopic } from "../../bim-components/BCFTopics
 import { topicsList } from "../../ui-components/TopicsList";
 import { ClashService } from "../../bim-components/ClashService";
 import { appIcons, appState, createPaginationTemplate, PaginationRefs } from "../../globals";
-import { Topic as EngineTopic, BCFTopics as EngineBCFTopics } from "../../engine-components/BCFTopics";
+import { Topic as EngineTopic, BCFTopics as EngineBCFTopics } from "../../bim-components/BCFTopics/src/engine";
 import { users } from "../../setup/users";
 
 export interface TopicListState {

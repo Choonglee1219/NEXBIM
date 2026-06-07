@@ -4,8 +4,8 @@ import { createRef } from "lit/directives/ref.js";
 import { TopicStyles } from "./types";
 import { defaultTopicStyles } from "./styles";
 import { appState, showLightbox, appIcons } from "../../../globals";
-import { BCFTopics as EngineBCFTopics } from "../../../engine-components/BCFTopics";
-import { Topic as EngineTopic } from "../../../engine-components/BCFTopics";
+import { BCFTopics as EngineBCFTopics } from "../../../bim-components/BCFTopics/src/engine";
+import { Topic as EngineTopic } from "../../../bim-components/BCFTopics/src/engine";
 
 interface FormValue {
   title: string;

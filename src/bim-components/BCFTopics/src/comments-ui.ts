@@ -1,7 +1,7 @@
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
 import { appIcons, showLightbox, appState } from "../../../globals";
-import { BCFTopics as EngineBCFTopics, Topic as EngineTopic } from "../../../engine-components/BCFTopics";
+import { BCFTopics as EngineBCFTopics, Topic as EngineTopic } from "./engine";
 
 export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => {
   const bcf = components.get(EngineBCFTopics);

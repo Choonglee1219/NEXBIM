@@ -5,8 +5,8 @@ import { BCFFileOperations } from "./src/bcf-file-operations";
 import { TopicViewpointManager } from "./src/topic-viewpoint";
 
 // 새로 주입한 엔진 컴포넌트를 Import 합니다. (이름 충돌 방지를 위해 Alias 사용)
-import { BCFTopics as EngineBCFTopics } from "../../engine-components/BCFTopics";
-import { Topic as EngineTopic } from "../../engine-components/BCFTopics";
+import { BCFTopics as EngineBCFTopics } from "./src/engine";
+import { Topic as EngineTopic } from "./src/engine";
 
 export * from "./src/new-topic";
 export * from "./src/update-topic";
