@@ -67,6 +67,11 @@ export interface TopicFormUI {
   onCapture?: () => Promise<void>;
 
   /**
+   * Callback function triggered when importing an image file.
+   */
+  onImportImage?: (snapshot: string) => void | Promise<void>;
+
+  /**
    * The captured viewpoint data (if any) before submitting.
    */
   capturedViewpoint?: any;
@@ -197,7 +202,7 @@ export const topicFormTemplate = (state: TopicFormUI) => {
     if (!form) return;
 
     if (!topic && !state.capturedViewpoint) {
-      alert("새로운 토픽을 생성하려면 먼저 [Capture] 버튼을 눌러 3D 뷰를 캡처해야 합니다.");
+      alert("새로운 토픽을 생성하려면 먼저 [Capture] 또는 [Import] 버튼을 눌러 3D 뷰를 캡처하거나 이미지를 업로드해야 합니다.");
       return;
     }
 
@@ -282,12 +287,35 @@ export const topicFormTemplate = (state: TopicFormUI) => {
                   </div>
                 `}
                 <div style="display: flex; gap: 0.25rem; width: 100%;">
-                  <bim-button label="Restore" icon=${appIcons.FOCUS} style="margin: 0; flex: 1; box-sizing: border-box;" @click=${onRestoreViewpoint} ?disabled=${!topic}></bim-button>
-                  <bim-button label="Capture" icon=${appIcons.CAMERA} style="margin: 0; flex: 1; box-sizing: border-box;" @click=${async (e: Event) => {
+                  <bim-button title="Restore" icon=${appIcons.FOCUS} style="margin: 0; flex: 1; box-sizing: border-box;" @click=${onRestoreViewpoint} ?disabled=${!topic}></bim-button>
+                  <bim-button title="Capture" icon=${appIcons.CAMERA} style="margin: 0; flex: 1; box-sizing: border-box;" @click=${async (e: Event) => {
                     const btn = e.target as BUI.Button;
                     btn.loading = true;
                     if (state.onCapture) await state.onCapture();
                     btn.loading = false;
+                  }}></bim-button>
+                  <bim-button title="Import" icon=${appIcons.IMPORT} style="margin: 0; flex: 1; box-sizing: border-box;" @click=${(e: Event) => {
+                    const btn = e.target as BUI.Button;
+                    const fileInput = document.createElement("input");
+                    fileInput.type = "file";
+                    fileInput.accept = "image/png, image/jpeg";
+                    fileInput.onchange = async (event: Event) => {
+                      const input = event.target as HTMLInputElement;
+                      if (input.files && input.files[0]) {
+                        btn.loading = true;
+                        const file = input.files[0];
+                        const reader = new FileReader();
+                        reader.onload = async (ev) => {
+                          const base64Snapshot = ev.target?.result as string;
+                          if (state.onImportImage) {
+                            await state.onImportImage(base64Snapshot);
+                          }
+                          btn.loading = false;
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    };
+                    fileInput.click();
                   }}></bim-button>
                 </div>
               </div>

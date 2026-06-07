@@ -212,6 +212,12 @@ export const topicListTemplate: BUI.StatefullComponent<
           currentCapturedSnapshot = snapshot;
           updateForm();
         },
+        onImportImage: async (base64Snapshot: string) => {
+          const { viewpoint } = await bcfTopics.captureViewpoint();
+          currentCapturedViewpoint = viewpoint;
+          currentCapturedSnapshot = base64Snapshot;
+          updateForm();
+        },
         onSubmit: async (newTopic: EngineTopic) => {
           newTopic.creationAuthor = appState.currentUser || "System";
           if (currentCapturedViewpoint) {

@@ -63,6 +63,12 @@ export const updateTopic = (bcfTopics: any) => {
             currentCapturedSnapshot = snapshot;
             updateForm();
           },
+          onImportImage: async (base64Snapshot: string) => {
+            const { viewpoint } = await bcfTopics.captureViewpoint();
+            currentCapturedViewpoint = viewpoint;
+            currentCapturedSnapshot = base64Snapshot;
+            updateForm();
+          },
           onSubmit: async (topic) => {
             if (currentCapturedViewpoint) {
               if (currentCapturedSnapshot) (topic as any).snapshot = currentCapturedSnapshot;

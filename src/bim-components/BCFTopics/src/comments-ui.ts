@@ -218,7 +218,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       btnContainer.style.flex = "none";
 
       const fakeViewBtn = document.createElement("bim-button") as BUI.Button;
-      fakeViewBtn.label = "Restore";
+      fakeViewBtn.title = "Restore";
       fakeViewBtn.icon = appIcons.FOCUS;
       fakeViewBtn.style.margin = "0";
       fakeViewBtn.style.flex = "1";
@@ -226,7 +226,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       fakeViewBtn.disabled = true;
 
       const captureBtn = document.createElement("bim-button") as BUI.Button;
-      captureBtn.label = "Capture";
+      captureBtn.title = "Capture";
       captureBtn.icon = appIcons.CAMERA;
       captureBtn.style.margin = "0";
       captureBtn.style.flex = "1";
@@ -240,7 +240,37 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
         renderComments(topic);
       });
 
-      btnContainer.append(fakeViewBtn, captureBtn);
+      const importBtn = document.createElement("bim-button") as BUI.Button;
+      importBtn.title = "Import";
+      importBtn.icon = appIcons.IMPORT;
+      importBtn.style.margin = "0";
+      importBtn.style.flex = "1";
+      importBtn.style.boxSizing = "border-box";
+      importBtn.addEventListener("click", () => {
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.accept = "image/png, image/jpeg";
+        fileInput.onchange = async (e: Event) => {
+          const input = e.target as HTMLInputElement;
+          if (input.files && input.files[0]) {
+            importBtn.loading = true;
+            const file = input.files[0];
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+              const base64Snapshot = event.target?.result as string;
+              const { viewpoint } = await bcfTopics.captureViewpoint();
+              pendingCommentViewpoint = viewpoint;
+              pendingCommentSnapshot = base64Snapshot;
+              importBtn.loading = false;
+              renderComments(topic);
+            };
+            reader.readAsDataURL(file);
+          }
+        };
+        fileInput.click();
+      });
+
+      btnContainer.append(fakeViewBtn, captureBtn, importBtn);
       snapshotWrapper.append(btnContainer);
 
       // 2. Comments List Wrapper Placeholder
@@ -275,7 +305,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       replyBtn.addEventListener("click", async () => {
         if (!replyInput.value.trim()) return;
         if (!pendingCommentViewpoint) {
-           alert("코멘트를 추가하려면 먼저 [Capture] 버튼을 눌러 3D 뷰를 캡처해야 합니다.");
+           alert("코멘트를 추가하려면 먼저 [Capture] 또는 [Import] 버튼을 눌러 뷰를 캡처하거나 이미지를 업로드해야 합니다.");
            return;
         }
         replyBtn.loading = true;
