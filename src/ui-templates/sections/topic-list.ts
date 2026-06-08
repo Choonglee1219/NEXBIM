@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { BCFTopics, newTopic, updateTopic } from "../../bim-components/BCFTopics";
 import { topicsList } from "../../ui-components/TopicsList";
 import { ClashService } from "../../bim-components/ClashService";
-import { appIcons, appState, createPaginationTemplate, PaginationRefs } from "../../globals";
+import { appIcons, appState, createPaginationTemplate, PaginationRefs, setupBIMTable } from "../../globals";
 import { Topic as EngineTopic, BCFTopics as EngineBCFTopics } from "../../bim-components/BCFTopics/src/engine";
 import { users } from "../../setup/users";
 
@@ -19,6 +19,7 @@ export const topicListTemplate: BUI.StatefullComponent<
   const { components } = state;
   const bcfTopics = components.get(BCFTopics);
   const [topicListTable, updateTopicListTable] = topicsList({ components });
+  setupBIMTable(topicListTable);
   
   let panelSection: BUI.PanelSection;
   const updateTopicCount = () => {

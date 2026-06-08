@@ -7,6 +7,7 @@ import {
 } from "./src";
 import { setDefaults } from "./src/set-defaults";
 import { BCFTopics as EngineBCFTopics } from "../../bim-components/BCFTopics/src/engine";
+import { setupBIMTable } from "../../globals";
 
 /**
  * Creates a BCF Topics List component with the given UI state.
@@ -31,6 +32,7 @@ export const topicsList = (state: TopicsListState, autoUpdate = true) => {
   >(topicsListTemplate, state);
 
   const [table, updateTable] = element;
+  setupBIMTable(table);
   setDefaults(state, table);
 
   if (autoUpdate) {
