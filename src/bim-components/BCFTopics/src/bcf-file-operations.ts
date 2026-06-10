@@ -293,8 +293,6 @@ export class BCFFileOperations {
   }
 
   exportJSON() {
-    console.log("Exporting JSON...");
-
     const fragments = this.components.get(OBC.FragmentsManager);
     const modelNamesArray: string[] = [];
     for (const [, model] of fragments.list) {
@@ -340,12 +338,10 @@ export class BCFFileOperations {
       for (const [uuid, model] of fragments.list) {
         const m = model as any;
         const dbId = m.dbId || this.sharedIFC.getIfcIdByModelUUID(uuid);
-        console.log(`Model: ${m.name}, UUID: ${uuid}, Found DB ID: ${dbId}`);
         if (dbId) {
           loadedModels.push({ id: dbId, name: m.name || "Untitled" });
         }
       }
-      console.log("Models available for BCF attachment:", loadedModels);
 
       if (loadedModels.length === 0) {
         alert("데이터베이스에 저장된 IFC 모델이 로드되어 있지 않습니다. BCF를 저장할 수 없습니다.");

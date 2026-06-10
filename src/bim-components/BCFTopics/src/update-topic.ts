@@ -71,7 +71,14 @@ export const updateTopic = (bcfTopics: any) => {
           },
           onSubmit: async (topic) => {
             if (currentCapturedViewpoint) {
-              if (currentCapturedSnapshot) (topic as any).snapshot = currentCapturedSnapshot;
+              if (currentCapturedSnapshot) {
+                (topic as any).snapshot = currentCapturedSnapshot;
+                const viewpoints = components.get(OBC.Viewpoints);
+                const base64Data = currentCapturedSnapshot.replace(/^data:image\/\w+;base64,/, "");
+                const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+                viewpoints.snapshots.set(currentCapturedViewpoint.guid, bytes);
+                currentCapturedViewpoint.snapshot = currentCapturedViewpoint.guid;
+              }
               topic.viewpoints.clear();
               topic.viewpoints.add(currentCapturedViewpoint.guid);
             }

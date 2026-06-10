@@ -18,6 +18,14 @@ export class BCFTopics extends OBC.Component {
   public _bcf: EngineBCFTopics; // 커스텀 엔진 컴포넌트 타입으로 변경
   private _loading = false;
 
+  get loading() {
+    return this._loading;
+  }
+
+  set loading(value: boolean) {
+    this._loading = value;
+  }
+
   private bcfFileOperations: BCFFileOperations;
   private topicViewpointManager: TopicViewpointManager;
 

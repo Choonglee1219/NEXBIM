@@ -99,7 +99,6 @@ export class SharedIFC {
         return null;
       }
       const response = await ifcResponse.json();
-      console.log("SharedIFC save response:", response);
       return response.id;
     } catch (error) {
       console.error("Error saving IFC to DB:", error);

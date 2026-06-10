@@ -175,7 +175,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
     }
 
     if (modelsData.length === 0) {
-      console.log("⚠️ [ClashService] 유효한 IFC 버퍼가 없어 간섭 검토를 중단합니다.");
+      console.warn("⚠️ [ClashService] 유효한 IFC 버퍼가 없어 간섭 검토를 중단합니다.");
       return [];
     }
 

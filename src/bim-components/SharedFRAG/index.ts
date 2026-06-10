@@ -99,7 +99,6 @@ export class SharedFRAG {
         return null;
       }
       const response = await fragResponse.json();
-      console.log("SharedFRAG save response:", response);
       return response.id;
     } catch (error) {
       console.error("Error saving FRAG to DB:", error);

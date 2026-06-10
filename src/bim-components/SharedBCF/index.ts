@@ -85,7 +85,6 @@ export class SharedBCF {
   async saveBCF(file: File | { name: string, content: Uint8Array }, ifcid: number) {
     try {
       const newName = file.name.replace(/\.bcf$/i, "");
-      console.log(`[SharedBCF] Uploading BCF: ${newName}, ifcid: ${ifcid}`);
       
       let newFile: File;
       if (file instanceof File) {

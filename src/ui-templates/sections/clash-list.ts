@@ -496,7 +496,6 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
   const runClash = async (e?: Event) => {
     const btn = e ? e.target as BUI.Button : null;
     if (btn) btn.loading = true;
-    console.log("🚀 간섭 검토를 시작합니다...");
     
     let setA: OBC.ModelIdMap = {};
     let setB: OBC.ModelIdMap = {};
@@ -551,18 +550,11 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     const hasSelection = Object.keys(selection).length > 0;
 
     if (hasSelection) {
-      console.log("🎯 [선택 모드] 선택된 객체 vs 전체 모델의 간섭을 검사합니다.");
       setA = selection;
       setB = allModelIdMap;
-      
-      let selectionCount = 0;
-      for (const modelId in selection) selectionCount += selection[modelId].size;
-      console.log(`✅ [선택 모드] Set A (선택됨): ${selectionCount}개 아이템 vs Set B (전체): ${totalItems}개 아이템`);
     } else {
-      console.log("🌐 [전체 모드] 선택된 객체가 없습니다. 모델 전체(Self-Clash) 간섭을 검사합니다.");
       setA = allModelIdMap;
       setB = allModelIdMap;
-      console.log(`✅ [전체 모드] Set A: ${totalItems}개 아이템 vs Set B: ${totalItems}개 아이템`);
     }
 
     if (totalItems === 0) {
@@ -578,12 +570,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     const toleranceVal = cachedClashMode === "Hard" ? inputVal : 0;
     const clearanceVal = cachedClashMode === "Soft" ? inputVal : 0;
     
-    const startTime = performance.now();
     const results = await clashService.detectClashes(setA, setB, { clearance: clearanceVal, tolerance: toleranceVal });
-    const endTime = performance.now();
-
-    console.log(`✅ 간섭 검토 완료! (소요 시간: ${(endTime - startTime).toFixed(2)}ms)`);
-    console.log(`💥 총 ${results.length}개의 간섭이 발견되었습니다.`);
     
     const getCategory = (modelId: string, expressID: number) => {
       for (const [catName, mapData] of preFetchedCategories.entries()) {

@@ -254,19 +254,13 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       clashService.addIfcBuffer(modelId, bytes);
     }
 
-    console.log("Exporting FRAG...");
     const fragData = await (model as any).getBuffer(false);
-    console.log("FRAG exported.");
     const fragFile = new File([fragData], file.name.replace(".ifc", ".frag"));
 
-    console.log("Saving IFC to DB...");
     const ifcid = await sharedIFC.saveIFC(file);
-    console.log("IFC saved, ID:", ifcid);
     let fragid = null;
     if (ifcid) {
-      console.log("Saving FRAG to DB...");
       fragid = await sharedFRAG.saveFRAG(fragFile);
-      console.log("FRAG saved, ID:", fragid);
     }
 
     if (ifcid && fragid) {
@@ -274,7 +268,6 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       (model as any).dbId = ifcid;
       sharedIFC.addModelUUID(ifcid, modelId);
       sharedFRAG.addModelUUID(fragid, modelId);
-      console.log(`IFC DB 저장 ID: ${ifcid}, FRAG DB 저장 ID: ${fragid}, Model UUID: ${modelId}`);
       bcfTopics.onRefresh.trigger();
       await refreshSharedIFCList();
       await refreshSharedFRAGList();
@@ -436,7 +429,6 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
           if (ifcData && ifcData.content) {
             const clashService = components.get(ClashService);
             clashService.addIfcBuffer(modelId, ifcData.content as Uint8Array);
-            console.log(`[IFC Cache] FRAG 파일(${frag.name}) 로드 중 원본 IFC 매칭 및 캐시 저장 성공.`);
           }
         } else {
           console.warn(`[ClashService] FRAG 모델 (${frag.name})과 매칭되는 원본 IFC를 찾을 수 없습니다. 정밀 간섭 검토가 불가능할 수 있습니다.`);

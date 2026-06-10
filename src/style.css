@@ -10,8 +10,8 @@
   --bim-ui_gray-10: hsl(220, 0%, 80%);
 
   /* Brand Colors */
-  --bim-ui_main-base: #6528d7;
-  --bim-ui_accent-base: #bcf124;
+  --bim-ui_main-base: #004a96;
+  --bim-ui_accent-base: #00a8e8;
 
   /* Brand Colors Contrasts */
   --bim-ui_main-contrast: var(--bim-ui_gray-10);
@@ -257,19 +257,5 @@ table, th, td {
   border: 1px solid;
   margin: 0.5rem;
   padding: 0.5rem;
-}
-
-/* Fix bim-sheet-board and bim-paper-space colors to default values (light mode theme) regardless of the active theme */
-bim-sheet-board,
-bim-paper-space {
-  background-color: #ffffff !important;
-  color: #101620 !important;
-  --bim-ui_bg-base: #ffffff !important;
-  --bim-ui_bg-contrast-10: #f8f9fa !important;
-  --bim-ui_bg-contrast-20: #ebedf0 !important;
-  --bim-ui_bg-contrast-40: #cfd4da !important;
-  --bim-ui_bg-contrast-60: #6c757d !important;
-  --bim-ui_bg-contrast-80: #495057 !important;
-  --bim-ui_bg-contrast-100: #101620 !important;
 }
 

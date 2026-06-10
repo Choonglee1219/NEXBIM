@@ -636,7 +636,7 @@ export class Highlighter
 
   private setupEvents(active: boolean) {
     if (!this.config.world) {
-      console.log("No world found while setting up events!");
+      console.warn("No world found while setting up events!");
       return;
     }
 

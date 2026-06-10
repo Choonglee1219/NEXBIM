@@ -2,16 +2,11 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import OracleDB from "oracledb";
 import multer from "multer";
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT: number = 3001;
 let ifcPool: OracleDB.Pool | undefined;
+let mrimsPool: OracleDB.Pool | undefined;
 
 const corsOptions = {
   origin: "*",
@@ -38,11 +33,23 @@ const ifcPoolConfig = {
   poolIncrement: 1,
 };
 
+const mrimsPoolConfig = {
+  user: "mrims",
+  password: "123456",
+  connectString: "localhost:1521/ORCLPDB",
+  poolAlias: 'mrimsPool',
+  poolMax: 10,
+  poolMin: 2,
+  poolIncrement: 1,
+};
+
 // ✅ Connection Pool 생성
 async function initPools() {
   try {
     ifcPool = await OracleDB.createPool(ifcPoolConfig);
-    console.log("✅ Connection Pool 생성 완료");
+    console.log("✅ IFC Connection Pool 생성 완료");
+    mrimsPool = await OracleDB.createPool(mrimsPoolConfig);
+    console.log("✅ MRIMS Connection Pool 생성 완료");
     // 애플리케이션 종료 시 Connection Pool 종료
     process.on("SIGTERM", closeDatabase);
     process.on("SIGINT", closeDatabase);
@@ -60,7 +67,7 @@ app.listen(PORT, () => {
   console.log("Client:", OracleDB.oracleClientVersionString);
 });    
 
-// ✅ 공통 Connection Pool 연결 함수
+// ✅ 공통 Connection Pool 연결 함수 (IFC DB)
 async function getConnection(): Promise<OracleDB.Connection> {
   while (!ifcPool) {
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -72,9 +79,22 @@ async function getConnection(): Promise<OracleDB.Connection> {
   }
 }
 
+// ✅ 공통 Connection Pool 연결 함수 (MRIMS DB)
+async function getMrimsConnection(): Promise<OracleDB.Connection> {
+  while (!mrimsPool) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  try {
+    return await mrimsPool.getConnection();
+  } catch (err) {
+    throw new Error(`MRIMS Connection failed: ${err}`);
+  }
+}
+
 // ✅ 공통 Connection Pool 종료 함수
 async function closePool() {
   if (ifcPool) { await ifcPool.close(10); }
+  if (mrimsPool) { await mrimsPool.close(10); }
   console.log("Oracle Database connection pools closed");
 }
 
@@ -93,109 +113,6 @@ app.get("/", (_req: Request, res: Response) => {
   }  
 });  
 
-// Proxy for Clash Detection
-app.post("/api/clash", async (req: Request, res: Response) => {
-  let connection: OracleDB.Connection | undefined;
-  const createdFiles: string[] = [];
-  try {
-    const clashRequests = req.body;
-    
-    // Ensure temp directory exists
-    const tempDir = path.join(__dirname, "../temp_ifc");
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    connection = await getConnection();
-
-    // Process each clash test request to download IFC files from DB
-    for (const test of clashRequests) {
-      const processGroup = async (group: any[]) => {
-        for (const item of group) {
-          if (item.file) {
-            const fileName = item.file; // e.g., "model.ifc"
-            let dbName = fileName;
-            if (dbName.toLowerCase().endsWith(".ifc")) {
-                dbName = dbName.substring(0, dbName.length - 4);
-            }
-
-            const filePath = path.join(tempDir, fileName);
-            
-            // Fetch from DB
-            const result = await connection!.execute(
-              `SELECT "content" FROM "ifc" WHERE "name" = :name`,
-              { name: dbName },
-              { fetchInfo: { content: { type: OracleDB.BUFFER } }, outFormat: OracleDB.OUT_FORMAT_OBJECT } as any
-            );
-
-            if (result.rows && result.rows.length > 0) {
-               const row = result.rows[0] as any;
-               const buffer = row.CONTENT || row.content; 
-               
-               if (buffer) {
-                   fs.writeFileSync(filePath, buffer);
-                   createdFiles.push(filePath);
-                   // Update the item.file with absolute path for the clash service
-                   item.file = path.resolve(filePath).replace(/\\/g, "/");
-                   console.log(`Saved temporary IFC file from DB: ${item.file}`);
-               }
-            } else {
-                console.warn(`Model '${dbName}' not found in DB. Passing original path: ${item.file}`);
-                // Ensure path separators are compatible for direct paths
-                item.file = item.file.replace(/\\/g, "/");
-            }
-          }
-        }
-      };
-
-      if (test.a && Array.isArray(test.a)) await processGroup(test.a);
-      if (test.b && Array.isArray(test.b)) await processGroup(test.b);
-    }
-
-    console.log("Forwarding clash request:", JSON.stringify(clashRequests, null, 2));
-
-    const response = await fetch("http://127.0.0.1:8000/clash", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(clashRequests),
-    });
-
-    if (!response.ok) {
-      res.status(response.status).send(await response.text());
-      return;
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    console.log(`Received ZIP size from service: ${buffer.length} bytes`);
-
-    res.setHeader("Content-Type", response.headers.get("Content-Type") || "application/octet-stream");
-    res.send(buffer);
-  } catch (err) {
-    console.error("Error proxying clash request:", err);
-    res.status(500).json({ error: "Failed to proxy clash detection request", details: err instanceof Error ? err.message : String(err) });
-  } finally {
-    // Clean up temporary files
-    for (const file of createdFiles) {
-      try {
-        if (fs.existsSync(file)) {
-          fs.unlinkSync(file);
-          console.log(`Deleted temporary file: ${file}`);
-        }
-      } catch (cleanupErr) {
-        console.error(`Failed to delete temporary file ${file}:`, cleanupErr);
-      }
-    }
-
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (err) {
-        console.error("Error closing connection:", err);
-      }
-    }
-  }
-});
 
 // Get ifcs name
 app.get("/api/ifcs/name", async (_req: Request, res: Response): Promise<any> => {
@@ -338,7 +255,6 @@ app.delete("/api/ifc/:id", async (req: Request, res: Response) => {
       { autoCommit: true },
     );
     if (result.rowsAffected && result.rowsAffected > 0) {
-      console.log(`IFC with ID ${ifcid} deleted successfully.`);
       res.status(200).json({ message: "IFC deleted successfully." });
     } else {
       console.warn(`IFC with ID ${ifcid} not found.`);
@@ -499,7 +415,6 @@ app.delete("/api/frag/:id", async (req: Request, res: Response) => {
       { autoCommit: true },
     );
     if (result.rowsAffected && result.rowsAffected > 0) {
-      console.log(`FRAG with ID ${fragid} deleted successfully.`);
       res.status(200).json({ message: "FRAG deleted successfully." });
     } else {
       console.warn(`FRAG with ID ${fragid} not found.`);
@@ -543,6 +458,280 @@ app.get("/api/bcfs/name", async (_req: Request, res: Response): Promise<any> => 
     }  
   }  
 });  
+
+app.get("/api/bcf/comments", async (req: Request, res: Response): Promise<any> => {
+  const mrimsNo = req.query.mrimsNo;
+  if (!mrimsNo) {
+    return res.status(400).json({ error: "mrimsNo parameter is required." });
+  }
+
+  let connection: OracleDB.Connection | undefined;
+  try {
+    connection = await getMrimsConnection();
+
+    const commentResult = await connection.execute(
+      `SELECT COMMENT_NO, REVIEW_COMMENT, SOLVE_COMMENT, INSERT_DATE, 
+              ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, RESOL_PREPARE_DATE
+       FROM SI_BCF_COMMENT
+       WHERE TOPIC_NO = :topic_no
+       ORDER BY COMMENT_NO ASC`,
+      { topic_no: Number(mrimsNo) },
+      { 
+        outFormat: OracleDB.OUT_FORMAT_OBJECT,
+        fetchInfo: { 
+          REVIEW_COMMENT: { type: OracleDB.STRING },
+          SOLVE_COMMENT: { type: OracleDB.STRING }
+        }
+      } as any
+    );
+
+    const comments = [];
+    if (commentResult.rows) {
+      for (const row of commentResult.rows as any[]) {
+        const commentNo = (row.COMMENT_NO !== undefined && row.COMMENT_NO !== null) ? row.COMMENT_NO : row.comment_no;
+        const reviewComment = row.REVIEW_COMMENT || row.review_comment || "";
+        const solveComment = row.SOLVE_COMMENT || row.solve_comment || "";
+        
+        let parsedReviewAuthor = row.ISSUE_PREPARE_NAME || row.issue_prepare_name || "External System";
+        let parsedReviewComment = reviewComment;
+        let parsedReviewDate = row.ISSUE_PREPARE_DATE || row.issue_prepare_date || row.INSERT_DATE || row.insert_date || new Date().toISOString();
+
+        // 하위 호환성 지원: author:comment(date) 파싱
+        const rMatch = reviewComment.trim().match(/^([^:]+):(.*)\(([^)]+)\)$/);
+        if (rMatch) {
+          parsedReviewAuthor = rMatch[1];
+          parsedReviewComment = rMatch[2];
+          parsedReviewDate = rMatch[3];
+        }
+
+        let parsedSolveAuthor = row.RESOL_PREPARE_NAME || row.resol_prepare_name || "External System";
+        let parsedSolveComment = solveComment;
+        let parsedSolveDate = row.RESOL_PREPARE_DATE || row.resol_prepare_date || row.INSERT_DATE || row.insert_date || new Date().toISOString();
+
+        const sMatch = solveComment.trim().match(/^([^:]+):(.*)\(([^)]+)\)$/);
+        if (sMatch) {
+          parsedSolveAuthor = sMatch[1];
+          parsedSolveComment = sMatch[2];
+          parsedSolveDate = sMatch[3];
+        }
+
+        comments.push({
+          commentNo,
+          reviewComment: reviewComment.trim() !== "" ? {
+            comment: parsedReviewComment,
+            author: parsedReviewAuthor,
+            date: parsedReviewDate
+          } : null,
+          solveComment: solveComment.trim() !== "" ? {
+            comment: parsedSolveComment,
+            author: parsedSolveAuthor,
+            date: parsedSolveDate
+          } : null
+        });
+      }
+    }
+
+    res.json(comments);
+  } catch (err) {
+    console.error("Error fetching comments from TDVS DB:", err);
+    res.status(500).json({ error: "Failed to fetch comments from TDVS", details: err instanceof Error ? err.message : String(err) });
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (err) { console.error(err); }
+    }
+  }
+});
+
+// GET BCF Topics & Comments from TDVS (SI_BCF_TOPIC & SI_BCF_COMMENT)
+app.get("/api/bcf/sync", async (_req: Request, res: Response): Promise<any> => {
+  const priFilesQuery = _req.query.priFiles;
+  let priFiles: string[] = [];
+  if (typeof priFilesQuery === "string" && priFilesQuery.trim() !== "") {
+    priFiles = priFilesQuery.split(",").map(s => s.trim()).filter(s => s !== "");
+  }
+
+  if (priFiles.length === 0) {
+    return res.json([]);
+  }
+
+  let connection: OracleDB.Connection | undefined;
+  try {
+    connection = await getMrimsConnection();
+
+    const bindParams: any = {};
+    const placeholders = priFiles.map((_, index) => {
+      const paramName = `priFile${index}`;
+      bindParams[paramName] = priFiles[index];
+      return `:` + paramName;
+    }).join(", ");
+
+    // 1. Topic 조회 (CLOB 컬럼인 REVIEW_COMMENT을 String으로 가져오도록 fetchInfo 설정)
+    const topicResult = await connection.execute(
+      `SELECT TOPIC_NO, MRIMS_TYPE, PRI_DISP, REVIEW_COMMENT, COORDX, COORDY, COORDZ, 
+              INSERT_DATE, ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, DUE_DATE, PRI_FILE
+       FROM SI_BCF_TOPIC
+       WHERE PRI_FILE IN (${placeholders})`,
+      bindParams,
+      { 
+        outFormat: OracleDB.OUT_FORMAT_OBJECT,
+        fetchInfo: { REVIEW_COMMENT: { type: OracleDB.STRING } }
+      } as any
+    );
+
+    // 2. Comment 조회 (REVIEW_COMMENT 및 SOLVE_COMMENT 컬럼)
+    const commentResult = await connection.execute(
+      `SELECT COMMENT_NO, TOPIC_NO, REVIEW_COMMENT, SOLVE_COMMENT, COORDX, COORDY, COORDZ, INSERT_DATE, 
+              ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, RESOL_PREPARE_DATE
+       FROM SI_BCF_COMMENT
+       WHERE TOPIC_NO IN (
+         SELECT TOPIC_NO 
+         FROM SI_BCF_TOPIC 
+         WHERE PRI_FILE IN (${placeholders})
+       )`,
+      bindParams,
+      { 
+        outFormat: OracleDB.OUT_FORMAT_OBJECT,
+        fetchInfo: { 
+          REVIEW_COMMENT: { type: OracleDB.STRING },
+          SOLVE_COMMENT: { type: OracleDB.STRING }
+        }
+      } as any
+    );
+
+    const commentsMap = new Map<number, any[]>();
+    if (commentResult.rows) {
+      for (const row of commentResult.rows as any[]) {
+        const topicNo = row.TOPIC_NO || row.topic_no;
+        if (!commentsMap.has(topicNo)) {
+          commentsMap.set(topicNo, []);
+        }
+
+        // Z-up -> Y-up 좌표 변환
+        let coord: { x: number; y: number; z: number } | null = null;
+        const cx = row.COORDX !== undefined ? row.COORDX : row.coordx;
+        const cy = row.COORDY !== undefined ? row.COORDY : row.coordy;
+        const cz = row.COORDZ !== undefined ? row.COORDZ : row.coordz;
+        if (cx !== null && cy !== null && cz !== null && cx !== undefined && cy !== undefined && cz !== undefined) {
+          coord = { x: Number(cx), y: Number(cz), z: -Number(cy) };
+        }
+
+        // 2-1. REVIEW_COMMENT 파싱
+        const reviewText = row.REVIEW_COMMENT || row.review_comment || "";
+        if (reviewText.trim() !== "") {
+          let parsedAuthor = row.ISSUE_PREPARE_NAME || row.issue_prepare_name || "External System";
+          let parsedComment = reviewText;
+          let parsedDate = row.ISSUE_PREPARE_DATE || row.issue_prepare_date || row.INSERT_DATE || row.insert_date || new Date().toISOString();
+
+          // 하위 호환성 지원: 만약 예전 방식의 author:comment(date) 형식인 경우 파싱
+          const match = reviewText.trim().match(/^([^:]+):(.*)\(([^)]+)\)$/);
+          if (match) {
+            parsedAuthor = match[1];
+            parsedComment = match[2];
+            parsedDate = match[3];
+          } else {
+            // 구버전 포맷 지원용 차선책
+            const firstColonIdx = reviewText.indexOf(":");
+            if (firstColonIdx > -1 && reviewText.endsWith(")")) {
+              const lastParenIdx = reviewText.lastIndexOf("(");
+              if (lastParenIdx > firstColonIdx) {
+                parsedAuthor = reviewText.substring(0, firstColonIdx);
+                parsedComment = reviewText.substring(firstColonIdx + 1, lastParenIdx);
+                parsedDate = reviewText.substring(lastParenIdx + 1, reviewText.length - 1);
+              }
+            }
+          }
+
+          commentsMap.get(topicNo)!.push({
+            comment: parsedComment,
+            author: parsedAuthor,
+            date: parsedDate,
+            coord: coord, // 모든 분산 댓글이 동일 좌표 공유
+            commentVpGuid: (row.COMMENT_NO !== undefined && row.COMMENT_NO !== null) ? `vp_${row.COMMENT_NO}` : ((row.comment_no !== undefined && row.comment_no !== null) ? `vp_${row.comment_no}` : null) // 가상 viewpoint 식별자 추가
+          });
+        }
+
+        // 2-2. SOLVE_COMMENT 파싱 및 동일 그룹 결합
+        const solveText = row.SOLVE_COMMENT || row.solve_comment || "";
+        if (solveText.trim() !== "") {
+          let parsedAuthor = row.RESOL_PREPARE_NAME || row.resol_prepare_name || "External System";
+          let parsedComment = solveText;
+          let parsedDate = row.RESOL_PREPARE_DATE || row.resol_prepare_date || row.INSERT_DATE || row.insert_date || new Date().toISOString();
+
+          // 하위 호환성 지원
+          const match = solveText.trim().match(/^([^:]+):(.*)\(([^)]+)\)$/);
+          if (match) {
+            parsedAuthor = match[1];
+            parsedComment = match[2];
+            parsedDate = match[3];
+          } else {
+            // 구버전 포맷 지원용 차선책
+            const firstColonIdx = solveText.indexOf(":");
+            if (firstColonIdx > -1 && solveText.endsWith(")")) {
+              const lastParenIdx = solveText.lastIndexOf("(");
+              if (lastParenIdx > firstColonIdx) {
+                parsedAuthor = solveText.substring(0, firstColonIdx);
+                parsedComment = solveText.substring(firstColonIdx + 1, lastParenIdx);
+                parsedDate = solveText.substring(lastParenIdx + 1, solveText.length - 1);
+              }
+            }
+          }
+
+          commentsMap.get(topicNo)!.push({
+            comment: parsedComment,
+            modifiedAuthor: parsedAuthor,
+            modifiedDate: parsedDate,
+            coord: coord,
+            commentVpGuid: (row.COMMENT_NO !== undefined && row.COMMENT_NO !== null) ? `vp_${row.COMMENT_NO}` : ((row.comment_no !== undefined && row.comment_no !== null) ? `vp_${row.comment_no}` : null)
+          });
+        }
+      }
+    }
+
+    const topics = [];
+    if (topicResult.rows) {
+      for (const row of topicResult.rows as any[]) {
+        const topicNo = row.TOPIC_NO || row.topic_no;
+        const reviewComment = row.REVIEW_COMMENT || row.review_comment || "";
+        const parts = typeof reviewComment === 'string' ? reviewComment.split(";;") : [];
+        const title = parts[0] || "No Title";
+        const description = parts.slice(1).join(";;") || "";
+
+        // Z-up -> Y-up 좌표 변환
+        let coord: { x: number; y: number; z: number } | null = null;
+        const tx = row.COORDX !== undefined ? row.COORDX : row.coordx;
+        const ty = row.COORDY !== undefined ? row.COORDY : row.coordy;
+        const tz = row.COORDZ !== undefined ? row.COORDZ : row.coordz;
+        if (tx !== null && ty !== null && tz !== null && tx !== undefined && ty !== undefined && tz !== undefined) {
+          coord = { x: Number(tx), y: Number(tz), z: -Number(ty) };
+        }
+
+        topics.push({
+          mrimsNo: topicNo, // 프론트엔드 호환을 위해 mrimsNo로 매핑
+          title,
+          description,
+          type: row.MRIMS_TYPE || row.mrims_type || "Info",
+          priority: row.PRI_DISP || row.pri_disp || "Normal",
+          creationAuthor: row.ISSUE_PREPARE_NAME || row.issue_prepare_name || "Admin",
+          creationDate: row.ISSUE_PREPARE_DATE || row.issue_prepare_date || new Date().toISOString(),
+          assignedTo: row.RESOL_PREPARE_NAME || row.resol_prepare_name || "",
+          dueDate: row.DUE_DATE || row.due_date || null,
+          coord,
+          priFile: row.PRI_FILE || row.pri_file || "",
+          comments: commentsMap.get(topicNo) || []
+        });
+      }
+    }
+
+    res.json(topics);
+  } catch (err) {
+    console.error("Error syncing BCF from TDVS DB:", err);
+    res.status(500).json({ error: "Failed to sync BCF from TDVS", details: err instanceof Error ? err.message : String(err) });
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (err) { console.error(err); }
+    }
+  }
+});
 
 // Get BCF
 app.get("/api/bcf/:id", async (req: Request, res: Response): Promise<void> => {
@@ -626,7 +815,6 @@ app.post("/api/bcf", upload.single("file"), async (req: Request, res: Response) 
     }
 
     const sql = `INSERT INTO "bcf" ("name", "content") VALUES (:name, :content) RETURNING "id" INTO :id`;
-    console.log("Executing SQL:", sql);
     
     const result = await connection.execute<{ id: number[] }> (
       sql,
@@ -710,7 +898,6 @@ app.delete("/api/bcf/:id", async (req: Request, res: Response) => {
       { autoCommit: true },
     );
     if (result.rowsAffected && result.rowsAffected > 0) {
-      console.log(`BCF with ID ${bcfId} deleted successfully.`);
       res.status(200).json({ message: "BCF deleted successfully." });
     } else {
       console.warn(`BCF with ID ${bcfId} not found.`);
@@ -730,69 +917,205 @@ app.delete("/api/bcf/:id", async (req: Request, res: Response) => {
   }
 });
 
-// Get BCF Clash Data (JSON 좌표만 독립적으로 가져오기)
-app.get("/api/bcf/:id/clash", async (req: Request, res: Response): Promise<void> => {
+
+// POST BCF Topics & Comments to TDVS (SI_BCF_TOPIC & SI_BCF_COMMENT)
+app.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promise<any> => {
   let connection: OracleDB.Connection | undefined;
   try {
-    connection = await getConnection();
-    const bcfId = parseInt(req.params.id as string, 10);
-    if (isNaN(bcfId)) {
-      res.status(400).json({ error: "Invalid BCF ID" });
-      return;
+    const topics = req.body;
+
+    if (!Array.isArray(topics) || topics.length === 0) {
+      return res.status(400).json({ error: "전송할 토픽 데이터가 유효하지 않거나 비어 있습니다." });
     }
-    const result = await connection.execute(
-      `SELECT "clash_data" FROM "bcf" WHERE "id" = :id`,
-      { id: bcfId },
-      { 
-        outFormat: OracleDB.OUT_FORMAT_OBJECT,
-        fetchInfo: { clash_data: { type: OracleDB.STRING } }
-      } as any
-    );  
-    const row = result.rows?.[0] as any;
-    if (row && row.clash_data) {
-      res.json(JSON.parse(row.clash_data));
-    } else {
-      res.json([]);
+
+    connection = await getMrimsConnection();
+
+    // 1. 최대 TOPIC_NO 및 COMMENT_NO의 초기값 조회
+    const maxTopicResult = await connection.execute<any>(
+      `SELECT NVL(MAX(TOPIC_NO), 0) AS MAX_NO FROM SI_BCF_TOPIC`,
+      [],
+      { outFormat: OracleDB.OUT_FORMAT_OBJECT }
+    );
+    const tRows = maxTopicResult.rows as any[];
+    let nextTopicNo = tRows && tRows.length > 0 ? (tRows[0].MAX_NO || tRows[0].max_no || 0) : 0;
+
+    const maxCommentResult = await connection.execute<any>(
+      `SELECT NVL(MAX(COMMENT_NO), 0) AS MAX_NO FROM SI_BCF_COMMENT`,
+      [],
+      { outFormat: OracleDB.OUT_FORMAT_OBJECT }
+    );
+    const cRows = maxCommentResult.rows as any[];
+    let nextCommentNo = cRows && cRows.length > 0 ? (cRows[0].MAX_NO || cRows[0].max_no || 0) : 0;
+
+    const mapping: any[] = [];
+    for (const topic of topics) {
+      let isExisting = false;
+      let topicNo = topic.mrimsNo ? Number(topic.mrimsNo) : null;
+
+      if (topicNo && !isNaN(topicNo)) {
+        // 이미 등록된 토픽인지 조회
+        const checkResult = await connection.execute<any>(
+          `SELECT COUNT(*) AS CNT FROM SI_BCF_TOPIC WHERE TOPIC_NO = :topic_no`,
+          { topic_no: topicNo },
+          { outFormat: OracleDB.OUT_FORMAT_OBJECT }
+        );
+        const cnt = checkResult.rows?.[0]?.CNT || checkResult.rows?.[0]?.cnt || 0;
+        if (cnt > 0) {
+          isExisting = true;
+        }
+      }
+
+      // 새 토픽인 경우 신규 번호 할당
+      if (!isExisting) {
+        nextTopicNo++;
+        topicNo = nextTopicNo;
+      }
+
+      const reviewComment = `${topic.title};;${topic.description || ""}`;
+      const coordX = topic.coord ? topic.coord.x : null;
+      const coordY = topic.coord ? topic.coord.y : null;
+      const coordZ = topic.coord ? topic.coord.z : null;
+      
+      const insertDate = topic.creationDate ? new Date(topic.creationDate) : new Date();
+      const issuePrepareDate = topic.creationDate ? new Date(topic.creationDate) : new Date();
+      const dueDate = topic.dueDate ? new Date(topic.dueDate) : null;
+
+      if (isExisting) {
+        // 1. 기존 토픽인 경우 UPDATE 처리 (작성자와 최초작성일은 유지)
+        const sqlUpdateTopic = `
+          UPDATE SI_BCF_TOPIC SET
+            MRIMS_TYPE = :mrims_type,
+            PRI_DISP = :pri_disp,
+            REVIEW_COMMENT = :review_comment,
+            COORDX = :coordx,
+            COORDY = :coordy,
+            COORDZ = :coordz,
+            RESOL_PREPARE_NAME = :resol_prepare_name,
+            DUE_DATE = :due_date,
+            PRI_FILE = :pri_file
+          WHERE TOPIC_NO = :topic_no
+        `;
+
+        const bindsUpdateTopic = {
+          topic_no: { val: topicNo, type: OracleDB.DB_TYPE_NUMBER },
+          mrims_type: { val: topic.type || null, type: OracleDB.DB_TYPE_VARCHAR },
+          pri_disp: { val: null, type: OracleDB.DB_TYPE_VARCHAR },
+          review_comment: { val: reviewComment, type: OracleDB.DB_TYPE_CLOB },
+          coordx: coordX !== null ? { val: coordX, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
+          coordy: coordY !== null ? { val: coordY, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
+          coordz: coordZ !== null ? { val: coordZ, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
+          resol_prepare_name: { val: topic.assignedTo || null, type: OracleDB.DB_TYPE_VARCHAR },
+          due_date: dueDate !== null ? { val: dueDate, type: OracleDB.DB_TYPE_DATE } : { val: null, type: OracleDB.DB_TYPE_DATE },
+          pri_file: { val: topic.priFile || null, type: OracleDB.DB_TYPE_VARCHAR }
+        };
+
+        await connection.execute(sqlUpdateTopic, bindsUpdateTopic, { autoCommit: false });
+
+        // 2. 기존 댓글이 있다면 삭제 후 재인서트하여 중복 방지 및 동기화 처리
+        await connection.execute(
+          `DELETE FROM SI_BCF_COMMENT WHERE TOPIC_NO = :topic_no`,
+          { topic_no: topicNo },
+          { autoCommit: false }
+        );
+      } else {
+        // 3. 신규 토픽인 경우 INSERT 처리
+        const sqlInsertTopic = `
+          INSERT INTO SI_BCF_TOPIC (
+            TOPIC_NO, MRIMS_TYPE, PRI_DISP, REVIEW_COMMENT, COORDX, COORDY, COORDZ, 
+            INSERT_DATE, ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, DUE_DATE, PRI_FILE
+          ) VALUES (
+            :topic_no, :mrims_type, :pri_disp, :review_comment, :coordx, :coordy, :coordz,
+            :insert_date, :issue_prepare_name, :issue_prepare_date, :resol_prepare_name, :due_date, :pri_file
+          )
+        `;
+
+        const bindsInsertTopic = {
+          topic_no: { val: topicNo, type: OracleDB.DB_TYPE_NUMBER },
+          mrims_type: { val: topic.type || null, type: OracleDB.DB_TYPE_VARCHAR },
+          pri_disp: { val: null, type: OracleDB.DB_TYPE_VARCHAR },
+          review_comment: { val: reviewComment, type: OracleDB.DB_TYPE_CLOB },
+          coordx: coordX !== null ? { val: coordX, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
+          coordy: coordY !== null ? { val: coordY, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
+          coordz: coordZ !== null ? { val: coordZ, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
+          insert_date: { val: insertDate, type: OracleDB.DB_TYPE_DATE },
+          issue_prepare_name: { val: topic.creationAuthor || null, type: OracleDB.DB_TYPE_VARCHAR },
+          issue_prepare_date: { val: issuePrepareDate, type: OracleDB.DB_TYPE_DATE },
+          resol_prepare_name: { val: topic.assignedTo || null, type: OracleDB.DB_TYPE_VARCHAR },
+          due_date: dueDate !== null ? { val: dueDate, type: OracleDB.DB_TYPE_DATE } : { val: null, type: OracleDB.DB_TYPE_DATE },
+          pri_file: { val: topic.priFile || null, type: OracleDB.DB_TYPE_VARCHAR }
+        };
+
+        await connection.execute(sqlInsertTopic, bindsInsertTopic, { autoCommit: false });
+      }
+
+      // 댓글들이 있는 경우 (새로 작성되었거나 기존의 최신화된 댓글들을 결합하여 일괄 인서트)
+      if (topic.comments && Array.isArray(topic.comments) && topic.comments.length > 0) {
+        for (const comment of topic.comments) {
+          nextCommentNo++;
+          const commentNo = nextCommentNo;
+
+          const cCoordX = comment.coord ? comment.coord.x : null;
+          const cCoordY = comment.coord ? comment.coord.y : null;
+          const cCoordZ = comment.coord ? comment.coord.z : null;
+
+          const sqlComment = `
+            INSERT INTO SI_BCF_COMMENT (
+              COMMENT_NO, TOPIC_NO, REVIEW_COMMENT, SOLVE_COMMENT, COORDX, COORDY, COORDZ, PRI_FILE,
+              ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, RESOL_PREPARE_DATE
+            ) VALUES (
+              :comment_no, :topic_no, :review_comment, :solve_comment, :coordx, :coordy, :coordz, :pri_file,
+              :issue_prepare_name, :issue_prepare_date, :resol_prepare_name, :resol_prepare_date
+            )
+          `;
+
+          const bindsComment = {
+            comment_no: { val: commentNo, type: OracleDB.DB_TYPE_NUMBER },
+            topic_no: { val: topicNo, type: OracleDB.DB_TYPE_NUMBER },
+            review_comment: { val: comment.reviewComment || null, type: OracleDB.DB_TYPE_CLOB },
+            solve_comment: { val: comment.solveComment || null, type: OracleDB.DB_TYPE_CLOB },
+            coordx: cCoordX !== null ? { val: cCoordX, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
+            coordy: cCoordY !== null ? { val: cCoordY, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
+            coordz: cCoordZ !== null ? { val: cCoordZ, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
+            pri_file: { val: topic.priFile || null, type: OracleDB.DB_TYPE_VARCHAR },
+            issue_prepare_name: { val: comment.author || null, type: OracleDB.DB_TYPE_VARCHAR },
+            issue_prepare_date: { val: comment.date ? new Date(comment.date) : null, type: OracleDB.DB_TYPE_DATE },
+            resol_prepare_name: { val: comment.modifiedAuthor || null, type: OracleDB.DB_TYPE_VARCHAR },
+            resol_prepare_date: { val: comment.modifiedDate ? new Date(comment.modifiedDate) : null, type: OracleDB.DB_TYPE_DATE }
+          };
+
+          await connection.execute(sqlComment, bindsComment, { autoCommit: false });
+        }
+      }
+
+      mapping.push({ guid: topic.guid, mrimsNo: topicNo });
     }
+
+    await connection.commit();
+    res.status(201).json({ 
+      message: "BCF Topics and Comments successfully saved to DB.",
+      mapping
+    });
   } catch (err) {
-    console.error("Error fetching BCF Clash Data:", err);
-    res.status(500).json({ error: "Failed to fetch BCF Clash Data" });
+    console.error("Error saving BCF to TDVS DB:", err);
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackErr) {
+        console.error("Rollback failed:", rollbackErr);
+      }
+    }
+    res.status(500).json({ error: "Failed to send BCF to TDVS", details: err instanceof Error ? err.message : String(err) });
   } finally {
     if (connection) {
-      try { await connection.close(); } catch (err) { console.error(err); }
+      try {
+        await connection.close();
+      } catch (err) {
+        console.error("Error closing connection:", err);
+      }
     }
   }
 });
 
-// Put BCF Clash Data (간섭체크 직후 JSON 좌표 업데이트)
-app.put("/api/bcf/:id/clash", async (req: Request, res: Response): Promise<void> => {
-  let connection: OracleDB.Connection | undefined;
-  try {
-    connection = await getConnection();
-    const bcfId = parseInt(req.params.id as string, 10);
-    if (isNaN(bcfId)) {
-      res.status(400).json({ error: "Invalid BCF ID" });
-      return;
-    }
-    const clashDataStr = JSON.stringify(req.body);
-    await connection.execute(
-      `UPDATE "bcf" SET "clash_data" = :clash_data WHERE "id" = :id`,
-      {
-        clash_data: { val: clashDataStr, type: OracleDB.DB_TYPE_CLOB },
-        id: bcfId
-      },
-      { autoCommit: true }
-    );
-    res.status(200).json({ message: "Clash data saved successfully." });
-  } catch (err) {
-    console.error("Error updating BCF Clash Data:", err);
-    res.status(500).json({ error: "Failed to update BCF Clash Data" });
-  } finally {
-    if (connection) {
-      try { await connection.close(); } catch (err) { console.error(err); }
-    }
-  }
-});
 
 // Process IFC via Python microservice: Add EDB Data
 app.post("/api/add-edb-data", upload.single("file"), async (req: Request, res: Response) => {

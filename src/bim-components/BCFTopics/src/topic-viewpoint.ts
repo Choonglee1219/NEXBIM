@@ -91,10 +91,6 @@ export class TopicViewpointManager {
     if (snapshot) (topic as any).snapshot = snapshot;
 
     topic.viewpoints.add(viewpoint.guid);
-
-    topic.comments.onItemSet.add(({ value: comment }) => {
-      comment.viewpoint = viewpoint.guid;
-    });
   }
 
   async restoreViewpoint(topic: EngineTopic, options?: { viewpointGuid?: string }): Promise<void> {
