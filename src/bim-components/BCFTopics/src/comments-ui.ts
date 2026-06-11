@@ -3,6 +3,49 @@ import * as OBC from "@thatopen/components";
 import { appIcons, showLightbox, appState } from "../../../globals";
 import { BCFTopics as EngineBCFTopics, Topic as EngineTopic } from "./engine";
 
+const copyViewpoint = (src: any, dest: any) => {
+  if (!src || !dest) return;
+  if (src.camera && dest.camera) {
+    dest.camera.camera_view_point.x = src.camera.camera_view_point.x;
+    dest.camera.camera_view_point.y = src.camera.camera_view_point.y;
+    dest.camera.camera_view_point.z = src.camera.camera_view_point.z;
+    if (dest.camera.camera_direction && src.camera.camera_direction) {
+      dest.camera.camera_direction.x = src.camera.camera_direction.x;
+      dest.camera.camera_direction.y = src.camera.camera_direction.y;
+      dest.camera.camera_direction.z = src.camera.camera_direction.z;
+    }
+    if (dest.camera.camera_up_vector && src.camera.camera_up_vector) {
+      dest.camera.camera_up_vector.x = src.camera.camera_up_vector.x;
+      dest.camera.camera_up_vector.y = src.camera.camera_up_vector.y;
+      dest.camera.camera_up_vector.z = src.camera.camera_up_vector.z;
+    }
+  }
+  if (src.selectionComponents && dest.selectionComponents) {
+    dest.selectionComponents.clear();
+    for (const guid of src.selectionComponents) {
+      dest.selectionComponents.add(guid);
+    }
+  }
+  if (src.exceptionComponents && dest.exceptionComponents) {
+    dest.exceptionComponents.clear();
+    for (const guid of src.exceptionComponents) {
+      dest.exceptionComponents.add(guid);
+    }
+  }
+  if (src.componentColors && dest.componentColors) {
+    dest.componentColors.clear();
+    for (const [color, guids] of src.componentColors.entries()) {
+      dest.componentColors.set(color, [...guids]);
+    }
+  }
+  dest.defaultVisibility = src.defaultVisibility;
+  if (src.clipping_planes) {
+    dest.clipping_planes = [...src.clipping_planes];
+  } else {
+    delete dest.clipping_planes;
+  }
+};
+
 export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => {
   const bcf = components.get(EngineBCFTopics);
 
@@ -36,9 +79,11 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
           if (topic) topic.mrimsNo = serverTopic.mrimsNo;
         }
 
+        let isNewTopic = false;
         if (!topic) {
           topic = bcfTopics._bcf.create();
           topic.mrimsNo = serverTopic.mrimsNo;
+          isNewTopic = true;
         }
 
         topic.title = serverTopic.title;
@@ -52,7 +97,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
         topic.dueDate = serverTopic.dueDate ? new Date(serverTopic.dueDate) : undefined;
         if (serverTopic.priFile) topic.priFile = serverTopic.priFile;
 
-        if (serverTopic.coord) {
+        if (serverTopic.coord && isNewTopic) {
           let existingVp: any = null;
           if (topic.viewpoints.size > 0) {
             const firstVpGuid = Array.from(topic.viewpoints)[0] as string;
@@ -62,23 +107,25 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
           if (existingVp) {
             if (world) {
               existingVp.world = world;
-              existingVp.camera.camera_view_point.x = serverTopic.coord.x;
-              existingVp.camera.camera_view_point.y = serverTopic.coord.y;
-              existingVp.camera.camera_view_point.z = serverTopic.coord.z;
-              existingVp.camera.camera_direction.x = 0;
-              existingVp.camera.camera_direction.y = 0;
-              existingVp.camera.camera_direction.z = -1;
+              existingVp.camera.camera_view_point = {
+                x: serverTopic.coord.x,
+                y: serverTopic.coord.y,
+                z: serverTopic.coord.z
+              };
+              existingVp.camera.camera_direction = { x: 0, y: 0, z: -1 };
+              existingVp.camera.camera_up_vector = { x: 0, y: 1, z: 0 };
             }
           } else {
             const vp = viewpoints.create();
             if (world) {
               vp.world = world;
-              vp.camera.camera_view_point.x = serverTopic.coord.x;
-              vp.camera.camera_view_point.y = serverTopic.coord.y;
-              vp.camera.camera_view_point.z = serverTopic.coord.z;
-              vp.camera.camera_direction.x = 0;
-              vp.camera.camera_direction.y = 0;
-              vp.camera.camera_direction.z = -1;
+              vp.camera.camera_view_point = {
+                x: serverTopic.coord.x,
+                y: serverTopic.coord.y,
+                z: serverTopic.coord.z
+              };
+              vp.camera.camera_direction = { x: 0, y: 0, z: -1 };
+              vp.camera.camera_up_vector = { x: 0, y: 1, z: 0 };
             }
             topic.viewpoints.add(vp.guid);
           }
@@ -119,7 +166,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
   tdvsBtn.title = "Sync TDVS Comments";
   tdvsBtn.style.display = "none";
 
-  const showTdvsCommentsModal = (comments: any[], topic: EngineTopic) => {
+  const showTdvsCommentsModal = (virtualComments: any[], topic: EngineTopic) => {
     const dialog = document.createElement("dialog");
     dialog.style.width = "90vw";
     dialog.style.height = "80vh";
@@ -216,41 +263,6 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       return localComments.some(lc => lc.comment === text);
     };
 
-    // 가상 댓글 평탄화 리스트 생성
-    let virtualComments: any[] = [];
-    comments.forEach((item: any) => {
-      const coord = item.coord || null;
-      if (item.reviewComment && item.reviewComment.comment) {
-        const parts = item.reviewComment.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
-        parts.forEach((part: string) => {
-          virtualComments.push({
-            commentNo: item.commentNo,
-            text: part,
-            author: item.reviewComment.author || "",
-            date: item.reviewComment.date,
-            type: "Review",
-            coord: coord
-          });
-        });
-      }
-      if (item.solveComment && item.solveComment.comment) {
-        const parts = item.solveComment.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
-        parts.forEach((part: string) => {
-          virtualComments.push({
-            commentNo: item.commentNo,
-            text: part,
-            author: item.solveComment.author || "",
-            date: item.solveComment.date,
-            type: "Solve",
-            coord: coord
-          });
-        });
-      }
-    });
-
-    // 이미 수입 완료된 조각 댓글은 모달 리스트에서 아예 제외
-    virtualComments = virtualComments.filter(vCmt => !isAlreadyImported(vCmt.text));
-
     if (virtualComments.length === 0) {
       const noData = document.createElement("div");
       noData.style.padding = "2rem";
@@ -346,21 +358,6 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
                 newComment.viewpoint = activeViewpointGuid;
                 if (vCmt.author) newComment.author = vCmt.author;
                 if (vCmt.date) newComment.date = new Date(vCmt.date);
-
-                if (vCmt.coord) {
-                  const viewpoints = components.get(OBC.Viewpoints);
-                  const vp = viewpoints.list.get(activeViewpointGuid);
-                  if (vp && vp.camera) {
-                    vp.camera.camera_view_point.x = vCmt.coord.x;
-                    vp.camera.camera_view_point.y = vCmt.coord.z;
-                    vp.camera.camera_view_point.z = -vCmt.coord.y;
-                    if (vp.camera.camera_direction) {
-                      vp.camera.camera_direction.x = 0;
-                      vp.camera.camera_direction.y = 0;
-                      vp.camera.camera_direction.z = -1;
-                    }
-                  }
-                }
               }
               renderComments(topic);
               
@@ -434,7 +431,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
     return null;
   };
 
-  const renderComments = (topic: EngineTopic, forceSync = false) => {
+  const renderComments = (topic: EngineTopic, forceSync = false, targetViewpointGuid?: string) => {
     commentsContainer.innerHTML = "";
     paginationContainer.innerHTML = "";
 
@@ -472,8 +469,140 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
           tdvsBtn.style.removeProperty("--bim-button--c");
         }
 
-        tdvsBtn.onclick = () => {
-          showTdvsCommentsModal(comments, topic);
+        tdvsBtn.onclick = async () => {
+          // 중복 체크용 로컬 댓글 목록
+          const localComments = Array.from(topic.comments.values());
+          const isAlreadyImported = (text: string) => {
+            return localComments.some(lc => lc.comment === text);
+          };
+
+          // 가상 댓글 평탄화 리스트 생성
+          let virtualComments: any[] = [];
+          comments.forEach((item: any) => {
+            const coord = item.coord || null;
+            if (item.reviewComment && item.reviewComment.comment) {
+              const parts = item.reviewComment.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
+              parts.forEach((part: string) => {
+                virtualComments.push({
+                  commentNo: item.commentNo,
+                  text: part,
+                  author: item.reviewComment.author || "",
+                  date: item.reviewComment.date,
+                  type: "Review",
+                  coord: coord
+                });
+              });
+            }
+            if (item.solveComment && item.solveComment.comment) {
+              const parts = item.solveComment.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
+              parts.forEach((part: string) => {
+                virtualComments.push({
+                  commentNo: item.commentNo,
+                  text: part,
+                  author: item.solveComment.author || "",
+                  date: item.solveComment.date,
+                  type: "Solve",
+                  coord: coord
+                });
+              });
+            }
+          });
+
+          // 이미 수입 완료된 조각 댓글은 모달 리스트에서 아예 제외
+          virtualComments = virtualComments.filter(vCmt => !isAlreadyImported(vCmt.text));
+
+          // 모든 viewpoint들의 좌표 정보와 매칭 진행 (없으면 신규 생성)
+          const viewpoints = components.get(OBC.Viewpoints);
+          const worlds = components.get(OBC.Worlds);
+          const world = worlds.list.values().next().value;
+          
+          const remainingComments: any[] = [];
+          let autoImportCount = 0;
+          let autoCreatedViewpointCount = 0;
+          let firstNewVpGuid: string | null = null;
+
+          for (const vCmt of virtualComments) {
+            let matchedVpGuid: string | null = null;
+
+            if (vCmt.coord && vCmt.coord.x !== null && vCmt.coord.y !== null && vCmt.coord.z !== null) {
+              // 1. 기존 viewpoint 중에서 좌표 매칭 시도
+              for (const vpGuid of topic.viewpoints) {
+                const vp = viewpoints.list.get(vpGuid);
+                if (vp && vp.camera && vp.camera.camera_view_point) {
+                  const localDbX = vp.camera.camera_view_point.x;
+                  const localDbY = -vp.camera.camera_view_point.z;
+                  const localDbZ = vp.camera.camera_view_point.y;
+
+                  const dx = vCmt.coord.x - localDbX;
+                  const dy = vCmt.coord.y - localDbY;
+                  const dz = vCmt.coord.z - localDbZ;
+                  const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                  if (dist < 0.05) {
+                    matchedVpGuid = vpGuid;
+                    break;
+                  }
+                }
+              }
+
+              // 2. 일치하는 기존 viewpoint가 없다면, 새 viewpoint 생성
+              if (!matchedVpGuid) {
+                const newVp = viewpoints.create();
+                if (world) {
+                  newVp.world = world;
+                  await newVp.updateCamera();
+                  
+                  newVp.camera.camera_view_point = {
+                    x: vCmt.coord.x,
+                    y: vCmt.coord.z,
+                    z: -vCmt.coord.y
+                  };
+                  newVp.camera.camera_direction = { x: 0, y: 0, z: -1 };
+                  newVp.camera.camera_up_vector = { x: 0, y: 1, z: 0 };
+                }
+                topic.viewpoints.add(newVp.guid);
+                matchedVpGuid = newVp.guid;
+                autoCreatedViewpointCount++;
+                if (!firstNewVpGuid) {
+                  firstNewVpGuid = newVp.guid;
+                }
+              }
+            }
+
+            if (matchedVpGuid) {
+              // 텍스트 중복 방지를 한 번 더 확인
+              const currentLocalComments = Array.from(topic.comments.values());
+              if (currentLocalComments.some(lc => lc.comment === vCmt.text)) {
+                continue;
+              }
+              const newComment = bcfTopics.addComment(topic.guid, vCmt.text);
+              if (newComment) {
+                newComment.viewpoint = matchedVpGuid;
+                if (vCmt.author) newComment.author = vCmt.author;
+                if (vCmt.date) newComment.date = new Date(vCmt.date);
+                autoImportCount++;
+              }
+            } else {
+              remainingComments.push(vCmt);
+            }
+          }
+
+          if (autoImportCount > 0) {
+            isAddingNewComment = false;
+            // UI 갱신 및 신규 생성된 viewpoint 페이지로 포커스
+            renderComments(topic, false, firstNewVpGuid || undefined);
+            let alertMsg = `${autoImportCount}개의 조각 댓글이 자동으로 추가되었습니다.`;
+            if (autoCreatedViewpointCount > 0) {
+              alertMsg += ` (새로운 뷰포인트 ${autoCreatedViewpointCount}개 생성됨)`;
+            }
+            alert(alertMsg);
+          }
+
+          // 남은 매칭되지 않는 조각 댓글만 모달로 표시
+          if (remainingComments.length > 0) {
+            showTdvsCommentsModal(remainingComments, topic);
+          } else if (autoImportCount === 0) {
+            alert("동기화할 새로운 조각 댓글이 없거나, 토픽 내 viewpoint 좌표와 매칭되는 조각 댓글이 없습니다.");
+          }
         };
       } catch (err) {
         console.error("Error checking TDVS comments sync state:", err);
@@ -549,6 +678,13 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
     }
 
     const totalPages = groups.length;
+
+    if (targetViewpointGuid) {
+      const idx = groups.findIndex(g => g.viewpointGuid === targetViewpointGuid);
+      if (idx !== -1) {
+        currentCommentPage = idx;
+      }
+    }
 
     const renderPaginationControls = () => {
       paginationContainer.innerHTML = "";
@@ -834,8 +970,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       // 코멘트가 없는 경우 뷰포인트 GUID를 래핑하여 기존 스냅샷 추출 로직을 재사용
       snapshotUrl = getCommentSnapshotUrl({ viewpoint: currentGroup.viewpointGuid });
     }
-    if (snapshotUrl) {
-      const validSnapshotUrl = snapshotUrl;
+    if (snapshotUrl || currentGroup.viewpointGuid) {
       const snapshotWrapper = document.createElement("div");
       snapshotWrapper.style.width = "12rem";
       snapshotWrapper.style.flexShrink = "0";
@@ -847,40 +982,190 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       snapshotWrapper.style.overflowX = "hidden";
       snapshotWrapper.classList.add("custom-scrollbar");
       
-      const img = document.createElement("img");
-      img.src = snapshotUrl;
-      img.style.width = "100%";
-      img.style.aspectRatio = "4 / 3";
-      img.style.flex = "none";
-      img.style.boxSizing = "border-box";
-      img.style.objectFit = "contain";
-      img.style.borderRadius = "0.25rem";
-      img.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
-      img.style.backgroundColor = "var(--bim-ui_bg-base, transparent)";
-      img.style.cursor = "zoom-in";
-      img.style.transition = "filter 0.2s";
-      img.onmouseover = () => img.style.filter = "brightness(1.1)";
-      img.onmouseout = () => img.style.filter = "none";
-      img.addEventListener("click", () => showLightbox(validSnapshotUrl));
+      if (snapshotUrl) {
+        const validSnapshotUrl = snapshotUrl;
+        const img = document.createElement("img");
+        img.src = snapshotUrl;
+        img.style.width = "100%";
+        img.style.aspectRatio = "4 / 3";
+        img.style.flex = "none";
+        img.style.boxSizing = "border-box";
+        img.style.objectFit = "contain";
+        img.style.borderRadius = "0.25rem";
+        img.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
+        img.style.backgroundColor = "var(--bim-ui_bg-base, transparent)";
+        img.style.cursor = "zoom-in";
+        img.style.transition = "filter 0.2s";
+        img.onmouseover = () => img.style.filter = "brightness(1.1)";
+        img.onmouseout = () => img.style.filter = "none";
+        img.addEventListener("click", () => showLightbox(validSnapshotUrl));
+        snapshotWrapper.append(img);
+      } else {
+        // 스냅샷이 없는 경우 플레이스홀더 표시
+        const noImgCard = document.createElement("div");
+        noImgCard.style.border = "1px dashed var(--bim-ui_bg-contrast-40)";
+        noImgCard.style.padding = "1rem";
+        noImgCard.style.borderRadius = "0.25rem";
+        noImgCard.style.backgroundColor = "var(--bim-ui_bg-base, transparent)";
+        noImgCard.style.display = "flex";
+        noImgCard.style.flexDirection = "column";
+        noImgCard.style.alignItems = "center";
+        noImgCard.style.justifyContent = "center";
+        noImgCard.style.gap = "0.5rem";
+        noImgCard.style.flex = "none";
+        noImgCard.style.aspectRatio = "4 / 3";
+        noImgCard.style.color = "var(--bim-ui_gray-10)";
+        noImgCard.style.boxSizing = "border-box";
+        noImgCard.style.minHeight = "0";
+        noImgCard.style.textAlign = "center";
 
-      snapshotWrapper.append(img);
+        const noImgIcon = document.createElement("bim-label") as any;
+        noImgIcon.icon = appIcons.CAMERA;
+        noImgIcon.style.setProperty("--bim-icon--fz", "2rem");
 
-      // 해당 그룹에 Viewpoint가 존재하면 복원 버튼을 스냅샷 아래에 추가
+        const noImgText = document.createElement("bim-label");
+        noImgText.textContent = "No Image";
+        noImgText.style.fontStyle = "italic";
+        noImgText.style.fontSize = "0.75rem";
+        noImgCard.append(noImgIcon, noImgText);
+        snapshotWrapper.append(noImgCard);
+      }
+
+      // 해당 그룹에 Viewpoint가 존재하면 복원, 캡처, 가져오기 및 삭제 버튼을 추가
       if (currentGroup.viewpointGuid) {
+        const btnContainer = document.createElement("div");
+        btnContainer.style.display = "flex";
+        btnContainer.style.gap = "0.25rem";
+        btnContainer.style.width = "100%";
+        btnContainer.style.flex = "none";
+
         const viewBtn = document.createElement("bim-button") as BUI.Button;
-        viewBtn.label = "Restore 3D View";
+        viewBtn.title = "Restore";
         viewBtn.icon = appIcons.FOCUS;
         viewBtn.style.margin = "0";
-        viewBtn.style.flex = "none";
-        viewBtn.style.marginBottom = "auto";
-        viewBtn.style.width = "100%";
+        viewBtn.style.flex = "1";
         viewBtn.style.boxSizing = "border-box";
         viewBtn.addEventListener("click", async () => {
           viewBtn.loading = true;
           await bcfTopics.restoreViewpoint(topic, { viewpointGuid: currentGroup.viewpointGuid });
           viewBtn.loading = false;
         });
-        snapshotWrapper.append(viewBtn);
+
+        const captureBtn = document.createElement("bim-button") as BUI.Button;
+        captureBtn.title = "Capture";
+        captureBtn.icon = appIcons.CAMERA;
+        captureBtn.style.margin = "0";
+        captureBtn.style.flex = "1";
+        captureBtn.style.boxSizing = "border-box";
+        captureBtn.addEventListener("click", async () => {
+          captureBtn.loading = true;
+          try {
+            const { viewpoint, snapshot } = await bcfTopics.captureViewpoint();
+            const viewpoints = components.get(OBC.Viewpoints);
+            const vp = currentGroup.viewpointGuid ? viewpoints.list.get(currentGroup.viewpointGuid) : null;
+            if (vp) {
+              copyViewpoint(viewpoint, vp);
+              if (snapshot) {
+                const base64Data = snapshot.replace(/^data:image\/\w+;base64,/, "");
+                const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+                viewpoints.snapshots.set(vp.guid, bytes);
+                vp.snapshot = vp.guid;
+                currentGroup.comments.forEach((c: any) => c.snapshot = null);
+              }
+            }
+            renderComments(topic);
+            alert("뷰포인트가 현재 3D 뷰 상태로 업데이트되었습니다.");
+          } catch (err) {
+            alert(`캡처 실패: ${err instanceof Error ? err.message : String(err)}`);
+          } finally {
+            captureBtn.loading = false;
+          }
+        });
+
+        const importBtn = document.createElement("bim-button") as BUI.Button;
+        importBtn.title = "Import";
+        importBtn.icon = appIcons.IMPORT;
+        importBtn.style.margin = "0";
+        importBtn.style.flex = "1";
+        importBtn.style.boxSizing = "border-box";
+        importBtn.addEventListener("click", () => {
+          const fileInput = document.createElement("input");
+          fileInput.type = "file";
+          fileInput.accept = "image/png, image/jpeg";
+          fileInput.onchange = async (e: Event) => {
+            const input = e.target as HTMLInputElement;
+            if (input.files && input.files[0]) {
+              importBtn.loading = true;
+              const file = input.files[0];
+              const reader = new FileReader();
+              reader.onload = async (event) => {
+                try {
+                  const base64Snapshot = event.target?.result as string;
+                  const { viewpoint } = await bcfTopics.captureViewpoint();
+                  const viewpoints = components.get(OBC.Viewpoints);
+                  const vp = currentGroup.viewpointGuid ? viewpoints.list.get(currentGroup.viewpointGuid) : null;
+                  if (vp) {
+                    copyViewpoint(viewpoint, vp);
+                    if (base64Snapshot) {
+                      const base64Data = base64Snapshot.replace(/^data:image\/\w+;base64,/, "");
+                      const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+                      viewpoints.snapshots.set(vp.guid, bytes);
+                      vp.snapshot = vp.guid;
+                      currentGroup.comments.forEach((c: any) => c.snapshot = null);
+                    }
+                  }
+                  renderComments(topic);
+                  alert("뷰포인트 카메라와 이미지가 업로드한 스냅샷으로 업데이트되었습니다.");
+                } catch (err) {
+                  alert(`가져오기 실패: ${err instanceof Error ? err.message : String(err)}`);
+                } finally {
+                  importBtn.loading = false;
+                }
+              };
+              reader.readAsDataURL(file);
+            }
+          };
+          fileInput.click();
+        });
+
+        btnContainer.append(viewBtn, captureBtn, importBtn);
+        snapshotWrapper.append(btnContainer);
+
+        const deleteVpBtn = document.createElement("bim-button") as BUI.Button;
+        deleteVpBtn.label = "Delete Viewpoint";
+        deleteVpBtn.icon = appIcons.DELETE;
+        deleteVpBtn.style.margin = "0";
+        deleteVpBtn.style.flex = "none";
+        deleteVpBtn.style.marginTop = "0.25rem";
+        deleteVpBtn.style.width = "100%";
+        deleteVpBtn.style.boxSizing = "border-box";
+        deleteVpBtn.style.setProperty("--bim-button--bg", "#f44336");
+        deleteVpBtn.style.setProperty("--bim-button--c", "#ffffff");
+        deleteVpBtn.addEventListener("click", () => {
+          if (confirm("이 뷰포인트와 여기에 속한 모든 댓글을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) {
+            deleteVpBtn.loading = true;
+            try {
+              for (const comment of currentGroup.comments) {
+                bcfTopics.deleteComment(topic.guid, comment.guid);
+              }
+              if (currentGroup.viewpointGuid) {
+                topic.viewpoints.delete(currentGroup.viewpointGuid);
+                const viewpoints = components.get(OBC.Viewpoints);
+                viewpoints.list.delete(currentGroup.viewpointGuid);
+              }
+              if (currentCommentPage >= totalPages - 1) {
+                currentCommentPage = Math.max(0, totalPages - 2);
+              }
+              renderComments(topic);
+              alert("뷰포인트와 관련 댓글이 삭제되었습니다.");
+            } catch (err) {
+              alert(`삭제 실패: ${err instanceof Error ? err.message : String(err)}`);
+            } finally {
+              deleteVpBtn.loading = false;
+            }
+          }
+        });
+        snapshotWrapper.append(deleteVpBtn);
       }
 
       pageWrapper.append(snapshotWrapper);

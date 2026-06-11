@@ -602,6 +602,7 @@ export const topicListTemplate: BUI.StatefullComponent<
 
       for (const serverTopic of serverTopics) {
         let topic = localTopics.find(t => t.mrimsNo === serverTopic.mrimsNo);
+        let isNewTopic = false;
 
         if (!topic) {
           topic = localTopics.find(t => {
@@ -617,6 +618,7 @@ export const topicListTemplate: BUI.StatefullComponent<
         if (!topic) {
           topic = bcfTopics._bcf.create();
           topic.mrimsNo = serverTopic.mrimsNo;
+          isNewTopic = true;
         }
 
         topic.title = serverTopic.title;
@@ -634,7 +636,7 @@ export const topicListTemplate: BUI.StatefullComponent<
           topic.priFile = serverTopic.priFile;
         }
 
-        if (serverTopic.coord) {
+        if (serverTopic.coord && isNewTopic) {
           let existingVp: any = null;
           if (topic.viewpoints.size > 0) {
             const firstVpGuid = Array.from(topic.viewpoints)[0] as string;

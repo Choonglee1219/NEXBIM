@@ -6,6 +6,49 @@ import { Topic as EngineTopic } from "./engine";
 import { topicFormTemplate, TopicFormUI } from "../../../ui-components/TopicsList/src/form-template";
 import { createCommentsUI } from "./comments-ui";
 
+const copyViewpoint = (src: any, dest: any) => {
+  if (!src || !dest) return;
+  if (src.camera && dest.camera) {
+    dest.camera.camera_view_point.x = src.camera.camera_view_point.x;
+    dest.camera.camera_view_point.y = src.camera.camera_view_point.y;
+    dest.camera.camera_view_point.z = src.camera.camera_view_point.z;
+    if (dest.camera.camera_direction && src.camera.camera_direction) {
+      dest.camera.camera_direction.x = src.camera.camera_direction.x;
+      dest.camera.camera_direction.y = src.camera.camera_direction.y;
+      dest.camera.camera_direction.z = src.camera.camera_direction.z;
+    }
+    if (dest.camera.camera_up_vector && src.camera.camera_up_vector) {
+      dest.camera.camera_up_vector.x = src.camera.camera_up_vector.x;
+      dest.camera.camera_up_vector.y = src.camera.camera_up_vector.y;
+      dest.camera.camera_up_vector.z = src.camera.camera_up_vector.z;
+    }
+  }
+  if (src.selectionComponents && dest.selectionComponents) {
+    dest.selectionComponents.clear();
+    for (const guid of src.selectionComponents) {
+      dest.selectionComponents.add(guid);
+    }
+  }
+  if (src.exceptionComponents && dest.exceptionComponents) {
+    dest.exceptionComponents.clear();
+    for (const guid of src.exceptionComponents) {
+      dest.exceptionComponents.add(guid);
+    }
+  }
+  if (src.componentColors && dest.componentColors) {
+    dest.componentColors.clear();
+    for (const [color, guids] of src.componentColors.entries()) {
+      dest.componentColors.set(color, [...guids]);
+    }
+  }
+  dest.defaultVisibility = src.defaultVisibility;
+  if (src.clipping_planes) {
+    dest.clipping_planes = [...src.clipping_planes];
+  } else {
+    delete dest.clipping_planes;
+  }
+};
+
 export const updateTopic = (bcfTopics: any) => {
   const components = bcfTopics.components as OBC.Components;
   const bcf = components.get(EngineBCFTopics);
@@ -127,21 +170,59 @@ export const updateTopic = (bcfTopics: any) => {
           },
           onCapture: async () => {
             const { viewpoint, snapshot } = await bcfTopics.captureViewpoint();
-            currentCapturedViewpoint = viewpoint;
-            currentCapturedSnapshot = snapshot;
+            const viewpoints = components.get(OBC.Viewpoints);
+            let vp: any = null;
+            if (currentTopic && currentTopic.viewpoints.size > 0) {
+              const firstVpGuid = Array.from(currentTopic.viewpoints)[0] as string;
+              vp = viewpoints.list.get(firstVpGuid);
+            }
+
+            if (vp) {
+              copyViewpoint(viewpoint, vp);
+              
+              if (snapshot) {
+                (currentTopic as any).snapshot = snapshot;
+                const base64Data = snapshot.replace(/^data:image\/\w+;base64,/, "");
+                const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+                viewpoints.snapshots.set(vp.guid, bytes);
+                vp.snapshot = vp.guid;
+              }
+            } else {
+              currentCapturedViewpoint = viewpoint;
+              currentCapturedSnapshot = snapshot;
+            }
             updateForm();
           },
           onImportImage: async (base64Snapshot: string) => {
             const { viewpoint } = await bcfTopics.captureViewpoint();
-            currentCapturedViewpoint = viewpoint;
-            currentCapturedSnapshot = base64Snapshot;
+            const viewpoints = components.get(OBC.Viewpoints);
+            let vp: any = null;
+            if (currentTopic && currentTopic.viewpoints.size > 0) {
+              const firstVpGuid = Array.from(currentTopic.viewpoints)[0] as string;
+              vp = viewpoints.list.get(firstVpGuid);
+            }
+
+            if (vp) {
+              copyViewpoint(viewpoint, vp);
+              
+              if (base64Snapshot) {
+                (currentTopic as any).snapshot = base64Snapshot;
+                const base64Data = base64Snapshot.replace(/^data:image\/\w+;base64,/, "");
+                const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+                viewpoints.snapshots.set(vp.guid, bytes);
+                vp.snapshot = vp.guid;
+              }
+            } else {
+              currentCapturedViewpoint = viewpoint;
+              currentCapturedSnapshot = base64Snapshot;
+            }
             updateForm();
           },
           onSubmit: async (topic) => {
             if (currentCapturedViewpoint) {
+              const viewpoints = components.get(OBC.Viewpoints);
               if (currentCapturedSnapshot) {
                 (topic as any).snapshot = currentCapturedSnapshot;
-                const viewpoints = components.get(OBC.Viewpoints);
                 const base64Data = currentCapturedSnapshot.replace(/^data:image\/\w+;base64,/, "");
                 const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
                 viewpoints.snapshots.set(currentCapturedViewpoint.guid, bytes);
