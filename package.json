@@ -4,7 +4,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "concurrently --kill-others --raw \"node dist/app.js\" \"vite --host 0.0.0.0 --port 4001\"",
+    "dev": "concurrently --kill-others \"node dist/app.js\" \"vite --host 0.0.0.0 --port 4001\"",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1"

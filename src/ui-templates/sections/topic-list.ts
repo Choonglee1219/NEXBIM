@@ -480,7 +480,7 @@ export const topicListTemplate: BUI.StatefullComponent<
       }
 
       // 갱신된 내역을 로컬 캐시에 반영하고 동기화 상태 갱신
-      await onSyncWithTDVS(true);
+      refreshTopicsCache();
 
       alert("성공적으로 TDVS로 데이터를 전송하고 데이터베이스에 저장하였습니다.");
     } catch (error) {
@@ -489,131 +489,7 @@ export const topicListTemplate: BUI.StatefullComponent<
     }
   };
 
-  const onSyncWithTDVS = async (isSilent = false) => {
-    const fragments = components.get(OBC.FragmentsManager);
-    const loadedModelNames = Array.from(fragments.list.values())
-      .map(m => (m as any).name)
-      .filter(name => !!name);
 
-    if (loadedModelNames.length === 0) {
-      if (!isSilent) {
-        alert("로드된 모델이 없습니다. 모델을 먼저 로드해 주세요.");
-      }
-      return;
-    }
-
-    try {
-      bcfTopics.loading = true;
-      const response = await fetch(`/api/bcf/sync?priFiles=${encodeURIComponent(loadedModelNames.join(','))}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const serverTopics = await response.json();
-
-      if (serverTopics.length === 0) {
-        if (!isSilent) {
-          alert("로드된 모델과 연결된 토픽 정보가 TDVS 데이터베이스에 존재하지 않습니다.");
-        }
-        return;
-      }
-
-      const viewpoints = components.get(OBC.Viewpoints);
-      const worlds = components.get(OBC.Worlds);
-      const world = worlds.list.values().next().value;
-
-      const localTopics = Array.from(bcfTopics._bcf.list.values());
-
-      for (const serverTopic of serverTopics) {
-        // 1. 이미 존재하는 토픽 매핑 시도
-        // 1-1) mrimsNo 고유 ID로 찾기
-        let topic = localTopics.find(t => (t as any).mrimsNo === serverTopic.mrimsNo);
-
-        // 1-2) 고유 ID가 없는 경우, title과 생성시간으로 매핑 시도 (최초 전송 후 싱크 시 매핑을 위함)
-        if (!topic) {
-          topic = localTopics.find(t => {
-            if ((t as any).mrimsNo) return false; // 이미 매핑된 것은 제외
-            const dateDiff = Math.abs(new Date(t.creationDate).getTime() - new Date(serverTopic.creationDate).getTime());
-            return t.title === serverTopic.title && dateDiff < 5000;
-          });
-          if (topic) {
-            (topic as any).mrimsNo = serverTopic.mrimsNo;
-          }
-        }
-
-        if (!topic) {
-          // 일치하는 토픽이 없다면 신규 생성
-          topic = bcfTopics._bcf.create();
-          (topic as any).mrimsNo = serverTopic.mrimsNo;
-        }
-
-        // 2. 토픽 정보 업데이트
-        topic.title = serverTopic.title;
-        topic.description = serverTopic.description;
-        topic.type = serverTopic.type;
-        if (!topic.status) {
-          topic.status = "Open";
-        }
-        topic.priority = serverTopic.priority;
-        topic.creationAuthor = serverTopic.creationAuthor;
-        topic.creationDate = new Date(serverTopic.creationDate);
-        topic.assignedTo = serverTopic.assignedTo;
-        topic.dueDate = serverTopic.dueDate ? new Date(serverTopic.dueDate) : undefined;
-        if (serverTopic.priFile) {
-          (topic as any).priFile = serverTopic.priFile;
-        }
-
-        // 3. 대표 viewpoint 복원/갱신 (스냅샷 유지를 위해 기존 뷰포인트를 재사용)
-        if (serverTopic.coord) {
-          let existingVp: any = null;
-          // 기존 토픽의 뷰포인트 중 첫 번째 뷰포인트를 재사용
-          if (topic.viewpoints.size > 0) {
-            const firstVpGuid = Array.from(topic.viewpoints)[0];
-            existingVp = viewpoints.list.get(firstVpGuid);
-          }
-
-          if (existingVp) {
-            // 좌표 정보 갱신 (스냅샷 등 기존 메타데이터는 유지됨)
-            if (world) {
-              existingVp.world = world;
-              existingVp.camera.camera_view_point.x = serverTopic.coord.x;
-              existingVp.camera.camera_view_point.y = serverTopic.coord.y;
-              existingVp.camera.camera_view_point.z = serverTopic.coord.z;
-              existingVp.camera.camera_direction.x = 0;
-              existingVp.camera.camera_direction.y = 0;
-              existingVp.camera.camera_direction.z = -1;
-            }
-          } else {
-            // 없는 경우 새로 생성
-            const vp = viewpoints.create();
-            if (world) {
-              vp.world = world;
-              vp.camera.camera_view_point.x = serverTopic.coord.x;
-              vp.camera.camera_view_point.y = serverTopic.coord.y;
-              vp.camera.camera_view_point.z = serverTopic.coord.z;
-              vp.camera.camera_direction.x = 0;
-              vp.camera.camera_direction.y = 0;
-              vp.camera.camera_direction.z = -1;
-            }
-            topic.viewpoints.add(vp.guid);
-          }
-        }
-
-        // 4. 댓글 목록 복원은 사용자가 [TDVS 댓글 조회] 모달을 통해 수동으로 제어하도록 분리되었습니다.
-      }
-
-      refreshTopicsCache();
-      if (!isSilent) {
-        alert("TDVS 외부 시스템의 최신 BCF Topic 및 Comment 데이터를 성공적으로 동기화하였습니다.");
-      }
-    } catch (error) {
-      console.error("Error syncing BCF from TDVS:", error);
-      if (!isSilent) {
-        alert(`TDVS 동기화 실패: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    } finally {
-      bcfTopics.loading = false;
-    }
-  };
 
   const onSearch = (e: Event) => {
     const input = e.target as BUI.TextInput;
@@ -685,7 +561,6 @@ export const topicListTemplate: BUI.StatefullComponent<
           <bim-button style="flex: 1;" @click=${onClearTopicsList} label="Clear" icon=${appIcons.CLEAR}></bim-button>
           <bim-button style="flex: 1;" @click=${onSaveTopicsToBCF} label="Save BCF" icon=${appIcons.SAVE}></bim-button>
           <bim-button style="flex: 1;" @click=${onSendTopicsToTDVS} label="Send to TDVS" icon=${appIcons.EXPORT}></bim-button>
-          <bim-button style="flex: 1;" @click=${() => onSyncWithTDVS(false)} label="Sync TDVS" icon=${appIcons.REF}></bim-button>
         </div>
         <div style="display: flex; gap: 0.25rem; flex: 1; align-items: center;">
           <bim-text-input ${BUI.ref((e) => { searchInput = e as BUI.TextInput; })} @input=${onSearch} vertical placeholder="Search..." debounce="200" style="flex: 1;"></bim-text-input>

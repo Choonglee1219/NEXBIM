@@ -6,6 +6,89 @@ import { BCFTopics as EngineBCFTopics, Topic as EngineTopic } from "./engine";
 export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => {
   const bcf = components.get(EngineBCFTopics);
 
+  const syncTopicWithTDVS = async (components: OBC.Components, bcfTopics: any) => {
+    const fragments = components.get(OBC.FragmentsManager);
+    const loadedModelNames = Array.from(fragments.list.values())
+      .map(m => (m as any).name)
+      .filter(name => !!name);
+
+    if (loadedModelNames.length === 0) return;
+
+    try {
+      const response = await fetch(`/api/bcf/sync?priFiles=${encodeURIComponent(loadedModelNames.join(','))}`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const serverTopics = await response.json();
+      if (serverTopics.length === 0) return;
+
+      const viewpoints = components.get(OBC.Viewpoints);
+      const worlds = components.get(OBC.Worlds);
+      const world = worlds.list.values().next().value;
+      const localTopics = Array.from(bcfTopics._bcf.list.values()) as any[];
+
+      for (const serverTopic of serverTopics) {
+        let topic: any = localTopics.find((t: any) => t.mrimsNo === serverTopic.mrimsNo);
+        if (!topic) {
+          topic = localTopics.find((t: any) => {
+            if (t.mrimsNo) return false;
+            const dateDiff = Math.abs(new Date(t.creationDate).getTime() - new Date(serverTopic.creationDate).getTime());
+            return t.title === serverTopic.title && dateDiff < 5000;
+          });
+          if (topic) topic.mrimsNo = serverTopic.mrimsNo;
+        }
+
+        if (!topic) {
+          topic = bcfTopics._bcf.create();
+          topic.mrimsNo = serverTopic.mrimsNo;
+        }
+
+        topic.title = serverTopic.title;
+        topic.description = serverTopic.description;
+        topic.type = serverTopic.type;
+        if (!topic.status) topic.status = "Open";
+        topic.priority = serverTopic.priority;
+        topic.creationAuthor = serverTopic.creationAuthor;
+        topic.creationDate = new Date(serverTopic.creationDate);
+        topic.assignedTo = serverTopic.assignedTo;
+        topic.dueDate = serverTopic.dueDate ? new Date(serverTopic.dueDate) : undefined;
+        if (serverTopic.priFile) topic.priFile = serverTopic.priFile;
+
+        if (serverTopic.coord) {
+          let existingVp: any = null;
+          if (topic.viewpoints.size > 0) {
+            const firstVpGuid = Array.from(topic.viewpoints)[0] as string;
+            existingVp = viewpoints.list.get(firstVpGuid);
+          }
+
+          if (existingVp) {
+            if (world) {
+              existingVp.world = world;
+              existingVp.camera.camera_view_point.x = serverTopic.coord.x;
+              existingVp.camera.camera_view_point.y = serverTopic.coord.y;
+              existingVp.camera.camera_view_point.z = serverTopic.coord.z;
+              existingVp.camera.camera_direction.x = 0;
+              existingVp.camera.camera_direction.y = 0;
+              existingVp.camera.camera_direction.z = -1;
+            }
+          } else {
+            const vp = viewpoints.create();
+            if (world) {
+              vp.world = world;
+              vp.camera.camera_view_point.x = serverTopic.coord.x;
+              vp.camera.camera_view_point.y = serverTopic.coord.y;
+              vp.camera.camera_view_point.z = serverTopic.coord.z;
+              vp.camera.camera_direction.x = 0;
+              vp.camera.camera_direction.y = 0;
+              vp.camera.camera_direction.z = -1;
+            }
+            topic.viewpoints.add(vp.guid);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error syncing BCF from TDVS inside comments UI:", error);
+    }
+  };
+
   const commentsContainer = document.createElement("div");
   commentsContainer.style.display = "flex";
   commentsContainer.style.flexDirection = "column";
@@ -31,9 +114,9 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
 
   // TDVS 댓글 수동 동기화 버튼 생성
   const tdvsBtn = document.createElement("bim-button") as BUI.Button;
-  tdvsBtn.label = "TDVS Comments";
   tdvsBtn.icon = appIcons.REFRESH;
   tdvsBtn.style.margin = "0";
+  tdvsBtn.title = "Sync TDVS Comments";
   tdvsBtn.style.display = "none";
 
   const showTdvsCommentsModal = (comments: any[], topic: EngineTopic) => {
@@ -372,30 +455,91 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
     return null;
   };
 
-  const renderComments = (topic: EngineTopic) => {
+  const renderComments = (topic: EngineTopic, forceSync = false) => {
     commentsContainer.innerHTML = "";
     paginationContainer.innerHTML = "";
 
-    const mrimsNo = (topic as any).mrimsNo;
-    if (mrimsNo) {
-      tdvsBtn.style.display = "flex";
-      tdvsBtn.onclick = async () => {
-        tdvsBtn.loading = true;
-        try {
-          const res = await fetch(`/api/bcf/comments?mrimsNo=${mrimsNo}`);
-          if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-          const comments = await res.json();
-          showTdvsCommentsModal(comments, topic);
-        } catch (error) {
-          console.error("Error fetching TDVS comments:", error);
-          alert(`TDVS 댓글 조회 실패: ${error instanceof Error ? error.message : String(error)}`);
-        } finally {
-          tdvsBtn.loading = false;
+    const mrimsNoBefore = (topic as any).mrimsNo;
+
+    const checkAndActivateTdvsBtn = async (mrimsNo: string) => {
+      try {
+        const res = await fetch(`/api/bcf/comments?mrimsNo=${mrimsNo}`);
+        if (!res.ok) throw new Error();
+        const comments = await res.json();
+
+        const localComments = Array.from(topic.comments.values());
+        const isAlreadyImported = (text: string, dateStr: string, authorStr: string) => {
+          const targetTime = new Date(dateStr).getTime();
+          return localComments.some(lc => {
+            const lcTime = lc.date instanceof Date ? lc.date.getTime() : new Date(lc.date).getTime();
+            const timeDiff = Math.abs(lcTime - targetTime);
+            const authorMatch = (lc.modifiedAuthor || lc.author || "").toLowerCase() === authorStr.toLowerCase();
+            return lc.comment === text && timeDiff < 5000 && authorMatch;
+          });
+        };
+
+        const hasSyncData = comments.some((item: any) => {
+          let reviewNeed = false;
+          if (item.reviewComment) {
+            reviewNeed = !isAlreadyImported(
+              item.reviewComment.comment,
+              item.reviewComment.date,
+              item.reviewComment.author
+            );
+          }
+          let solveNeed = false;
+          if (item.solveComment) {
+            solveNeed = !isAlreadyImported(
+              item.solveComment.comment,
+              item.solveComment.date,
+              item.solveComment.author
+            );
+          }
+          return reviewNeed || solveNeed;
+        });
+
+        if (hasSyncData) {
+          tdvsBtn.disabled = false;
+          tdvsBtn.active = true;
+          tdvsBtn.style.setProperty("--bim-button--bg", "var(--bim-ui_accent)");
+          tdvsBtn.style.setProperty("--bim-button--c", "var(--bim-ui_accent-contrast)");
+        } else {
+          tdvsBtn.disabled = true;
+          tdvsBtn.active = false;
+          tdvsBtn.style.removeProperty("--bim-button--bg");
+          tdvsBtn.style.removeProperty("--bim-button--c");
         }
-      };
+
+        tdvsBtn.onclick = () => {
+          showTdvsCommentsModal(comments, topic);
+        };
+      } catch (err) {
+        console.error("Error checking TDVS comments sync state:", err);
+        tdvsBtn.disabled = true;
+        tdvsBtn.active = false;
+        tdvsBtn.style.removeProperty("--bim-button--bg");
+        tdvsBtn.style.removeProperty("--bim-button--c");
+        tdvsBtn.onclick = null;
+      }
+    };
+
+    if (mrimsNoBefore) {
+      tdvsBtn.style.display = "flex";
+      checkAndActivateTdvsBtn(mrimsNoBefore);
     } else {
       tdvsBtn.style.display = "none";
-      tdvsBtn.onclick = null;
+      tdvsBtn.disabled = true;
+      tdvsBtn.active = false;
+    }
+
+    if (forceSync) {
+      syncTopicWithTDVS(components, bcfTopics).then(() => {
+        const mrimsNoAfter = (topic as any).mrimsNo;
+        if (mrimsNoAfter) {
+          tdvsBtn.style.display = "flex";
+          checkAndActivateTdvsBtn(mrimsNoAfter);
+        }
+      });
     }
 
     // 코멘트들을 시간 순으로 정렬
@@ -474,7 +618,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       const addBtn = document.createElement("bim-button") as BUI.Button;
       addBtn.icon = appIcons.ADD;
       addBtn.style.margin = "0";
-      addBtn.tooltipTitle = "Add New Comment with Viewpoint";
+      addBtn.title = "Add New Comment with Viewpoint";
       addBtn.disabled = isAddingNewComment;
       addBtn.addEventListener("click", () => {
         isAddingNewComment = true;
@@ -484,9 +628,9 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       });
 
       if (totalPages > 0) {
-          paginationContainer.append(prevBtn, pageInfo, nextBtn, addBtn);
+          paginationContainer.append(prevBtn, pageInfo, nextBtn, tdvsBtn, addBtn);
       } else {
-          if (!isAddingNewComment) paginationContainer.append(addBtn);
+          if (!isAddingNewComment) paginationContainer.append(tdvsBtn, addBtn);
       }
     };
 
@@ -650,7 +794,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       replyBtn.style.flex = "0";
       replyBtn.style.margin = "0";
       replyBtn.style.height = "2rem";
-      replyBtn.tooltipTitle = "Add Comment";
+      replyBtn.title = "Add Comment";
       replyBtn.addEventListener("click", async () => {
         if (!replyInput.value.trim()) return;
         if (!pendingCommentViewpoint) {
@@ -682,7 +826,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       cancelBtn.style.height = "2rem";
 
       if (totalPages > 0) {
-          cancelBtn.tooltipTitle = "Cancel";
+          cancelBtn.title = "Cancel";
           cancelBtn.addEventListener("click", () => {
               isAddingNewComment = false;
               pendingCommentViewpoint = null;
@@ -690,7 +834,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
               renderComments(topic);
           });
       } else {
-          cancelBtn.tooltipTitle = "Clear";
+          cancelBtn.title = "Clear";
           cancelBtn.addEventListener("click", () => {
               replyInput.value = "";
           });
@@ -863,21 +1007,21 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       editBtn.style.flex = "0";
       editBtn.style.margin = "0";
       editBtn.style.height = "2rem";
-      editBtn.tooltipTitle = "Edit Comment";
+      editBtn.title = "Edit Comment";
 
       const deleteBtn = document.createElement("bim-button") as BUI.Button;
       deleteBtn.icon = appIcons.DELETE;
       deleteBtn.style.flex = "0";
       deleteBtn.style.margin = "0";
       deleteBtn.style.height = "2rem";
-      deleteBtn.tooltipTitle = "Delete Comment";
+      deleteBtn.title = "Delete Comment";
 
       const saveBtn = document.createElement("bim-button") as BUI.Button;
       saveBtn.icon = appIcons.SAVE || "/icons/material-symbols--save.svg";
       saveBtn.style.flex = "0";
       saveBtn.style.margin = "0";
       saveBtn.style.height = "2rem";
-      saveBtn.tooltipTitle = "Save Edit";
+      saveBtn.title = "Save Edit";
       saveBtn.style.display = "none";
 
       const cancelEditBtn = document.createElement("bim-button") as BUI.Button;
@@ -885,7 +1029,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       cancelEditBtn.style.flex = "0";
       cancelEditBtn.style.margin = "0";
       cancelEditBtn.style.height = "2rem";
-      cancelEditBtn.tooltipTitle = "Cancel Edit";
+      cancelEditBtn.title = "Cancel Edit";
       cancelEditBtn.style.display = "none";
 
       actionContainer.append(editBtn, deleteBtn, saveBtn, cancelEditBtn);
@@ -972,7 +1116,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       replyBtn.style.flex = "0";
       replyBtn.style.margin = "0";
       replyBtn.style.height = "2rem";
-      replyBtn.tooltipTitle = "Add Comment";
+      replyBtn.title = "Add Comment";
       replyBtn.addEventListener("click", () => {
         if (!replyInput.value.trim()) return;
         replyBtn.loading = true;
@@ -987,7 +1131,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       cancelBtn.style.flex = "0";
       cancelBtn.style.margin = "0";
       cancelBtn.style.height = "2rem";
-      cancelBtn.tooltipTitle = "Clear";
+      cancelBtn.title = "Clear";
       cancelBtn.addEventListener("click", () => {
         replyInput.value = "";
       });
@@ -1020,7 +1164,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
   commentsHeader.textContent = "Comments";
   commentsHeader.style.fontWeight = "bold";
 
-  commentsHeaderWrapper.append(commentsHeader, tdvsBtn, paginationContainer);
+  commentsHeaderWrapper.append(commentsHeader, paginationContainer);
   commentsWrapper.append(commentsHeaderWrapper, commentsContainer);
 
   const resetState = () => {

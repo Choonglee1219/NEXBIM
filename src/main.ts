@@ -225,6 +225,30 @@ setupBoxSelection(components, world, viewport, highlighter);
 // 📌 Context Menu Setup
 setupContextMenu(components, world, viewport);
 
+let fitCameraTimeout: ReturnType<typeof setTimeout> | null = null;
+const fitCameraToAllModels = () => {
+  if (fitCameraTimeout) {
+    clearTimeout(fitCameraTimeout);
+  }
+  fitCameraTimeout = setTimeout(async () => {
+    const boxer = components.get(OBC.BoundingBoxer);
+    boxer.list.clear();
+    const modelIds = Array.from(fragments.list.keys());
+    if (modelIds.length === 0) return;
+
+    const modelRegexes = modelIds.map((id) => new RegExp(`^${id}$`));
+    boxer.addFromModels(modelRegexes);
+    const box = boxer.get();
+    boxer.list.clear();
+
+    if (!box.isEmpty()) {
+      const sphere = new THREE.Sphere();
+      box.getBoundingSphere(sphere);
+      world.camera.controls.fitToSphere(sphere, true);
+    }
+  }, 300);
+};
+
 // 🚚Model Load EventHandler
 fragments.list.onItemSet.add(async ({ value: model }) => {
   const finder = components.get(OBC.ItemsFinder);
@@ -251,17 +275,7 @@ fragments.list.onItemSet.add(async ({ value: model }) => {
   await highlighter.highlightByID("transparentCyan", modelIdMap, false, false);
   await hider.set(false, modelIdMap);
 
-  const boxer = components.get(OBC.BoundingBoxer);
-  boxer.list.clear();
-  boxer.addFromModels([new RegExp(`^${model.modelId}$`)]);
-  const box = boxer.get();
-  boxer.list.clear();
-
-  if (!box.isEmpty()) {
-    const sphere = new THREE.Sphere();
-    box.getBoundingSphere(sphere);
-    world.camera.controls.fitToSphere(sphere, true);
-  }
+  fitCameraToAllModels();
 });
 
 fragments.list.onItemDeleted.add(async () => {

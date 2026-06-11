@@ -90,7 +90,7 @@ export const updateTopic = (bcfTopics: any) => {
       };
 
       updateForm();
-      commentsUI.render(currentTopic!);
+      commentsUI.render(currentTopic!, true);
     }
   };
 
