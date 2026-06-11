@@ -471,7 +471,8 @@ app.get("/api/bcf/comments", async (req: Request, res: Response): Promise<any> =
 
     const commentResult = await connection.execute(
       `SELECT COMMENT_NO, REVIEW_COMMENT, SOLVE_COMMENT, INSERT_DATE, 
-              ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, RESOL_PREPARE_DATE
+              ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, RESOL_PREPARE_DATE,
+              COORDX, COORDY, COORDZ
        FROM SI_BCF_COMMENT
        WHERE TOPIC_NO = :topic_no
        ORDER BY COMMENT_NO ASC`,
@@ -515,6 +516,12 @@ app.get("/api/bcf/comments", async (req: Request, res: Response): Promise<any> =
           parsedSolveDate = sMatch[3];
         }
 
+        const coordX = row.COORDX !== undefined && row.COORDX !== null ? Number(row.COORDX) : (row.coordx !== undefined && row.coordx !== null ? Number(row.coordx) : null);
+        const coordY = row.COORDY !== undefined && row.COORDY !== null ? Number(row.COORDY) : (row.coordy !== undefined && row.coordy !== null ? Number(row.coordy) : null);
+        const coordZ = row.COORDZ !== undefined && row.COORDZ !== null ? Number(row.COORDZ) : (row.coordz !== undefined && row.coordz !== null ? Number(row.coordz) : null);
+        
+        const coord = (coordX !== null || coordY !== null || coordZ !== null) ? { x: coordX, y: coordY, z: coordZ } : null;
+
         comments.push({
           commentNo,
           reviewComment: reviewComment.trim() !== "" ? {
@@ -526,7 +533,8 @@ app.get("/api/bcf/comments", async (req: Request, res: Response): Promise<any> =
             comment: parsedSolveComment,
             author: parsedSolveAuthor,
             date: parsedSolveDate
-          } : null
+          } : null,
+          coord
         });
       }
     }
@@ -1000,7 +1008,7 @@ app.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promise<a
           topic_no: { val: topicNo, type: OracleDB.DB_TYPE_NUMBER },
           mrims_type: { val: topic.type || null, type: OracleDB.DB_TYPE_VARCHAR },
           pri_disp: { val: null, type: OracleDB.DB_TYPE_VARCHAR },
-          review_comment: { val: reviewComment, type: OracleDB.DB_TYPE_CLOB },
+          review_comment: { val: reviewComment, type: OracleDB.DB_TYPE_VARCHAR },
           coordx: coordX !== null ? { val: coordX, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
           coordy: coordY !== null ? { val: coordY, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
           coordz: coordZ !== null ? { val: coordZ, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
@@ -1033,7 +1041,7 @@ app.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promise<a
           topic_no: { val: topicNo, type: OracleDB.DB_TYPE_NUMBER },
           mrims_type: { val: topic.type || null, type: OracleDB.DB_TYPE_VARCHAR },
           pri_disp: { val: null, type: OracleDB.DB_TYPE_VARCHAR },
-          review_comment: { val: reviewComment, type: OracleDB.DB_TYPE_CLOB },
+          review_comment: { val: reviewComment, type: OracleDB.DB_TYPE_VARCHAR },
           coordx: coordX !== null ? { val: coordX, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
           coordy: coordY !== null ? { val: coordY, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
           coordz: coordZ !== null ? { val: coordZ, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
@@ -1071,8 +1079,8 @@ app.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promise<a
           const bindsComment = {
             comment_no: { val: commentNo, type: OracleDB.DB_TYPE_NUMBER },
             topic_no: { val: topicNo, type: OracleDB.DB_TYPE_NUMBER },
-            review_comment: { val: comment.reviewComment || null, type: OracleDB.DB_TYPE_CLOB },
-            solve_comment: { val: comment.solveComment || null, type: OracleDB.DB_TYPE_CLOB },
+            review_comment: { val: comment.reviewComment || null, type: OracleDB.DB_TYPE_VARCHAR },
+            solve_comment: { val: comment.solveComment || null, type: OracleDB.DB_TYPE_VARCHAR },
             coordx: cCoordX !== null ? { val: cCoordX, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
             coordy: cCoordY !== null ? { val: cCoordY, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
             coordz: cCoordZ !== null ? { val: cCoordZ, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },

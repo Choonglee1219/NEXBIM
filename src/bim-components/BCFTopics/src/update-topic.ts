@@ -41,7 +41,38 @@ export const updateTopic = (bcfTopics: any) => {
 
     const selectedTopics = bcfTopics.getSelectedTopics(selection);
     if (selectedTopics.length > 0) {
-      currentTopic = selectedTopics[0];
+      const topic = selectedTopics[0] as any;
+      currentTopic = topic;
+      
+      // 🎯 진입 시점의 토픽 상태(댓글 목록, viewpoints 목록, 뷰포인트 카메라 좌표) 백업
+      const originalComments = Array.from(topic.comments.values()).map((c: any) => ({
+        guid: c.guid,
+        comment: c.comment,
+        date: c.date,
+        author: c.author,
+        modifiedAuthor: c.modifiedAuthor,
+        modifiedDate: c.modifiedDate,
+        viewpoint: c.viewpoint,
+        snapshot: (c as any).snapshot
+      })) as any[];
+
+      const originalViewpoints = Array.from(topic.viewpoints) as string[];
+
+      const viewpoints = components.get(OBC.Viewpoints);
+      const originalVpCoords = new Map<string, any>();
+      for (const vpGuid of topic.viewpoints) {
+        const vp = viewpoints.list.get(vpGuid);
+        if (vp && vp.camera && vp.camera.camera_view_point) {
+          originalVpCoords.set(vpGuid, {
+            x: vp.camera.camera_view_point.x,
+            y: vp.camera.camera_view_point.y,
+            z: vp.camera.camera_view_point.z,
+            dirX: vp.camera.camera_direction?.x ?? 0,
+            dirY: vp.camera.camera_direction?.y ?? 0,
+            dirZ: vp.camera.camera_direction?.z ?? -1,
+          });
+        }
+      }
       
       const updateForm = () => {
         updateTopicForm({
@@ -51,7 +82,44 @@ export const updateTopic = (bcfTopics: any) => {
           commentsUI: commentsUI.ui,
           capturedViewpoint: currentCapturedViewpoint,
           capturedSnapshot: currentCapturedSnapshot,
-          onCancel: onCancelHandler,
+          onCancel: () => {
+            // 🎯 Cancel 클릭 시 백업 데이터로 롤백 수행
+            if (currentTopic) {
+              currentTopic.viewpoints.clear();
+              for (const vp of originalViewpoints) {
+                currentTopic.viewpoints.add(vp);
+              }
+              
+              currentTopic.comments.clear();
+              for (const c of originalComments) {
+                currentTopic.comments.set(c.guid, {
+                  guid: c.guid,
+                  comment: c.comment,
+                  date: c.date,
+                  author: c.author,
+                  modifiedAuthor: c.modifiedAuthor,
+                  modifiedDate: c.modifiedDate,
+                  viewpoint: c.viewpoint,
+                  snapshot: c.snapshot
+                } as any);
+              }
+
+              for (const [vpGuid, coord] of originalVpCoords.entries()) {
+                const vp = viewpoints.list.get(vpGuid);
+                if (vp && vp.camera && vp.camera.camera_view_point) {
+                  vp.camera.camera_view_point.x = coord.x;
+                  vp.camera.camera_view_point.y = coord.y;
+                  vp.camera.camera_view_point.z = coord.z;
+                  if (vp.camera.camera_direction) {
+                    vp.camera.camera_direction.x = coord.dirX;
+                    vp.camera.camera_direction.y = coord.dirY;
+                    vp.camera.camera_direction.z = coord.dirZ;
+                  }
+                }
+              }
+            }
+            onCancelHandler();
+          },
           onRestoreViewpoint: async () => {
             if (currentTopic) {
               await bcfTopics.restoreViewpoint(currentTopic);

@@ -68,6 +68,7 @@ export const topicListTemplate: BUI.StatefullComponent<
   
   let updateTopicBtn: BUI.Button | undefined;
   let deleteTopicBtn: BUI.Button | undefined;
+  let syncTdvsBtn: BUI.Button | undefined;
 
   let isMarkersVisible = false;
   let markerBtn: BUI.Button | undefined;
@@ -148,6 +149,7 @@ export const topicListTemplate: BUI.StatefullComponent<
 
     updatePage();
     updateMarkers();
+    checkTdvsSyncState();
   };
 
   const onPrevPage = () => {
@@ -385,27 +387,13 @@ export const topicListTemplate: BUI.StatefullComponent<
           }
         }
 
-        // Sort comments chronologically
-        const sortedComments = [...group.comments].sort((a, b) => {
-          const timeA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
-          const timeB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
-          return timeA - timeB;
-        });
-
-        const oldestComment = sortedComments[0];
-        const solveComments = sortedComments.slice(1);
-
-        const reviewCommentText = oldestComment ? oldestComment.comment : null;
-        const reviewAuthor = oldestComment ? (oldestComment.author || "Admin") : null;
-        const reviewDate = oldestComment && oldestComment.date ? oldestComment.date.toISOString() : null;
-
         const isRepresentative = group.viewpointGuid && group.viewpointGuid === firstVpGuid;
 
-        if (solveComments.length === 0) {
+        if (group.comments.length === 0) {
           commentsData.push({
-            reviewComment: reviewCommentText || null,
-            author: reviewAuthor,
-            date: reviewDate,
+            reviewComment: null,
+            author: null,
+            date: null,
             
             solveComment: null,
             modifiedAuthor: null,
@@ -415,24 +403,32 @@ export const topicListTemplate: BUI.StatefullComponent<
             vpGuid: isRepresentative ? null : (group.viewpointGuid || null)
           });
         } else {
-          for (const sCmt of solveComments) {
-            const solveCommentText = sCmt.comment || null;
-            const solveAuthor = sCmt.modifiedAuthor || sCmt.author || "Admin";
-            const solveDate = sCmt.date ? sCmt.date.toISOString() : null;
+          // Sort comments chronologically
+          const sortedComments = [...group.comments].sort((a, b) => {
+            const timeA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
+            const timeB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
+            return timeA - timeB;
+          });
 
-            commentsData.push({
-              reviewComment: reviewCommentText || null,
-              author: reviewAuthor,
-              date: reviewDate,
-              
-              solveComment: solveCommentText,
-              modifiedAuthor: solveAuthor,
-              modifiedDate: solveDate,
+          // 1. 모든 comment들을 ;; 구분자로 통합
+          const integratedCommentsText = sortedComments.map(c => c.comment).join(";;");
 
-              coord: commentCoord,
-              vpGuid: isRepresentative ? null : (group.viewpointGuid || null)
-            });
-          }
+          // 2. 가장 빠른 comment.date
+          const oldestDate = sortedComments[0].date ? sortedComments[0].date.toISOString() : null;
+
+          // 3. author(ISSUE_PREPARE_NAME)는 비워둠 (null)
+          commentsData.push({
+            reviewComment: integratedCommentsText,
+            author: null,
+            date: oldestDate,
+            
+            solveComment: null,
+            modifiedAuthor: null,
+            modifiedDate: null,
+
+            coord: commentCoord,
+            vpGuid: isRepresentative ? null : (group.viewpointGuid || null)
+          });
         }
       }
 
@@ -480,12 +476,208 @@ export const topicListTemplate: BUI.StatefullComponent<
       }
 
       // 갱신된 내역을 로컬 캐시에 반영하고 동기화 상태 갱신
-      refreshTopicsCache();
+      await onSyncWithTDVS(true);
 
       alert("성공적으로 TDVS로 데이터를 전송하고 데이터베이스에 저장하였습니다.");
     } catch (error) {
       console.error("Error sending topics to TDVS:", error);
       alert(`TDVS 전송 실패: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const checkTdvsSyncState = async () => {
+    if (!syncTdvsBtn) return;
+    
+    const fragments = components.get(OBC.FragmentsManager);
+    const loadedModelNames = Array.from(fragments.list.values())
+      .map(m => (m as any).name)
+      .filter(name => !!name);
+
+    if (loadedModelNames.length === 0) {
+      syncTdvsBtn.disabled = true;
+      syncTdvsBtn.active = false;
+      syncTdvsBtn.style.removeProperty("--bim-button--bg");
+      syncTdvsBtn.style.removeProperty("--bim-button--c");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/bcf/sync?priFiles=${encodeURIComponent(loadedModelNames.join(','))}`);
+      if (!response.ok) throw new Error();
+      const serverTopics = await response.json();
+
+      const localTopics = Array.from(bcfTopics._bcf.list.values()) as any[];
+      let needSync = false;
+
+      for (const serverTopic of serverTopics) {
+        let topic = localTopics.find(t => t.mrimsNo === serverTopic.mrimsNo);
+        if (!topic) {
+          topic = localTopics.find(t => {
+            if (t.mrimsNo) return false;
+            const dateDiff = Math.abs(new Date(t.creationDate).getTime() - new Date(serverTopic.creationDate).getTime());
+            return t.title === serverTopic.title && dateDiff < 5000;
+          });
+        }
+
+        if (!topic) {
+          needSync = true;
+          break;
+        }
+
+        if (serverTopic.comments && Array.isArray(serverTopic.comments)) {
+          const localComments = Array.from(topic.comments.values()) as any[];
+          const isAlreadyImported = (text: string) => {
+            return localComments.some(lc => lc.comment === text);
+          };
+
+          const hasNewComments = serverTopic.comments.some((item: any) => {
+            const checkPart = (commentObj: any) => {
+              if (!commentObj || !commentObj.comment) return false;
+              const parts = commentObj.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
+              return parts.some((partText: string) => !isAlreadyImported(partText));
+            };
+            return checkPart(item.reviewComment) || checkPart(item.solveComment);
+          });
+
+          if (hasNewComments) {
+            needSync = true;
+            break;
+          }
+        }
+      }
+
+      if (needSync) {
+        syncTdvsBtn.disabled = false;
+        syncTdvsBtn.active = true;
+        syncTdvsBtn.style.setProperty("--bim-button--bg", "var(--bim-ui_accent)");
+        syncTdvsBtn.style.setProperty("--bim-button--c", "var(--bim-ui_accent-contrast)");
+      } else {
+        syncTdvsBtn.disabled = true;
+        syncTdvsBtn.active = false;
+        syncTdvsBtn.style.removeProperty("--bim-button--bg");
+        syncTdvsBtn.style.removeProperty("--bim-button--c");
+      }
+    } catch (error) {
+      console.error("Error checking TDVS sync state for topic list:", error);
+      syncTdvsBtn.disabled = true;
+      syncTdvsBtn.active = false;
+      syncTdvsBtn.style.removeProperty("--bim-button--bg");
+      syncTdvsBtn.style.removeProperty("--bim-button--c");
+    }
+  };
+
+  const onSyncWithTDVS = async (isSilent = false) => {
+    const fragments = components.get(OBC.FragmentsManager);
+    const loadedModelNames = Array.from(fragments.list.values())
+      .map(m => (m as any).name)
+      .filter(name => !!name);
+
+    if (loadedModelNames.length === 0) {
+      if (!isSilent) {
+        alert("로드된 모델이 없습니다. 모델을 먼저 로드해 주세요.");
+      }
+      return;
+    }
+
+    try {
+      bcfTopics.loading = true;
+      const response = await fetch(`/api/bcf/sync?priFiles=${encodeURIComponent(loadedModelNames.join(','))}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const serverTopics = await response.json();
+
+      if (serverTopics.length === 0) {
+        if (!isSilent) {
+          alert("로드된 모델과 연결된 토픽 정보가 TDVS 데이터베이스에 존재하지 않습니다.");
+        }
+        return;
+      }
+
+      const viewpoints = components.get(OBC.Viewpoints);
+      const worlds = components.get(OBC.Worlds);
+      const world = worlds.list.values().next().value;
+
+      const localTopics = Array.from(bcfTopics._bcf.list.values()) as any[];
+
+      for (const serverTopic of serverTopics) {
+        let topic = localTopics.find(t => t.mrimsNo === serverTopic.mrimsNo);
+
+        if (!topic) {
+          topic = localTopics.find(t => {
+            if (t.mrimsNo) return false;
+            const dateDiff = Math.abs(new Date(t.creationDate).getTime() - new Date(serverTopic.creationDate).getTime());
+            return t.title === serverTopic.title && dateDiff < 5000;
+          });
+          if (topic) {
+            topic.mrimsNo = serverTopic.mrimsNo;
+          }
+        }
+
+        if (!topic) {
+          topic = bcfTopics._bcf.create();
+          topic.mrimsNo = serverTopic.mrimsNo;
+        }
+
+        topic.title = serverTopic.title;
+        topic.description = serverTopic.description;
+        topic.type = serverTopic.type;
+        if (!topic.status) {
+          topic.status = "Open";
+        }
+        topic.priority = serverTopic.priority;
+        topic.creationAuthor = serverTopic.creationAuthor;
+        topic.creationDate = new Date(serverTopic.creationDate);
+        topic.assignedTo = serverTopic.assignedTo;
+        topic.dueDate = serverTopic.dueDate ? new Date(serverTopic.dueDate) : undefined;
+        if (serverTopic.priFile) {
+          topic.priFile = serverTopic.priFile;
+        }
+
+        if (serverTopic.coord) {
+          let existingVp: any = null;
+          if (topic.viewpoints.size > 0) {
+            const firstVpGuid = Array.from(topic.viewpoints)[0] as string;
+            existingVp = viewpoints.list.get(firstVpGuid);
+          }
+
+          if (existingVp) {
+            if (world) {
+              existingVp.world = world;
+              existingVp.camera.camera_view_point.x = serverTopic.coord.x;
+              existingVp.camera.camera_view_point.y = serverTopic.coord.y;
+              existingVp.camera.camera_view_point.z = serverTopic.coord.z;
+              existingVp.camera.camera_direction.x = 0;
+              existingVp.camera.camera_direction.y = 0;
+              existingVp.camera.camera_direction.z = -1;
+            }
+          } else {
+            const vp = viewpoints.create();
+            if (world) {
+              vp.world = world;
+              vp.camera.camera_view_point.x = serverTopic.coord.x;
+              vp.camera.camera_view_point.y = serverTopic.coord.y;
+              vp.camera.camera_view_point.z = serverTopic.coord.z;
+              vp.camera.camera_direction.x = 0;
+              vp.camera.camera_direction.y = 0;
+              vp.camera.camera_direction.z = -1;
+            }
+            topic.viewpoints.add(vp.guid);
+          }
+        }
+      }
+
+      refreshTopicsCache();
+      if (!isSilent) {
+        alert("TDVS 외부 시스템의 최신 BCF Topic 및 Comment 데이터를 성공적으로 동기화하였습니다.");
+      }
+    } catch (error) {
+      console.error("Error syncing BCF from TDVS:", error);
+      if (!isSilent) {
+        alert(`TDVS 동기화 실패: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    } finally {
+      bcfTopics.loading = false;
     }
   };
 
@@ -561,6 +753,7 @@ export const topicListTemplate: BUI.StatefullComponent<
           <bim-button style="flex: 1;" @click=${onClearTopicsList} label="Clear" icon=${appIcons.CLEAR}></bim-button>
           <bim-button style="flex: 1;" @click=${onSaveTopicsToBCF} label="Save BCF" icon=${appIcons.SAVE}></bim-button>
           <bim-button style="flex: 1;" @click=${onSendTopicsToTDVS} label="Send to TDVS" icon=${appIcons.EXPORT}></bim-button>
+          <bim-button ${BUI.ref(e => { syncTdvsBtn = e as BUI.Button; })} style="flex: 1;" @click=${() => onSyncWithTDVS(false)} label="Sync TDVS" icon=${appIcons.REF} disabled></bim-button>
         </div>
         <div style="display: flex; gap: 0.25rem; flex: 1; align-items: center;">
           <bim-text-input ${BUI.ref((e) => { searchInput = e as BUI.TextInput; })} @input=${onSearch} vertical placeholder="Search..." debounce="200" style="flex: 1;"></bim-text-input>
