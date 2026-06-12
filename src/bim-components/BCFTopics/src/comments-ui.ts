@@ -109,8 +109,8 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
               existingVp.world = world;
               existingVp.camera.camera_view_point = {
                 x: serverTopic.coord.x,
-                y: serverTopic.coord.y,
-                z: serverTopic.coord.z
+                y: serverTopic.coord.z,
+                z: -serverTopic.coord.y
               };
               existingVp.camera.camera_direction = { x: 0, y: 0, z: -1 };
               existingVp.camera.camera_up_vector = { x: 0, y: 1, z: 0 };
@@ -121,8 +121,8 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
               vp.world = world;
               vp.camera.camera_view_point = {
                 x: serverTopic.coord.x,
-                y: serverTopic.coord.y,
-                z: serverTopic.coord.z
+                y: serverTopic.coord.z,
+                z: -serverTopic.coord.y
               };
               vp.camera.camera_direction = { x: 0, y: 0, z: -1 };
               vp.camera.camera_up_vector = { x: 0, y: 1, z: 0 };

@@ -69,9 +69,13 @@ export class TopicViewpointManager {
         if (!normal) continue;
 
         const point = new THREE.Vector3();
-        if (typeof planeObj.coplanarPoint === "function") planeObj.coplanarPoint(point);
-        else if (item.origin) point.copy(item.origin);
-        else if (planeObj.constant !== undefined) point.copy(normal).multiplyScalar(-planeObj.constant);
+        if (item.origin) {
+          point.copy(item.origin);
+        } else if (planeObj.constant !== undefined && normal) {
+          point.copy(normal).multiplyScalar(-planeObj.constant);
+        } else if (typeof planeObj.coplanarPoint === "function") {
+          planeObj.coplanarPoint(point);
+        }
 
         bcfPlanes.push({
           location: { x: point.x, y: -point.z, z: point.y },

@@ -1,3 +1,5 @@
+import * as OBC from "@thatopen/components";
+import { XMLParser } from "fast-xml-parser";
 import {
   UUID,
   XML,
@@ -413,6 +415,40 @@ export class Topic implements BCFTopic {
   serialize() {
     const version = this._managerVersion;
 
+    // Header 생성 로직
+    let headerObj: any = undefined;
+    if ((this as any).headerXml) {
+      try {
+        const parserB = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "$" });
+        const parsed = parserB.parse((this as any).headerXml);
+        headerObj = parsed.Header;
+      } catch (e) {
+        console.error("Failed to parse preserved headerXml:", e);
+      }
+    }
+
+    if (!headerObj) {
+      // 로드된 IFC 모델 정보를 기반으로 새 Header 생성
+      try {
+        const fragments = this._components.get(OBC.FragmentsManager);
+        if (fragments && fragments.list.size > 0) {
+          const files: any[] = [];
+          for (const [uuid, model] of fragments.list) {
+            const name = (model as any).name || "Untitled.ifc";
+            const projGuid = (model as any).coordinationGuid || uuid;
+            files.push({
+              $IfcProject: projGuid,
+              Filename: name,
+              Date: this.creationDate.toISOString(),
+            });
+          }
+          headerObj = { File: files };
+        }
+      } catch (e) {
+        console.error("Failed to generate fallback BCF header:", e);
+      }
+    }
+
     const topic: Record<string, any> = {
       $Guid: this.guid,
       $TopicType: this.type,
@@ -452,7 +488,10 @@ export class Topic implements BCFTopic {
     }
 
     const markup: Record<string, any> = {
-      Markup: { Topic: topic },
+      Markup: { 
+        Header: headerObj,
+        Topic: topic 
+      },
     };
 
     if (version === "2.1") {

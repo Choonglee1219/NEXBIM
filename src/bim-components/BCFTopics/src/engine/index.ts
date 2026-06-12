@@ -313,17 +313,17 @@ export class BCFTopics
       if (docTags.length > 0) {
         zip.file(
           "documents.xml",
-          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          formatXml(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <DocumentInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="documents.xsd">
     <Documents>
       ${docTags.join("\n")}
     </Documents>
-  </DocumentInfo>`,
+  </DocumentInfo>`),
         );
       }
     }
 
-    zip.file("bcf.extensions", this.serializeExtensions());
+    zip.file("bcf.extensions", formatXml(this.serializeExtensions()));
     const viewpoints = this.components.get(Viewpoints);
     for (const topic of topics) {
       const topicFolder = zip.folder(topic.guid) as JSZip;
@@ -359,7 +359,7 @@ export class BCFTopics
         );
       }
 
-      topicFolder.file("markup.bcf", markupXml);
+      topicFolder.file("markup.bcf", formatXml(markupXml));
 
       for (const viewpointID of allViewpointGuids) {
         const viewpoint = viewpoints.list.get(viewpointID);
@@ -370,6 +370,39 @@ export class BCFTopics
         const pngName = isDefault ? "snapshot.png" : `${viewpointID}.png`;
 
         let viewpointXml = await viewpoint.serialize();
+
+        // PATCH: BCF(Z-up)와 Three.js(Y-up) 간의 카메라 좌표 축 역변환 보정 (BIMVision 상하 뒤집힘 방지)
+        const cam = viewpoint.camera;
+        if (cam) {
+          const px = cam.camera_view_point.x;
+          const py = cam.camera_view_point.y;
+          const pz = cam.camera_view_point.z;
+
+          const dx = cam.camera_direction.x;
+          const dy = cam.camera_direction.y;
+          const dz = cam.camera_direction.z;
+
+          const ux = cam.camera_up_vector.x;
+          const uy = cam.camera_up_vector.y;
+          const uz = cam.camera_up_vector.z;
+
+          const bcf_px = px;
+          const bcf_py = -pz;
+          const bcf_pz = py;
+
+          const bcf_dx = dx;
+          const bcf_dy = -dz;
+          const bcf_dz = dy;
+
+          const bcf_ux = ux;
+          const bcf_uy = -uz;
+          const bcf_uz = uy;
+
+          viewpointXml = viewpointXml
+            .replace(/<CameraViewPoint>[\s\S]*?<\/CameraViewPoint>/i, `<CameraViewPoint><X>${bcf_px}</X><Y>${bcf_py}</Y><Z>${bcf_pz}</Z></CameraViewPoint>`)
+            .replace(/<CameraDirection>[\s\S]*?<\/CameraDirection>/i, `<CameraDirection><X>${bcf_dx}</X><Y>${bcf_dy}</Y><Z>${bcf_dz}</Z></CameraDirection>`)
+            .replace(/<CameraUpVector>[\s\S]*?<\/CameraUpVector>/i, `<CameraUpVector><X>${bcf_ux}</X><Y>${bcf_uy}</Y><Z>${bcf_uz}</Z></CameraUpVector>`);
+        }
 
         // PATCH: 직렬화 과정에서 누락되는 ClippingPlanes 정보를 수동으로 XML에 주입합니다.
         const clippingPlanes = (viewpoint as any).clipping_planes;
@@ -386,9 +419,12 @@ export class BCFTopics
           viewpointXml = viewpointXml.replace(/<\/VisualizationInfo>/i, `${cpXml}</VisualizationInfo>`);
         }
 
+        // PATCH: Solibri가 <Coloring> 블록을 인식하지 못하여 발생하는 오류 방지를 위해 <Coloring/> 으로 강제 변경
+        viewpointXml = viewpointXml.replace(/<Coloring[^>]*?>[\s\S]*?<\/Coloring>/gi, "<Coloring/>");
+
         topicFolder.file(
           bcfvName,
-          viewpointXml,
+          formatXml(viewpointXml),
         );
 
         const snapshotData = viewpoints.snapshots.get(viewpoint.snapshot);
@@ -941,6 +977,37 @@ export class BCFTopics
     this.onBCFImported.trigger(topics);
     return { viewpoints: createdViewpoints, topics };
   }
+}
+
+export function formatXml(xml: string): string {
+  const reg = /(>)\s*(<)(\/*)/g;
+  let wkey = xml.replace(reg, "$1\r\n$2$3");
+  let pad = 0;
+  let formatted = "";
+  const lines = wkey.split("\r\n");
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    let indent = 0;
+    if (line.match(/.+<\/\w[^>]*>$/)) {
+      indent = 0;
+    } else if (line.match(/^<\/\w/)) {
+      if (pad !== 0) {
+        pad -= 1;
+      }
+    } else if (line.match(/^<\w[^>]*[^\/]>$/) && !line.startsWith("<?xml")) {
+      indent = 1;
+    } else {
+      indent = 0;
+    }
+
+    formatted += "  ".repeat(pad) + line + "\r\n";
+    pad += indent;
+  }
+
+  return formatted.trim();
 }
 
 export * from "./src";

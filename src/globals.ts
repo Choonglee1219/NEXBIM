@@ -183,6 +183,7 @@ export const onTableCellCreated = (e: Event) => {
         const originalBg = cell.style.backgroundColor;
         cell.style.backgroundColor = "var(--bim-ui_bg-contrast-20)";
         setTimeout(() => { cell.style.backgroundColor = originalBg; }, 150);
+        alert(`복사되었습니다: ${textToCopy}`);
       } catch (err) {}
     }
   });

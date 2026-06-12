@@ -3,7 +3,7 @@ import JSZip from "jszip";
 import { SharedBCF } from "../../SharedBCF";
 import { SharedIFC } from "../../SharedIFC";
 import { BCFTopics } from "../index";
-import { BCFTopics as EngineBCFTopics } from "./engine";
+import { BCFTopics as EngineBCFTopics, formatXml } from "./engine";
 
 export class BCFFileOperations {
   private components: OBC.Components;
@@ -61,6 +61,14 @@ export class BCFFileOperations {
           const xmlStr = await markupFile.async("string");
           const parser = new DOMParser();
           const xmlDoc = parser.parseFromString(xmlStr, "application/xml");
+          
+          // Header 보존
+          const headerNode = xmlDoc.getElementsByTagName("Header")[0];
+          if (headerNode) {
+            const serializer = new XMLSerializer();
+            (topic as any).headerXml = serializer.serializeToString(headerNode);
+          }
+
           const vps = xmlDoc.getElementsByTagName("Viewpoints");
           for (let i = 0; i < vps.length; i++) {
             const vpNode = vps[i].getElementsByTagName("Viewpoint")[0];
@@ -137,6 +145,50 @@ export class BCFFileOperations {
         }
       });
 
+      // --- 새로 추가된 로직: 모든 뷰포인트 파일(*.bcfv)에서 <Exceptions> 제거 및 DefaultVisibility="true" 설정 ---
+      const bcfvFiles: string[] = [];
+      zip.forEach((relativePath) => {
+        if (relativePath.endsWith(".bcfv")) {
+          bcfvFiles.push(relativePath);
+        }
+      });
+
+      for (const bcfvPath of bcfvFiles) {
+        const bcfvFile = zip.file(bcfvPath);
+        if (bcfvFile) {
+          const xmlStr = await bcfvFile.async("string");
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(xmlStr, "application/xml");
+          
+          let modified = false;
+          const visibilityNode = xmlDoc.getElementsByTagName("Visibility")[0];
+          if (visibilityNode) {
+            visibilityNode.setAttribute("DefaultVisibility", "true");
+            const exceptionsNode = visibilityNode.getElementsByTagName("Exceptions")[0];
+            if (exceptionsNode) {
+              visibilityNode.removeChild(exceptionsNode);
+            }
+            modified = true;
+          }
+
+          const coloringNode = xmlDoc.getElementsByTagName("Coloring")[0];
+          if (coloringNode && coloringNode.hasChildNodes()) {
+            while (coloringNode.firstChild) {
+              coloringNode.removeChild(coloringNode.firstChild);
+            }
+            modified = true;
+          }
+
+          if (modified) {
+            const serializer = new XMLSerializer();
+            let newXmlStr = serializer.serializeToString(xmlDoc);
+            // 최종 방어 코드로 문자열 치환도 적용
+            newXmlStr = newXmlStr.replace(/<Coloring[^>]*?>[\s\S]*?<\/Coloring>/gi, "<Coloring/>");
+            zip.file(bcfvPath, formatXml(newXmlStr));
+          }
+        }
+      }
+
       // --- 새로 추가된 로직: 저장하기 전, 모든 토픽의 대표 뷰포인트 GUID 매핑 테이블을 생성합니다 ---
       const repMap = new Map<string, string>();
       for (const topic of this._bcf.list.values()) {
@@ -183,17 +235,21 @@ export class BCFFileOperations {
           });
 
           if (viewpointsBlocks.length > 0) {
-            // 모든 뷰포인트 블록에 순서대로 <Index> 0, 1, 2... 명시적 주입 (오염 완벽 방지)
+            // 부모 노드 내에서 물리적인 순서도 정렬된 순서에 맞춰 실제 재배치 수행
+            const parent = viewpointsBlocks[0].parentNode;
+            if (parent) {
+              for (const block of viewpointsBlocks) {
+                parent.appendChild(block);
+              }
+              markupModified = true;
+            }
+
+            // 모든 뷰포인트 블록에서 불필요하고 BCF 2.1 스키마에 어긋나는 <Index> 태그 제거
             for (let i = 0; i < viewpointsBlocks.length; i++) {
               const block = viewpointsBlocks[i];
-              let indexNode = block.getElementsByTagName("Index")[0];
-              if (!indexNode) {
-                indexNode = xmlDoc.createElement("Index");
-                indexNode.textContent = i.toString();
-                block.appendChild(indexNode);
-                markupModified = true;
-              } else if (indexNode.textContent !== i.toString()) {
-                indexNode.textContent = i.toString();
+              const indexNode = block.getElementsByTagName("Index")[0];
+              if (indexNode) {
+                block.removeChild(indexNode);
                 markupModified = true;
               }
             }
@@ -231,7 +287,7 @@ export class BCFFileOperations {
             if (markupModified) {
               const serializer = new XMLSerializer();
               const newXmlStr = serializer.serializeToString(xmlDoc);
-              zip.file(markupPath, newXmlStr);
+              zip.file(markupPath, formatXml(newXmlStr));
             }
           }
         }

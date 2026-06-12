@@ -502,12 +502,19 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       }
       const viewpoints = this.components.get(OBC.Viewpoints);
       capturedViewpoint = viewpoints.create();
-      capturedViewpoint.title = `Clash at ${res.position.x.toFixed(2)}, ${res.position.y.toFixed(2)}, ${res.position.z.toFixed(2)}`;
+      // capturedViewpoint.title = `Clash at ${res.position.x.toFixed(2)}, ${res.position.y.toFixed(2)}, ${res.position.z.toFixed(2)}`;
       capturedViewpoint.world = world;
       await capturedViewpoint.updateCamera();
     }
 
     if (capturedViewpoint) {
+      if (capturedSnapshot) {
+        const viewpoints = this.components.get(OBC.Viewpoints);
+        const base64Data = capturedSnapshot.replace(/^data:image\/\w+;base64,/, "");
+        const bytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+        viewpoints.snapshots.set(capturedViewpoint.guid, bytes);
+        capturedViewpoint.snapshot = capturedViewpoint.guid;
+      }
       const fragments = this.components.get(OBC.FragmentsManager);
       const map1 = { [res.id1.modelId]: new Set([res.id1.expressID]) };
       const map2 = { [res.id2.modelId]: new Set([res.id2.expressID]) };
@@ -518,7 +525,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       if (!capturedViewpoint.selectionComponents) capturedViewpoint.selectionComponents = new Set();
       for (const guid of guids1) capturedViewpoint.selectionComponents.add(guid);
       for (const guid of guids2) capturedViewpoint.selectionComponents.add(guid);
-      
+
       if (!capturedViewpoint.componentColors) capturedViewpoint.componentColors = new Map();
       capturedViewpoint.componentColors.set("C00000", guids1);
       capturedViewpoint.componentColors.set("00B050", guids2);
@@ -550,8 +557,8 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
          newTopic.title = title;
          newTopic.description = description;
          newTopic.creationAuthor = appState.currentUser || "System";
-         newTopic.topicType = "Clash";
-         newTopic.topicStatus = "Open";
+         newTopic.type = "Clash";
+         newTopic.status = "Open";
          newTopic.clashPoint = formattedPosition;
          newTopic.guid1 = res.id1.expressID;
          newTopic.guid2 = res.id2.expressID;
@@ -573,9 +580,9 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
             description,
             creationAuthor: appState.currentUser || "System",
             creationDate: new Date().toISOString(),
-            topicType: "Clash",
-            topicStatus: "Open",
-            viewpoints: new Set<string>(), // 에러 방지: 뷰포인트 컨테이너 초기화
+            type: "Clash",
+            status: "Open",
+            viewpoints: new Set<string>(),
             labels: new Set<string>(),
             comments: [],
             clashPoint: formattedPosition,
@@ -634,12 +641,19 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       }
       const viewpoints = this.components.get(OBC.Viewpoints);
       capturedViewpoint = viewpoints.create();
-      capturedViewpoint.title = `Group Clash at ${groupPosition.x.toFixed(2)}, ${groupPosition.y.toFixed(2)}, ${groupPosition.z.toFixed(2)}`;
+      // capturedViewpoint.title = `Group Clash at ${groupPosition.x.toFixed(2)}, ${groupPosition.y.toFixed(2)}, ${groupPosition.z.toFixed(2)}`;
       capturedViewpoint.world = world;
       await capturedViewpoint.updateCamera();
     }
 
     if (capturedViewpoint) {
+      if (capturedSnapshot) {
+        const viewpoints = this.components.get(OBC.Viewpoints);
+        const base64Data = capturedSnapshot.replace(/^data:image\/\w+;base64,/, "");
+        const bytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+        viewpoints.snapshots.set(capturedViewpoint.guid, bytes);
+        capturedViewpoint.snapshot = capturedViewpoint.guid;
+      }
       const fragments = this.components.get(OBC.FragmentsManager);
       if (!capturedViewpoint.selectionComponents) capturedViewpoint.selectionComponents = new Set();
       if (!capturedViewpoint.componentColors) capturedViewpoint.componentColors = new Map();
@@ -657,7 +671,9 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
         const map = { [obj.modelId]: new Set([obj.expressID]) };
         const guids = await fragments.modelIdMapToGuids(map);
         
-        for (const guid of guids) capturedViewpoint.selectionComponents.add(guid);
+        for (const guid of guids) {
+          capturedViewpoint.selectionComponents.add(guid);
+        }
         
         if (!capturedViewpoint.componentColors.has(colorHex)) {
           capturedViewpoint.componentColors.set(colorHex, new Set());
@@ -700,8 +716,8 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
          newTopic.title = title;
          newTopic.description = description;
          newTopic.creationAuthor = appState.currentUser || "System";
-         newTopic.topicType = "Clash";
-         newTopic.topicStatus = "Open";
+         newTopic.type = "Clash";
+         newTopic.status = "Open";
          newTopic.clashPoint = formattedPosition;
          // 그룹의 특성상 첫 번째 객체 정보를 대표값으로 저장
          newTopic.guid1 = results[0].id1.expressID;
@@ -724,8 +740,8 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
             description,
             creationAuthor: appState.currentUser || "System",
             creationDate: new Date().toISOString(),
-            topicType: "Clash",
-            topicStatus: "Open",
+            type: "Clash",
+            status: "Open",
             viewpoints: new Set<string>(),
             labels: new Set<string>(),
             comments: [],
@@ -798,7 +814,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
 
         // 뷰포인트 수동 생성 (captureViewpoint 내부의 중복 캡처 및 지연 방지)
         capturedViewpoint = viewpoints.create();
-        capturedViewpoint.title = title;
+        // capturedViewpoint.title = title;
         capturedViewpoint.world = world;
         await capturedViewpoint.updateCamera();
 
@@ -813,7 +829,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
           if (!capturedViewpoint.selectionComponents) capturedViewpoint.selectionComponents = new Set();
           for (const guid of guids1) capturedViewpoint.selectionComponents.add(guid);
           for (const guid of guids2) capturedViewpoint.selectionComponents.add(guid);
-          
+
           if (!capturedViewpoint.componentColors) capturedViewpoint.componentColors = new Map();
           capturedViewpoint.componentColors.set("C00000", guids1);
           capturedViewpoint.componentColors.set("00B050", guids2);
@@ -831,8 +847,8 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
          newTopic.title = title;
          newTopic.description = description;
          newTopic.creationAuthor = appState.currentUser || "System";
-         newTopic.topicType = "Clash";
-         newTopic.topicStatus = "Open";
+         newTopic.type = "Clash";
+         newTopic.status = "Open";
          newTopic.clashPoint = formattedPosition;
          newTopic.guid1 = res.id1.expressID;
          newTopic.guid2 = res.id2.expressID;
@@ -854,8 +870,8 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
             description,
             creationAuthor: appState.currentUser || "System",
             creationDate: new Date().toISOString(),
-            topicType: "Clash",
-            topicStatus: "Open",
+            type: "Clash",
+            status: "Open",
             viewpoints: new Set<string>(), 
             labels: new Set<string>(),
             comments: [],

@@ -647,8 +647,8 @@ export const topicListTemplate: BUI.StatefullComponent<
             if (world) {
               existingVp.world = world;
               existingVp.camera.camera_view_point.x = serverTopic.coord.x;
-              existingVp.camera.camera_view_point.y = serverTopic.coord.y;
-              existingVp.camera.camera_view_point.z = serverTopic.coord.z;
+              existingVp.camera.camera_view_point.y = serverTopic.coord.z;
+              existingVp.camera.camera_view_point.z = -serverTopic.coord.y;
               existingVp.camera.camera_direction.x = 0;
               existingVp.camera.camera_direction.y = 0;
               existingVp.camera.camera_direction.z = -1;
@@ -658,8 +658,8 @@ export const topicListTemplate: BUI.StatefullComponent<
             if (world) {
               vp.world = world;
               vp.camera.camera_view_point.x = serverTopic.coord.x;
-              vp.camera.camera_view_point.y = serverTopic.coord.y;
-              vp.camera.camera_view_point.z = serverTopic.coord.z;
+              vp.camera.camera_view_point.y = serverTopic.coord.z;
+              vp.camera.camera_view_point.z = -serverTopic.coord.y;
               vp.camera.camera_direction.x = 0;
               vp.camera.camera_direction.y = 0;
               vp.camera.camera_direction.z = -1;
