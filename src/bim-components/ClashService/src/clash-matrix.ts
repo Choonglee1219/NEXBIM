@@ -2,7 +2,7 @@ import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
 import { appIcons } from "../../../globals";
 import { Highlighter } from "../../Highlighter";
-import { getDiscipline } from "./clash-grouping";
+import { getDiscipline, clashDisciplineMap } from "./clash-grouping";
 
 export interface ClashMatrixState {
   components: OBC.Components;
@@ -27,6 +27,204 @@ const getRank = (item: string) => {
   if (item === "ETC") return 1000; // ETC는 무조건 가장 마지막
   const idx = disciplineOrder.indexOf(item);
   return idx === -1 ? 999 : idx; // 목록에 없는 분야는 ETC 바로 앞에 배치
+};
+
+const openDisciplineMapModal = () => {
+  const dialog = document.createElement("dialog");
+  dialog.style.width = "85vw";
+  dialog.style.height = "80vh";
+  dialog.style.maxWidth = "900px";
+  dialog.style.maxHeight = "700px";
+  dialog.style.padding = "1.5rem";
+  dialog.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
+  dialog.style.borderRadius = "8px";
+  dialog.style.backgroundColor = "var(--bim-ui_bg-base)";
+  dialog.style.display = "flex";
+  dialog.style.flexDirection = "column";
+  dialog.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
+  
+  const style = document.createElement("style");
+  style.textContent = `
+    dialog::backdrop {
+      background-color: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+    }
+    .modal-scroll-wrapper::-webkit-scrollbar {
+      width: 6px;
+    }
+    .modal-scroll-wrapper::-webkit-scrollbar-track {
+      background: var(--bim-ui_bg-base);
+    }
+    .modal-scroll-wrapper::-webkit-scrollbar-thumb {
+      background: var(--bim-ui_bg-contrast-20);
+      border-radius: 3px;
+    }
+    .modal-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+      background: var(--bim-ui_bg-contrast-40);
+    }
+    .discipline-card {
+      border: 1px solid var(--bim-ui_bg-contrast-20);
+      border-radius: 6px;
+      padding: 1rem;
+      background: var(--bim-ui_bg-contrast-10);
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .discipline-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--bim-ui_main-base);
+    }
+    .discipline-title {
+      font-size: 0.9rem;
+      font-weight: bold;
+      margin-bottom: 0.75rem;
+      color: var(--bim-ui_main-contrast);
+      border-bottom: 1px solid var(--bim-ui_bg-contrast-20);
+      padding-bottom: 0.25rem;
+    }
+    .entity-badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      padding: 0.25rem 0.5rem;
+      margin: 0.15rem;
+      background-color: var(--bim-ui_bg-contrast-20);
+      color: var(--bim-ui_gray-10);
+      border-radius: 4px;
+      transition: background-color 0.2s, color 0.2s;
+    }
+    .entity-badge.highlighted {
+      background-color: var(--bim-ui_main-base);
+      color: #ffffff;
+    }
+  `;
+  dialog.appendChild(style);
+
+  // Header
+  const headerDiv = document.createElement("div");
+  headerDiv.style.display = "flex";
+  headerDiv.style.justifyContent = "space-between";
+  headerDiv.style.alignItems = "center";
+  headerDiv.style.marginBottom = "1rem";
+  headerDiv.style.flexShrink = "0";
+
+  const title = document.createElement("bim-label");
+  title.textContent = "Discipline Group Mapping Guide";
+  title.style.fontSize = "1.1rem";
+  title.style.fontWeight = "bold";
+  headerDiv.appendChild(title);
+
+  // Search input
+  const searchInput = document.createElement("input");
+  searchInput.placeholder = "Search IFC Category (e.g. BEAM, PUMP)...";
+  searchInput.style.padding = "0.4rem 0.8rem";
+  searchInput.style.fontSize = "0.75rem";
+  searchInput.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
+  searchInput.style.borderRadius = "4px";
+  searchInput.style.backgroundColor = "var(--bim-ui_bg-contrast-10)";
+  searchInput.style.color = "var(--bim-ui_main-contrast)";
+  searchInput.style.width = "250px";
+  searchInput.style.marginLeft = "auto";
+  searchInput.style.marginRight = "1rem";
+  headerDiv.appendChild(searchInput);
+
+  // Close Button
+  const closeBtn = document.createElement("bim-button");
+  (closeBtn as any).label = "Close";
+  (closeBtn as any).title = "Close";
+  closeBtn.addEventListener("click", () => dialog.close());
+  headerDiv.appendChild(closeBtn);
+
+  dialog.appendChild(headerDiv);
+
+  // Body Container
+  const bodyDiv = document.createElement("div");
+  bodyDiv.className = "modal-scroll-wrapper";
+  bodyDiv.style.flex = "1";
+  bodyDiv.style.overflowY = "auto";
+  bodyDiv.style.display = "grid";
+  bodyDiv.style.gridTemplateColumns = "repeat(auto-fill, minmax(250px, 1fr))";
+  bodyDiv.style.gap = "1rem";
+  bodyDiv.style.padding = "0.25rem";
+  
+  // Render cards
+  const cards: { cardEl: HTMLDivElement; badges: { badgeEl: HTMLSpanElement; text: string }[] }[] = [];
+
+  for (const [disc, entities] of Object.entries(clashDisciplineMap)) {
+    const card = document.createElement("div");
+    card.className = "discipline-card";
+
+    const discTitle = document.createElement("div");
+    discTitle.className = "discipline-title";
+    discTitle.textContent = `${disc} (${entities.length})`;
+    card.appendChild(discTitle);
+
+    const badgeContainer = document.createElement("div");
+    badgeContainer.style.display = "flex";
+    badgeContainer.style.flexWrap = "wrap";
+
+    const badgeList: { badgeEl: HTMLSpanElement; text: string }[] = [];
+
+    entities.forEach(entity => {
+      const badge = document.createElement("span");
+      badge.className = "entity-badge";
+      badge.textContent = entity;
+      badgeContainer.appendChild(badge);
+      badgeList.push({ badgeEl: badge, text: entity.toUpperCase() });
+    });
+
+    card.appendChild(badgeContainer);
+    bodyDiv.appendChild(card);
+
+    cards.push({ cardEl: card, badges: badgeList });
+  }
+
+  dialog.appendChild(bodyDiv);
+
+  // Search filter handler
+  searchInput.addEventListener("input", () => {
+    const query = searchInput.value.trim().toUpperCase();
+    
+    cards.forEach(({ cardEl, badges }) => {
+      let visibleCount = 0;
+      
+      badges.forEach(({ badgeEl, text }) => {
+        if (!query) {
+          badgeEl.style.display = "inline-block";
+          badgeEl.classList.remove("highlighted");
+          visibleCount++;
+        } else if (text.includes(query)) {
+          badgeEl.style.display = "inline-block";
+          badgeEl.classList.add("highlighted");
+          visibleCount++;
+        } else {
+          badgeEl.style.display = "none";
+          badgeEl.classList.remove("highlighted");
+        }
+      });
+
+      if (visibleCount > 0) {
+        cardEl.style.display = "block";
+      } else {
+        cardEl.style.display = "none";
+      }
+    });
+  });
+
+  dialog.addEventListener("click", (e: MouseEvent) => {
+    const rect = dialog.getBoundingClientRect();
+    const isClickInside =
+      rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
+      rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
+    if (!isClickInside) {
+      dialog.close();
+    }
+  });
+
+  dialog.addEventListener("close", () => {
+    dialog.remove();
+  });
+
+  document.body.appendChild(dialog);
+  dialog.showModal();
 };
 
 export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (state) => {
@@ -590,6 +788,7 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
             <input type="radio" name="matrixMode" value="Discipline" ?checked=${matrixViewMode === "Discipline"} @change=${onMatrixModeChange} style="margin: 0; cursor: pointer; accent-color: var(--bim-ui_main-base);">
             <bim-label style="pointer-events: none; margin: 0; font-size: 0.75rem;">Discipline</bim-label>
           </label>
+          <bim-button @click=${openDisciplineMapModal} icon=${appIcons.HELP} tooltip-title="Discipline Mapping Guide" style="margin-left: 0.25rem; height: 1.5rem; width: 1.5rem;"></bim-button>
         </div>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
           <bim-label ${BUI.ref(e => {

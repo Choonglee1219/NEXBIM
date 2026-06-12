@@ -100,23 +100,21 @@ export const modelTreePanelTemplate: BUI.StatefullComponent<
 
   return BUI.html`
     <bim-panel-section fixed icon=${appIcons.TREE} label="Model Tree">
-      <div style="display: flex; flex-direction: column; gap: 0.375rem; flex: 0;">
-        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; align-items: center; margin-bottom: 0.125rem;">
-          <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
-            <input type="radio" name="treeType" value="spatial" checked @change=${onTreeTypeChange} style="margin: 0; cursor: pointer; accent-color: var(--bim-ui_main-base);">
-            <bim-label style="pointer-events: none;">Spatial</bim-label>
-          </label>
-          <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
-            <input type="radio" name="treeType" value="entity" @change=${onTreeTypeChange} style="margin: 0; cursor: pointer; accent-color: var(--bim-ui_main-base);">
-            <bim-label style="pointer-events: none;">Entity</bim-label>
-          </label>
-        </div>
-        <div style="display: flex; gap: 0.375rem; flex: 0;">
-          <bim-text-input ${BUI.ref((e) => { searchInput = e as BUI.TextInput; })} @input=${onSearch} vertical placeholder="Search..." debounce="200" style="flex: 1;"></bim-text-input>
-          <bim-button style="flex: 0;" @click=${onClearSearch} icon=${appIcons.CLEAR} tooltip-title="Clear Search"></bim-button>
-          <bim-button style="flex: 0;" @click=${toggleExpanded} icon=${appIcons.EXPAND} tooltip-title="Toggle Expanded"></bim-button>
-          <bim-button style="flex: 0;" @click=${onSearchSelection} icon=${appIcons.SEARCH} tooltip-title="Search Selection"></bim-button>
-        </div>
+      <div slot="header-end" style="display: flex; gap: 0.75rem; align-items: center; margin-right: 0.5rem;" @click=${(e: Event) => e.stopPropagation()}>
+        <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
+          <input type="radio" name="treeType" value="spatial" checked @change=${onTreeTypeChange} style="margin: 0; cursor: pointer; accent-color: var(--bim-ui_main-base);">
+          <bim-label style="pointer-events: none;">Spatial</bim-label>
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
+          <input type="radio" name="treeType" value="entity" @change=${onTreeTypeChange} style="margin: 0; cursor: pointer; accent-color: var(--bim-ui_main-base);">
+          <bim-label style="pointer-events: none;">Entity</bim-label>
+        </label>
+      </div>
+      <div style="display: flex; gap: 0.375rem; flex: 0; margin-bottom: 0.375rem;">
+        <bim-text-input ${BUI.ref((e) => { searchInput = e as BUI.TextInput; })} @input=${onSearch} vertical placeholder="Search..." debounce="200" style="flex: 1;"></bim-text-input>
+        <bim-button style="flex: 0;" @click=${onClearSearch} icon=${appIcons.CLEAR} tooltip-title="Clear Search"></bim-button>
+        <bim-button style="flex: 0;" @click=${toggleExpanded} icon=${appIcons.EXPAND} tooltip-title="Toggle Expanded"></bim-button>
+        <bim-button style="flex: 0;" @click=${onSearchSelection} icon=${appIcons.SEARCH} tooltip-title="Search Selection"></bim-button>
       </div>
       <div style="display: flex; flex-direction: column; flex: 1; overflow: auto; min-height: 0; border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; padding-top: 0.25rem;">
         ${spatialTreeTable}

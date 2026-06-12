@@ -301,10 +301,13 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     await processAndSaveIfc(fileToLoad);
   });
 
-  const onSearch = (e: Event) => {
+  const onLoadedSearch = (e: Event) => {
     const input = e.target as BUI.TextInput;
     loadedTable.queryString = input.value;
+  };
 
+  const onSharedSearch = (e: Event) => {
+    const input = e.target as BUI.TextInput;
     // FRAG 테이블은 자체 검색 기능을 사용합니다.
     fragTable.queryString = input.value;
     // IFC 테이블도 자체 검색 기능을 사용합니다.
@@ -773,10 +776,9 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
   return BUI.html`
     <bim-panel-section icon=${appIcons.MODEL} label="IFC List">
-      <div style="display: flex; gap: 0.375rem; align-items: center;">
-        <bim-text-input @input=${onSearch} vertical placeholder="Search..." debounce="200" style="flex: 1;"></bim-text-input>
-        <bim-button style="flex: 0;" icon=${appIcons.ADD} @click=${onAddIfcModel} title="Import Model"></bim-button>
-        <bim-button style="flex: 0;" icon=${appIcons.ADDBOX} @click=${onProcessEdbData} title="Fetch EDB and Import Model"></bim-button>
+      <div slot="header-end" style="display: flex; gap: 0.375rem; align-items: center; margin-right: 0.5rem;">
+        <bim-button @click=${(e: Event) => { e.stopPropagation(); onAddIfcModel(e); }} icon=${appIcons.ADD} title="Import Model" style="flex: 0;"></bim-button>
+        <bim-button @click=${(e: Event) => { e.stopPropagation(); onProcessEdbData(e); }} icon=${appIcons.ADDBOX} title="Import Model with EDB data" style="flex: 0;"></bim-button>
       </div>
       <div data-flex="false" style="display: flex; flex-direction: column; gap: 0.25rem;">
         <div @click=${onToggleSection} style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
@@ -792,8 +794,13 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
             <bim-button @click=${(e: Event) => { e.stopPropagation(); onDisposeSelectedModels(); }} label="Dispose" style="flex: 0;"></bim-button>
           </div>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 0.25rem; color: var(--bim-ui_gray-10); border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; padding: 0rem; overflow-y: auto; height: 8rem; min-height: 8rem; flex-shrink: 0;">
-          ${loadedTable}
+        <div style="display: flex; flex-direction: column; gap: 0.25rem; overflow-y: auto; height: 8.5rem; min-height: 8.5rem; flex-shrink: 0;">
+          <div style="display: flex; gap: 0.375rem; align-items: center;">
+            <bim-text-input @input=${onLoadedSearch} vertical placeholder="Search..." debounce="200" style="flex: 1;"></bim-text-input>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 0.25rem; color: var(--bim-ui_gray-10); border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; padding: 0rem; overflow-y: auto; flex: 1; min-height: 0;">
+            ${loadedTable}
+          </div>
         </div>
       </div>
       
@@ -816,6 +823,9 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
           </div>
         </div>
         <div style="display: flex; flex-direction: column; gap: 0.25rem; overflow-y: auto; flex: 1; min-height: 0;">
+          <div style="display: flex; gap: 0.375rem; align-items: center;">
+            <bim-text-input @input=${onSharedSearch} vertical placeholder="Search..." debounce="200" style="flex: 1;"></bim-text-input>
+          </div>
           ${groupBadges}
           <div style="display: flex; flex-direction: column; gap: 0.25rem; color: var(--bim-ui_gray-10); border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; padding: 0rem; overflow-y: auto; flex: 1;">
             ${fragTable}
