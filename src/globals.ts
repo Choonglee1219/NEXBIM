@@ -153,6 +153,34 @@ export const tableDefaultContentTemplate = (value: any) => {
   return BUI.html`<bim-label style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; width: 100%;" title=${text}>${text}</bim-label>`;
 };
 
+const copyToClipboard = (text: string): Promise<void> => {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  } else {
+    return new Promise((resolve, reject) => {
+      try {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand("copy");
+        document.body.removeChild(textArea);
+        if (successful) {
+          resolve();
+        } else {
+          reject(new Error("Copy command failed"));
+        }
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+};
+
 export const onTableCellCreated = (e: Event) => {
   const { detail } = e as CustomEvent<BUI.CellCreatedEventDetail<any>>;
   if (!detail) return;
@@ -179,7 +207,7 @@ export const onTableCellCreated = (e: Event) => {
     }
     if (textToCopy) {
       try {
-        await navigator.clipboard.writeText(textToCopy);
+        await copyToClipboard(textToCopy);
         const originalBg = cell.style.backgroundColor;
         cell.style.backgroundColor = "var(--bim-ui_bg-contrast-20)";
         setTimeout(() => { cell.style.backgroundColor = originalBg; }, 150);
