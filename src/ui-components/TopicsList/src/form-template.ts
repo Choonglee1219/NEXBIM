@@ -90,6 +90,16 @@ export interface TopicFormUI {
    * (Optional) The UI component for the comments section to be displayed on the right half.
    */
   commentsUI?: any;
+
+  /**
+   * (Optional) Flag to indicate whether the comments sidebar is expanded.
+   */
+  isCommentsExpanded?: boolean;
+
+  /**
+   * (Optional) Callback function to toggle the comments sidebar.
+   */
+  onToggleComments?: () => void;
 }
 
 const valueTransform: Record<string, (value: any) => any> = {
@@ -127,7 +137,7 @@ const valueTransform: Record<string, (value: any) => any> = {
   },
 };
 
-export const topicFormTemplate = (state: TopicFormUI) => {
+export const topicFormTemplate = (state: TopicFormUI, _update?: (state: Partial<TopicFormUI>) => void) => {
   const {
     components,
     topic,
@@ -139,6 +149,16 @@ export const topicFormTemplate = (state: TopicFormUI) => {
   } = state;
   const onSubmit = _onSubmit ?? (() => {});
   const bcfTopics = components.get(EngineBCFTopics);
+
+  const isExpanded = state.isCommentsExpanded ?? false;
+
+  const commentsList = Array.from(topic?.comments.values() ?? []);
+  const commentedViewpoints = new Set(
+    commentsList
+      .map((c: any) => c.viewpoint)
+      .filter((vp) => !!vp)
+  );
+  const viewpointsCount = commentedViewpoints.size;
 
   const title = value?.title ?? topic?.title ?? EngineTopic.default.title;
   const status = value?.status ?? topic?.status ?? EngineTopic.default.status;
@@ -271,7 +291,7 @@ export const topicFormTemplate = (state: TopicFormUI) => {
       <!-- Main Split Content -->
       <div style="display: flex; gap: 0.5rem; flex: 1; min-height: 0;">
         <!-- Left Half: Topic Details -->
-        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding-right: 0.5rem; box-sizing: border-box;">
+        <div style="${isExpanded ? 'width: var(--left-col-width, 25rem); flex: none;' : 'flex: 1;'} min-width: 0; display: flex; flex-direction: column; padding-right: 0.5rem; box-sizing: border-box;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; flex-shrink: 0;">
             <bim-label style="font-weight: bold;">Topic Details</bim-label>
           </div>
@@ -324,7 +344,7 @@ export const topicFormTemplate = (state: TopicFormUI) => {
                 <bim-text-input vertical label="Description" name="description" type="area" rows="4" .value=${description}></bim-text-input>
               </div>
             </div>
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.375rem; flex-shrink: 0;">
+            <div style="display: grid; grid-template-columns: ${isExpanded ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)'}; gap: 0.375rem; flex-shrink: 0;">
             <bim-dropdown vertical label="Type" name="type" required ${BUI.ref(setupDropdown([...types].map(t => ({label: t, value: t})), type))}></bim-dropdown>
             <bim-dropdown vertical label="Status" name="status" required ${BUI.ref(setupDropdown([...statuses].map(s => ({label: s, value: s})), status))}></bim-dropdown>
             <bim-dropdown vertical label="Author" name="creationAuthor" ?disabled=${!appState.isAdmin} style=${!appState.isAdmin ? "pointer-events: none; opacity: 0.5;" : ""} ${BUI.ref(setupDropdown([...users].map(u => ({ label: styles?.users?.[u]?.name || u, value: u, img: styles?.users?.[u]?.picture })), creationAuthor))}></bim-dropdown>
@@ -337,15 +357,33 @@ export const topicFormTemplate = (state: TopicFormUI) => {
         </div>
       </div>
 
-        <!-- Right Half: Comments -->
-        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--bim-ui_bg-contrast-20); padding-left: 0.5rem;">
-          ${state.commentsUI ? state.commentsUI : (!topic ? BUI.html`
-            <div style="display: flex; flex-direction: column; height: 100%; justify-content: center; align-items: center; opacity: 0.5; gap: 0.5rem;">
-              <bim-label icon=${appIcons.COMMENT} style="--bim-icon--fz: 3rem;"></bim-label>
-              <bim-label style="font-style: italic;">You can add comments after creating the topic.</bim-label>
+        <!-- Right Half: Collapsible Comments Sidebar -->
+        ${isExpanded ? BUI.html`
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--bim-ui_bg-contrast-20); padding-left: 0.5rem; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; flex-shrink: 0;">
+              <bim-label style="font-weight: bold;">Comments</bim-label>
+              <bim-button icon=${appIcons.RIGHT} title="Collapse Comments" @click=${state.onToggleComments} style="margin: 0;"></bim-button>
             </div>
-          ` : "")}
-        </div>
+            <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+              ${state.commentsUI ? state.commentsUI : (!topic ? BUI.html`
+                <div style="display: flex; flex-direction: column; height: 100%; justify-content: center; align-items: center; opacity: 0.5; gap: 0.5rem;">
+                  <bim-label icon=${appIcons.COMMENT} style="--bim-icon--fz: 3rem;"></bim-label>
+                  <bim-label style="font-style: italic;">You can add comments after creating the topic.</bim-label>
+                </div>
+              ` : "")}
+            </div>
+          </div>
+        ` : BUI.html`
+          <div style="width: 2.5rem; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; border-left: 1px solid var(--bim-ui_bg-contrast-20); padding-left: 0.25rem; gap: 0.75rem; box-sizing: border-box; padding-top: 0.5rem;">
+            <bim-button icon=${appIcons.LEFT} title="Expand Comments" @click=${state.onToggleComments} style="margin: 0; width: 100%; box-sizing: border-box;"></bim-button>
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; margin-top: 0.5rem; cursor: pointer; width: 100%;" title="Comments (Click to Expand)" @click=${state.onToggleComments}>
+              <bim-label icon=${appIcons.COMMENT} style="--bim-icon--fz: 1.5rem; margin: 0; opacity: 0.7;"></bim-label>
+              ${viewpointsCount > 0 ? BUI.html`
+                <div style="position: absolute; top: -5px; right: 2px; background-color: var(--bim-ui_accent, #3880ff); color: var(--bim-ui_accent-contrast, #ffffff); font-size: 0.7rem; font-weight: bold; border-radius: 50%; min-width: 1.1rem; height: 1.1rem; display: flex; align-items: center; justify-content: center; padding: 2px; box-sizing: border-box; line-height: 1; border: 1.5px solid var(--bim-ui_bg-base, #ffffff); transform: translate(30%, -20%);" title="${viewpointsCount} Viewpoint Groups in Comments">${viewpointsCount}</div>
+              ` : ""}
+            </div>
+          </div>
+        `}
       </div>
 
       <!-- Bottom Actions -->

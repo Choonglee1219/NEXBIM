@@ -49,92 +49,7 @@ const copyViewpoint = (src: any, dest: any) => {
 export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => {
   const bcf = components.get(EngineBCFTopics);
 
-  const syncTopicWithTDVS = async (components: OBC.Components, bcfTopics: any) => {
-    const fragments = components.get(OBC.FragmentsManager);
-    const loadedModelNames = Array.from(fragments.list.values())
-      .map(m => (m as any).name)
-      .filter(name => !!name);
 
-    if (loadedModelNames.length === 0) return;
-
-    try {
-      const response = await fetch(`/api/bcf/sync?priFiles=${encodeURIComponent(loadedModelNames.join(','))}`);
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const serverTopics = await response.json();
-      if (serverTopics.length === 0) return;
-
-      const viewpoints = components.get(OBC.Viewpoints);
-      const worlds = components.get(OBC.Worlds);
-      const world = worlds.list.values().next().value;
-      const localTopics = Array.from(bcfTopics._bcf.list.values()) as any[];
-
-      for (const serverTopic of serverTopics) {
-        let topic: any = localTopics.find((t: any) => t.mrimsNo === serverTopic.mrimsNo);
-        if (!topic) {
-          topic = localTopics.find((t: any) => {
-            if (t.mrimsNo) return false;
-            const dateDiff = Math.abs(new Date(t.creationDate).getTime() - new Date(serverTopic.creationDate).getTime());
-            return t.title === serverTopic.title && dateDiff < 5000;
-          });
-          if (topic) topic.mrimsNo = serverTopic.mrimsNo;
-        }
-
-        let isNewTopic = false;
-        if (!topic) {
-          topic = bcfTopics._bcf.create();
-          topic.mrimsNo = serverTopic.mrimsNo;
-          isNewTopic = true;
-        }
-
-        topic.title = serverTopic.title;
-        topic.description = serverTopic.description;
-        topic.type = serverTopic.type;
-        if (!topic.status) topic.status = "Open";
-        topic.priority = serverTopic.priority;
-        topic.creationAuthor = serverTopic.creationAuthor;
-        topic.creationDate = new Date(serverTopic.creationDate);
-        topic.assignedTo = serverTopic.assignedTo;
-        topic.dueDate = serverTopic.dueDate ? new Date(serverTopic.dueDate) : undefined;
-        if (serverTopic.priFile) topic.priFile = serverTopic.priFile;
-
-        if (serverTopic.coord && isNewTopic) {
-          let existingVp: any = null;
-          if (topic.viewpoints.size > 0) {
-            const firstVpGuid = Array.from(topic.viewpoints)[0] as string;
-            existingVp = viewpoints.list.get(firstVpGuid);
-          }
-
-          if (existingVp) {
-            if (world) {
-              existingVp.world = world;
-              existingVp.camera.camera_view_point = {
-                x: serverTopic.coord.x,
-                y: serverTopic.coord.z,
-                z: -serverTopic.coord.y
-              };
-              existingVp.camera.camera_direction = { x: 0, y: 0, z: -1 };
-              existingVp.camera.camera_up_vector = { x: 0, y: 1, z: 0 };
-            }
-          } else {
-            const vp = viewpoints.create();
-            if (world) {
-              vp.world = world;
-              vp.camera.camera_view_point = {
-                x: serverTopic.coord.x,
-                y: serverTopic.coord.z,
-                z: -serverTopic.coord.y
-              };
-              vp.camera.camera_direction = { x: 0, y: 0, z: -1 };
-              vp.camera.camera_up_vector = { x: 0, y: 1, z: 0 };
-            }
-            topic.viewpoints.add(vp.guid);
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error syncing BCF from TDVS inside comments UI:", error);
-    }
-  };
 
   const commentsContainer = document.createElement("div");
   commentsContainer.style.display = "flex";
@@ -145,273 +60,20 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
   commentsContainer.style.overflow = "hidden";
   commentsContainer.style.marginBottom = "0.5rem";
   commentsContainer.style.paddingRight = "0.5rem";
+  commentsContainer.style.flexDirection = "row";
 
   let currentCommentPage = 0;
   let isAddingNewComment = false;
-  let activeViewpointGuid: string | null = null;
 
   let pendingCommentViewpoint: any = null;
   let pendingCommentSnapshot: string | null = null;
 
-  // 헤더에 붙일 페이지네이션 컨테이너를 미리 생성해 둡니다.
-  const paginationContainer = document.createElement("div");
-  paginationContainer.style.display = "flex";
-  paginationContainer.style.alignItems = "center";
-  paginationContainer.style.gap = "0.5rem";
+  // Cache variables for TDVS comments
+  let tdvsComments: any[] = [];
+  let isFetchingTdvsComments = false;
+  let lastFetchedTopicGuid: string | null = null;
 
-  // TDVS 댓글 수동 동기화 버튼 생성
-  const tdvsBtn = document.createElement("bim-button") as BUI.Button;
-  tdvsBtn.icon = appIcons.REFRESH;
-  tdvsBtn.style.margin = "0";
-  tdvsBtn.title = "Sync TDVS Comments";
-  tdvsBtn.style.display = "none";
 
-  const showTdvsCommentsModal = (virtualComments: any[], topic: EngineTopic) => {
-    const dialog = document.createElement("dialog");
-    dialog.style.width = "90vw";
-    dialog.style.height = "80vh";
-    dialog.style.maxWidth = "1100px";
-    dialog.style.maxHeight = "700px";
-    dialog.style.padding = "1.5rem";
-    dialog.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
-    dialog.style.borderRadius = "8px";
-    dialog.style.backgroundColor = "var(--bim-ui_bg-base)";
-    dialog.style.display = "flex";
-    dialog.style.flexDirection = "column";
-    dialog.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
-    dialog.style.color = "var(--bim-ui_bg-contrast-100)";
-
-    const style = document.createElement("style");
-    style.textContent = `
-      dialog::backdrop { background-color: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); }
-      .tdvs-modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1rem;
-        flex-shrink: 0;
-      }
-      .tdvs-modal-title {
-        font-size: 1.25rem;
-        font-weight: bold;
-      }
-      .tdvs-table-container {
-        flex: 1;
-        overflow: auto;
-        border: 1px solid var(--bim-ui_bg-contrast-20);
-        border-radius: 4px;
-        margin-bottom: 1rem;
-      }
-      .tdvs-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.8rem;
-      }
-      .tdvs-table th, .tdvs-table td {
-        border: 1px solid var(--bim-ui_bg-contrast-20);
-        padding: 0.75rem;
-        text-align: left;
-        vertical-align: top;
-      }
-      .tdvs-table th {
-        background-color: var(--bim-ui_bg-contrast-10);
-        font-weight: bold;
-        position: sticky;
-        top: 0;
-        z-index: 1;
-      }
-      .tdvs-table tr:hover {
-        background-color: var(--bim-ui_bg-contrast-5);
-      }
-      .tdvs-comment-meta {
-        font-size: 0.7rem;
-        color: var(--bim-ui_gray-10);
-        margin-top: 0.25rem;
-      }
-      .tdvs-import-btn {
-        margin: 0;
-        width: 100%;
-        box-sizing: border-box;
-      }
-    `;
-    dialog.appendChild(style);
-
-    // 헤더 구성
-    const headerDiv = document.createElement("div");
-    headerDiv.className = "tdvs-modal-header";
-    
-    const title = document.createElement("span");
-    title.className = "tdvs-modal-title";
-    title.textContent = `TDVS Comments (Topic No: ${(topic as any).mrimsNo})`;
-    headerDiv.appendChild(title);
-
-    const closeBtn = document.createElement("bim-button") as BUI.Button;
-    closeBtn.icon = appIcons.CLEAR;
-    closeBtn.style.margin = "0";
-    closeBtn.addEventListener("click", () => dialog.close());
-    headerDiv.appendChild(closeBtn);
-    
-    dialog.appendChild(headerDiv);
-
-    // 테이블 컨테이너
-    const tableContainer = document.createElement("div");
-    tableContainer.className = "tdvs-table-container custom-scrollbar";
-
-    // 중복 체크용 로컬 댓글 목록
-    const localComments = Array.from(topic.comments.values());
-    const isAlreadyImported = (text: string) => {
-      return localComments.some(lc => lc.comment === text);
-    };
-
-    if (virtualComments.length === 0) {
-      const noData = document.createElement("div");
-      noData.style.padding = "2rem";
-      noData.style.textAlign = "center";
-      noData.style.color = "var(--bim-ui_gray-10)";
-      noData.textContent = "조회된 TDVS 댓글 데이터가 없습니다.";
-      tableContainer.appendChild(noData);
-    } else {
-      const table = document.createElement("table");
-      table.className = "tdvs-table";
-      
-      const thead = document.createElement("thead");
-      thead.innerHTML = `
-        <tr>
-          <th style="width: 5%;">No</th>
-          <th style="width: 10%;">Type</th>
-          <th style="width: 45%;">Comment</th>
-          <th style="width: 25%;">Coordinates (X, Y, Z)</th>
-          <th style="width: 15%;">Action</th>
-        </tr>
-      `;
-      table.appendChild(thead);
-
-      const tbody = document.createElement("tbody");
-      virtualComments.forEach((vCmt: any) => {
-        const tr = document.createElement("tr");
-        
-        // No.
-        const tdNo = document.createElement("td");
-        tdNo.textContent = vCmt.commentNo;
-        tr.appendChild(tdNo);
-
-        // Type
-        const tdType = document.createElement("td");
-        tdType.textContent = vCmt.type;
-        tdType.style.fontWeight = "bold";
-        tdType.style.color = vCmt.type === "Review" ? "var(--bim-ui_accent)" : "var(--bim-ui_gray-10)";
-        tr.appendChild(tdType);
-
-        // Comment
-        const tdComment = document.createElement("td");
-        const textSpan = document.createElement("span");
-        textSpan.style.whiteSpace = "pre-wrap";
-        textSpan.style.wordBreak = "break-all";
-        textSpan.textContent = vCmt.text;
-        tdComment.appendChild(textSpan);
-        
-        if (vCmt.author || vCmt.date) {
-          const metaDiv = document.createElement("div");
-          metaDiv.className = "tdvs-comment-meta";
-          const dateStr = vCmt.date ? new Date(vCmt.date).toLocaleString() : "";
-          metaDiv.textContent = `Author: ${vCmt.author || "Admin"} ${dateStr ? `| Date: ${dateStr}` : ""}`;
-          tdComment.appendChild(metaDiv);
-        }
-        tr.appendChild(tdComment);
-
-        // Coordinates
-        const tdCoord = document.createElement("td");
-        if (vCmt.coord) {
-          const cx = vCmt.coord.x !== null ? vCmt.coord.x.toFixed(2) : "0.00";
-          const cy = vCmt.coord.y !== null ? vCmt.coord.y.toFixed(2) : "0.00";
-          const cz = vCmt.coord.z !== null ? vCmt.coord.z.toFixed(2) : "0.00";
-          tdCoord.textContent = `X: ${cx}, Y: ${cy}, Z: ${cz}`;
-        } else {
-          tdCoord.textContent = "-";
-        }
-        tr.appendChild(tdCoord);
-
-        // Action
-        const tdAction = document.createElement("td");
-        const impBtn = document.createElement("bim-button") as BUI.Button;
-        const isImported = isAlreadyImported(vCmt.text);
-        
-        if (isImported) {
-          impBtn.label = "Imported";
-          impBtn.disabled = true;
-        } else {
-          impBtn.label = "Import";
-        }
-        
-        impBtn.className = "tdvs-import-btn";
-        impBtn.addEventListener("click", () => {
-          if (!activeViewpointGuid) {
-            alert("현재 활성화된 뷰포인트(Viewpoint) 페이지가 없습니다. 왼쪽에서 3D 뷰를 복원(Restore 3D View)하여 뷰포인트가 활성화된 페이지로 이동한 후 다시 시도해 주세요.");
-            return;
-          }
-          
-          if (confirm(`이 ${vCmt.type} Comment를 현재 뷰포인트 그룹에 추가하시겠습니까?`)) {
-            impBtn.loading = true;
-            try {
-              const newComment = bcfTopics.addComment(topic.guid, vCmt.text);
-              if (newComment) {
-                newComment.viewpoint = activeViewpointGuid;
-                if (vCmt.author) newComment.author = vCmt.author;
-                if (vCmt.date) newComment.date = new Date(vCmt.date);
-              }
-              renderComments(topic);
-              
-              impBtn.label = "Imported";
-              impBtn.disabled = true;
-              alert("성공적으로 추가되었습니다.");
-            } catch (err) {
-              alert(`추가 실패: ${err instanceof Error ? err.message : String(err)}`);
-            } finally {
-              impBtn.loading = false;
-            }
-          }
-        });
-        tdAction.appendChild(impBtn);
-        tr.appendChild(tdAction);
-
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody);
-      tableContainer.appendChild(table);
-    }
-    
-    dialog.appendChild(tableContainer);
-
-    const footerDiv = document.createElement("div");
-    footerDiv.style.display = "flex";
-    footerDiv.style.justifyContent = "flex-end";
-    footerDiv.style.flexShrink = "0";
-
-    const footerCloseBtn = document.createElement("bim-button") as BUI.Button;
-    footerCloseBtn.label = "Close";
-    footerCloseBtn.style.margin = "0";
-    footerCloseBtn.addEventListener("click", () => dialog.close());
-    footerDiv.appendChild(footerCloseBtn);
-    
-    dialog.appendChild(footerDiv);
-
-    dialog.addEventListener("click", (e: MouseEvent) => {
-      const rect = dialog.getBoundingClientRect();
-      const isClickInside =
-        rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
-        rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
-      if (!isClickInside) {
-        dialog.close();
-      }
-    });
-
-    dialog.addEventListener("close", () => {
-      dialog.remove();
-    });
-
-    document.body.appendChild(dialog);
-    dialog.showModal();
-  };
 
   const getCommentSnapshotUrl = (comment: any) => {
     if (comment.snapshot) return comment.snapshot;
@@ -433,93 +95,180 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
 
   const renderComments = (topic: EngineTopic, forceSync = false, targetViewpointGuid?: string) => {
     commentsContainer.innerHTML = "";
-    paginationContainer.innerHTML = "";
 
-    const mrimsNoBefore = (topic as any).mrimsNo;
+    const mrimsNo = (topic as any).mrimsNo;
+    if (mrimsNo && (lastFetchedTopicGuid !== topic.guid || forceSync)) {
+      if (!isFetchingTdvsComments) {
+        isFetchingTdvsComments = true;
+        fetch(`/api/bcf/comments?mrimsNo=${mrimsNo}`)
+          .then(res => res.json())
+          .then(data => {
+            tdvsComments = data;
+            lastFetchedTopicGuid = topic.guid;
+            isFetchingTdvsComments = false;
+            renderComments(topic);
+          })
+          .catch(err => {
+            console.error("Error fetching TDVS comments:", err);
+            isFetchingTdvsComments = false;
+          });
+      }
+    } else if (!mrimsNo) {
+      tdvsComments = [];
+      lastFetchedTopicGuid = topic.guid;
+    }
 
-    const checkAndActivateTdvsBtn = async (mrimsNo: string) => {
-      try {
-        const res = await fetch(`/api/bcf/comments?mrimsNo=${mrimsNo}`);
-        if (!res.ok) throw new Error();
-        const comments = await res.json();
+    const localCommentsForFlat = Array.from(topic.comments.values());
+    const isAlreadyImported = (text: string) => {
+      return localCommentsForFlat.some(lc => lc.comment === text);
+    };
 
-        const localComments = Array.from(topic.comments.values());
-        const isAlreadyImported = (text: string) => {
-          return localComments.some(lc => lc.comment === text);
-        };
-
-        const hasSyncData = comments.some((item: any) => {
-          const checkPart = (commentObj: any) => {
-            if (!commentObj || !commentObj.comment) return false;
-            const parts = commentObj.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
-            return parts.some((partText: string) => !isAlreadyImported(partText));
-          };
-          return checkPart(item.reviewComment) || checkPart(item.solveComment);
+    const flatTdvsComments: any[] = [];
+    tdvsComments.forEach((item: any) => {
+      const coord = item.coord || null;
+      if (item.reviewComment && item.reviewComment.comment) {
+        const parts = item.reviewComment.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
+        parts.forEach((part: string) => {
+          if (!isAlreadyImported(part)) {
+            flatTdvsComments.push({
+              commentNo: item.commentNo,
+              text: part,
+              author: item.reviewComment.author || "",
+              date: item.reviewComment.date,
+              type: "Review",
+              coord: coord
+            });
+          }
         });
+      }
+      if (item.solveComment && item.solveComment.comment) {
+        const parts = item.solveComment.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
+        parts.forEach((part: string) => {
+          if (!isAlreadyImported(part)) {
+            flatTdvsComments.push({
+              commentNo: item.commentNo,
+              text: part,
+              author: item.solveComment.author || "",
+              date: item.solveComment.date,
+              type: "Solve",
+              coord: coord
+            });
+          }
+        });
+      }
+    });
 
-        if (hasSyncData) {
-          tdvsBtn.disabled = false;
-          tdvsBtn.active = true;
-          tdvsBtn.style.setProperty("--bim-button--bg", "var(--bim-ui_accent)");
-          tdvsBtn.style.setProperty("--bim-button--c", "var(--bim-ui_accent-contrast)");
-        } else {
-          tdvsBtn.disabled = true;
-          tdvsBtn.active = false;
-          tdvsBtn.style.removeProperty("--bim-button--bg");
-          tdvsBtn.style.removeProperty("--bim-button--c");
-        }
+    const viewpoints = components.get(OBC.Viewpoints);
 
-        tdvsBtn.onclick = async () => {
-          // 중복 체크용 로컬 댓글 목록
+    const getMatchingServerComments = (vpGuid: string | null) => {
+      if (!vpGuid) return [];
+      const vp = viewpoints.list.get(vpGuid);
+      if (!vp || !vp.camera || !vp.camera.camera_view_point) return [];
+
+      const localDbX = vp.camera.camera_view_point.x;
+      const localDbY = -vp.camera.camera_view_point.z;
+      const localDbZ = vp.camera.camera_view_point.y;
+
+      return flatTdvsComments.filter(vCmt => {
+        if (!vCmt.coord || vCmt.coord.x === null || vCmt.coord.y === null || vCmt.coord.z === null) return false;
+        const dx = vCmt.coord.x - localDbX;
+        const dy = vCmt.coord.y - localDbY;
+        const dz = vCmt.coord.z - localDbZ;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        return dist < 0.05;
+      });
+    };
+
+    const leftPane = document.createElement("div");
+    leftPane.style.width = "13rem";
+    leftPane.style.flexShrink = "0";
+    leftPane.style.display = "flex";
+    leftPane.style.flexDirection = "column";
+    leftPane.style.borderRight = "1px solid var(--bim-ui_bg-contrast-20)";
+    leftPane.style.paddingRight = "0.5rem";
+    leftPane.style.gap = "0.5rem";
+    leftPane.style.minHeight = "0";
+
+    const leftToolbar = document.createElement("div");
+    leftToolbar.style.display = "flex";
+    leftToolbar.style.gap = "0.25rem";
+    leftToolbar.style.flexShrink = "0";
+
+    const generalSyncBtn = document.createElement("bim-button") as BUI.Button;
+    generalSyncBtn.label = "Sync All";
+    generalSyncBtn.icon = appIcons.REFRESH;
+    generalSyncBtn.style.flex = "1";
+    generalSyncBtn.style.margin = "0";
+    generalSyncBtn.title = "Sync all comments and viewpoints from TDVS";
+
+    if (mrimsNo) {
+      generalSyncBtn.disabled = false;
+      if (flatTdvsComments.length > 0) {
+        generalSyncBtn.active = true;
+        generalSyncBtn.style.setProperty("--bim-button--bg", "var(--bim-ui_accent, #3880ff)");
+        generalSyncBtn.style.setProperty("--bim-button--c", "var(--bim-ui_accent-contrast, #ffffff)");
+      } else {
+        generalSyncBtn.active = false;
+        generalSyncBtn.style.removeProperty("--bim-button--bg");
+        generalSyncBtn.style.removeProperty("--bim-button--c");
+      }
+      generalSyncBtn.addEventListener("click", async () => {
+        generalSyncBtn.loading = true;
+        try {
+          // 1. Fetch server comments for this specific topic
+          const res = await fetch(`/api/bcf/comments?mrimsNo=${mrimsNo}`);
+          if (!res.ok) throw new Error("TDVS 댓글 호출 실패");
+          const serverCmts = await res.json();
+
+          // 2. Flatten and filter un-synced comments
           const localComments = Array.from(topic.comments.values());
           const isAlreadyImported = (text: string) => {
             return localComments.some(lc => lc.comment === text);
           };
 
-          // 가상 댓글 평탄화 리스트 생성
-          let virtualComments: any[] = [];
-          comments.forEach((item: any) => {
+          const virtualComments: any[] = [];
+          serverCmts.forEach((item: any) => {
             const coord = item.coord || null;
             if (item.reviewComment && item.reviewComment.comment) {
               const parts = item.reviewComment.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
               parts.forEach((part: string) => {
-                virtualComments.push({
-                  commentNo: item.commentNo,
-                  text: part,
-                  author: item.reviewComment.author || "",
-                  date: item.reviewComment.date,
-                  type: "Review",
-                  coord: coord
-                });
+                if (!isAlreadyImported(part)) {
+                  virtualComments.push({
+                    text: part,
+                    author: item.reviewComment.author || "",
+                    date: item.reviewComment.date,
+                    coord: coord
+                  });
+                }
               });
             }
             if (item.solveComment && item.solveComment.comment) {
               const parts = item.solveComment.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
               parts.forEach((part: string) => {
-                virtualComments.push({
-                  commentNo: item.commentNo,
-                  text: part,
-                  author: item.solveComment.author || "",
-                  date: item.solveComment.date,
-                  type: "Solve",
-                  coord: coord
-                });
+                if (!isAlreadyImported(part)) {
+                  virtualComments.push({
+                    text: part,
+                    author: item.solveComment.author || "",
+                    date: item.solveComment.date,
+                    coord: coord
+                  });
+                }
               });
             }
           });
 
-          // 이미 수입 완료된 조각 댓글은 모달 리스트에서 아예 제외
-          virtualComments = virtualComments.filter(vCmt => !isAlreadyImported(vCmt.text));
+          if (virtualComments.length === 0) {
+            alert("동기화할 새로운 TDVS 댓글이 없습니다.");
+            return;
+          }
 
-          // 모든 viewpoint들의 좌표 정보와 매칭 진행 (없으면 신규 생성)
-          const viewpoints = components.get(OBC.Viewpoints);
+          // 3. Batch import comments
+          const viewpointsObj = components.get(OBC.Viewpoints);
           const worlds = components.get(OBC.Worlds);
           const world = worlds.list.values().next().value;
           
-          const remainingComments: any[] = [];
-          let autoImportCount = 0;
-          let autoCreatedViewpointCount = 0;
-          let firstNewVpGuid: string | null = null;
+          let importCount = 0;
+          let newVpCount = 0;
 
           for (const vCmt of virtualComments) {
             let matchedVpGuid: string | null = null;
@@ -527,7 +276,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
             if (vCmt.coord && vCmt.coord.x !== null && vCmt.coord.y !== null && vCmt.coord.z !== null) {
               // 1. 기존 viewpoint 중에서 좌표 매칭 시도
               for (const vpGuid of topic.viewpoints) {
-                const vp = viewpoints.list.get(vpGuid);
+                const vp = viewpointsObj.list.get(vpGuid);
                 if (vp && vp.camera && vp.camera.camera_view_point) {
                   const localDbX = vp.camera.camera_view_point.x;
                   const localDbY = -vp.camera.camera_view_point.z;
@@ -546,7 +295,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
 
               // 2. 일치하는 기존 viewpoint가 없다면, 새 viewpoint 생성
               if (!matchedVpGuid) {
-                const newVp = viewpoints.create();
+                const newVp = viewpointsObj.create();
                 if (world) {
                   newVp.world = world;
                   await newVp.updateCamera();
@@ -561,77 +310,68 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
                 }
                 topic.viewpoints.add(newVp.guid);
                 matchedVpGuid = newVp.guid;
-                autoCreatedViewpointCount++;
-                if (!firstNewVpGuid) {
-                  firstNewVpGuid = newVp.guid;
-                }
+                newVpCount++;
               }
             }
 
-            if (matchedVpGuid) {
-              // 텍스트 중복 방지를 한 번 더 확인
-              const currentLocalComments = Array.from(topic.comments.values());
-              if (currentLocalComments.some(lc => lc.comment === vCmt.text)) {
-                continue;
-              }
-              const newComment = bcfTopics.addComment(topic.guid, vCmt.text);
-              if (newComment) {
-                newComment.viewpoint = matchedVpGuid;
-                if (vCmt.author) newComment.author = vCmt.author;
-                if (vCmt.date) newComment.date = new Date(vCmt.date);
-                autoImportCount++;
-              }
-            } else {
-              remainingComments.push(vCmt);
+            // 4. Import comment
+            const newComment = bcfTopics.addComment(topic.guid, vCmt.text);
+            if (newComment) {
+              if (matchedVpGuid) newComment.viewpoint = matchedVpGuid;
+              if (vCmt.author) newComment.author = vCmt.author;
+              if (vCmt.date) newComment.date = new Date(vCmt.date);
+              importCount++;
             }
           }
 
-          if (autoImportCount > 0) {
-            isAddingNewComment = false;
-            // UI 갱신 및 신규 생성된 viewpoint 페이지로 포커스
-            renderComments(topic, false, firstNewVpGuid || undefined);
-            let alertMsg = `${autoImportCount}개의 조각 댓글이 자동으로 추가되었습니다.`;
-            if (autoCreatedViewpointCount > 0) {
-              alertMsg += ` (새로운 뷰포인트 ${autoCreatedViewpointCount}개 생성됨)`;
-            }
-            alert(alertMsg);
+          let alertMsg = `성공적으로 ${importCount}개의 댓글이 동기화되었습니다.`;
+          if (newVpCount > 0) {
+            alertMsg += ` (새로운 뷰포인트 ${newVpCount}개 생성됨)`;
           }
+          alert(alertMsg);
+          renderComments(topic, true); // force re-fetch to clear sync status and rebuild lists
 
-          // 남은 매칭되지 않는 조각 댓글만 모달로 표시
-          if (remainingComments.length > 0) {
-            showTdvsCommentsModal(remainingComments, topic);
-          } else if (autoImportCount === 0) {
-            alert("동기화할 새로운 조각 댓글이 없거나, 토픽 내 viewpoint 좌표와 매칭되는 조각 댓글이 없습니다.");
-          }
-        };
-      } catch (err) {
-        console.error("Error checking TDVS comments sync state:", err);
-        tdvsBtn.disabled = true;
-        tdvsBtn.active = false;
-        tdvsBtn.style.removeProperty("--bim-button--bg");
-        tdvsBtn.style.removeProperty("--bim-button--c");
-        tdvsBtn.onclick = null;
-      }
-    };
-
-    if (mrimsNoBefore) {
-      tdvsBtn.style.display = "flex";
-      checkAndActivateTdvsBtn(mrimsNoBefore);
-    } else {
-      tdvsBtn.style.display = "none";
-      tdvsBtn.disabled = true;
-      tdvsBtn.active = false;
-    }
-
-    if (forceSync) {
-      syncTopicWithTDVS(components, bcfTopics).then(() => {
-        const mrimsNoAfter = (topic as any).mrimsNo;
-        if (mrimsNoAfter) {
-          tdvsBtn.style.display = "flex";
-          checkAndActivateTdvsBtn(mrimsNoAfter);
+        } catch (err) {
+          alert(`일괄 동기화 실패: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+          generalSyncBtn.loading = false;
         }
       });
+    } else {
+      generalSyncBtn.disabled = true;
     }
+
+    const addNewGroupBtn = document.createElement("bim-button") as BUI.Button;
+    addNewGroupBtn.label = "+ Group";
+    addNewGroupBtn.icon = appIcons.ADD;
+    addNewGroupBtn.style.flex = "1";
+    addNewGroupBtn.style.margin = "0";
+    addNewGroupBtn.title = "Add New Comment with Viewpoint";
+    addNewGroupBtn.addEventListener("click", () => {
+      isAddingNewComment = true;
+      pendingCommentViewpoint = null;
+      pendingCommentSnapshot = null;
+      renderComments(topic);
+    });
+
+    leftToolbar.append(generalSyncBtn, addNewGroupBtn);
+    leftPane.append(leftToolbar);
+
+    const listScroll = document.createElement("div");
+    listScroll.style.flex = "1";
+    listScroll.style.overflowY = "auto";
+    listScroll.style.display = "flex";
+    listScroll.style.flexDirection = "column";
+    listScroll.style.gap = "0.375rem";
+    listScroll.classList.add("custom-scrollbar");
+
+    const rightPane = document.createElement("div");
+    rightPane.style.flex = "1";
+    rightPane.style.minWidth = "0";
+    rightPane.style.display = "flex";
+    rightPane.style.flexDirection = "column";
+    rightPane.style.gap = "0.5rem";
+    rightPane.style.minHeight = "0";
 
     // 코멘트들을 시간 순으로 정렬
     const commentsArray = Array.from(topic.comments.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -686,56 +426,135 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       }
     }
 
-    const renderPaginationControls = () => {
-      paginationContainer.innerHTML = "";
-      
-      const prevBtn = document.createElement("bim-button") as BUI.Button;
-      prevBtn.icon = appIcons.BACK;
-      prevBtn.style.margin = "0";
-      prevBtn.disabled = isAddingNewComment || currentCommentPage === 0;
-      prevBtn.addEventListener("click", () => {
-        currentCommentPage--;
-        renderComments(topic);
-      });
+    groups.forEach((g, i) => {
+      const card = document.createElement("div");
+      card.style.display = "flex";
+      card.style.gap = "0.375rem";
+      card.style.padding = "0.375rem";
+      card.style.borderRadius = "4px";
+      card.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
+      card.style.cursor = "pointer";
+      card.style.alignItems = "center";
+      card.style.justifyContent = "space-between";
+      card.style.flexShrink = "0";
+      card.style.minWidth = "0";
 
-      const pageInfo = document.createElement("bim-label");
-      pageInfo.textContent = isAddingNewComment 
-          ? (totalPages > 0 ? `New / ${totalPages}` : `1 / 1`)
-          : `${currentCommentPage + 1} / ${totalPages}`;
-      pageInfo.style.fontSize = "0.75rem";
-
-      const nextBtn = document.createElement("bim-button") as BUI.Button;
-      nextBtn.icon = appIcons.FORWARD;
-      nextBtn.style.margin = "0";
-      nextBtn.disabled = isAddingNewComment || currentCommentPage >= totalPages - 1;
-      nextBtn.addEventListener("click", () => {
-        currentCommentPage++;
-        renderComments(topic);
-      });
-
-      const addBtn = document.createElement("bim-button") as BUI.Button;
-      addBtn.icon = appIcons.ADD;
-      addBtn.style.margin = "0";
-      addBtn.title = "Add New Comment with Viewpoint";
-      addBtn.disabled = isAddingNewComment;
-      addBtn.addEventListener("click", () => {
-        isAddingNewComment = true;
-        pendingCommentViewpoint = null;
-        pendingCommentSnapshot = null;
-        renderComments(topic);
-      });
-
-      if (totalPages > 0) {
-          paginationContainer.append(prevBtn, pageInfo, nextBtn, tdvsBtn, addBtn);
-      } else {
-          // totalPages가 0인 상황(뷰포인트가 없을 때)에도 Sync 버튼은 항상 보여줌
-          paginationContainer.append(tdvsBtn);
-          if (!isAddingNewComment) paginationContainer.append(addBtn);
+      if (!isAddingNewComment && currentCommentPage === i) {
+        card.style.backgroundColor = "var(--bim-ui_bg-contrast-10)";
+        card.style.borderColor = "var(--bim-ui_accent)";
       }
-    };
+
+      card.addEventListener("click", () => {
+        isAddingNewComment = false;
+        currentCommentPage = i;
+        renderComments(topic);
+      });
+
+      const thumb = document.createElement("div");
+      thumb.style.width = "3rem";
+      thumb.style.height = "2.25rem";
+      thumb.style.flexShrink = "0";
+      thumb.style.borderRadius = "2px";
+      thumb.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
+      thumb.style.backgroundColor = "var(--bim-ui_bg-contrast-5)";
+      thumb.style.display = "flex";
+      thumb.style.alignItems = "center";
+      thumb.style.justifyContent = "center";
+      thumb.style.overflow = "hidden";
+
+      const imgUrl = getCommentSnapshotUrl(g.comments.length > 0 ? g.comments[0] : { viewpoint: g.viewpointGuid });
+      if (imgUrl) {
+        const img = document.createElement("img");
+        img.src = imgUrl;
+        img.style.width = "100%";
+        img.style.height = "100%";
+        img.style.objectFit = "cover";
+        thumb.append(img);
+      } else {
+        const placeholderIcon = document.createElement("bim-label") as any;
+        placeholderIcon.icon = appIcons.CAMERA;
+        placeholderIcon.style.opacity = "0.5";
+        placeholderIcon.style.setProperty("--bim-icon--fz", "1rem");
+        thumb.append(placeholderIcon);
+      }
+
+      const info = document.createElement("div");
+      info.style.flex = "1";
+      info.style.minWidth = "0";
+      info.style.display = "flex";
+      info.style.flexDirection = "column";
+      info.style.gap = "0.125rem";
+      info.style.marginLeft = "0.25rem";
+
+      const titleLabel = document.createElement("span");
+      titleLabel.style.fontSize = "0.75rem";
+      titleLabel.style.fontWeight = "bold";
+      titleLabel.style.whiteSpace = "nowrap";
+      titleLabel.style.overflow = "hidden";
+      titleLabel.style.textOverflow = "ellipsis";
+      
+      if (g.viewpointGuid) {
+        const vpIndex = Array.from(topic.viewpoints).indexOf(g.viewpointGuid);
+        titleLabel.textContent = vpIndex === 0 ? "Rep. Viewpoint" : `Viewpoint ${vpIndex + 1}`;
+      } else {
+        titleLabel.textContent = "General";
+      }
+
+      const cmtCountLabel = document.createElement("span");
+      cmtCountLabel.style.fontSize = "0.7rem";
+      cmtCountLabel.style.opacity = "0.7";
+      cmtCountLabel.textContent = `${g.comments.length} comment(s)`;
+
+      info.append(titleLabel, cmtCountLabel);
+
+      card.append(thumb, info);
+
+      const matchingServerCmts = getMatchingServerComments(g.viewpointGuid);
+      if (matchingServerCmts.length > 0) {
+        const syncItemBtn = document.createElement("bim-button") as BUI.Button;
+        syncItemBtn.icon = appIcons.REFRESH;
+        syncItemBtn.style.margin = "0";
+        syncItemBtn.style.flex = "none";
+        syncItemBtn.active = true;
+        syncItemBtn.title = `${matchingServerCmts.length} un-synced comment(s) on TDVS. Click to sync.`;
+        syncItemBtn.style.setProperty("--bim-button--bg", "var(--bim-ui_accent, #3880ff)");
+        syncItemBtn.style.setProperty("--bim-button--c", "var(--bim-ui_accent-contrast, #ffffff)");
+        
+        syncItemBtn.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          syncItemBtn.loading = true;
+          try {
+            let count = 0;
+            for (const match of matchingServerCmts) {
+              const newComment = bcfTopics.addComment(topic.guid, match.text);
+              if (newComment) {
+                newComment.viewpoint = g.viewpointGuid;
+                if (match.author) newComment.author = match.author;
+                if (match.date) newComment.date = new Date(match.date);
+                count++;
+              }
+            }
+            alert(`성공적으로 ${count}개의 댓글을 이 뷰포인트에 동기화하였습니다.`);
+            renderComments(topic, true);
+          } catch (err) {
+            alert(`동기화 실패: ${err instanceof Error ? err.message : String(err)}`);
+          } finally {
+            syncItemBtn.loading = false;
+          }
+        });
+
+        card.append(syncItemBtn);
+      }
+
+      listScroll.append(card);
+    });
+
+    leftPane.append(listScroll);
+
+
 
     if (isAddingNewComment) {
-      activeViewpointGuid = null;
+
       const pageWrapper = document.createElement("div");
       pageWrapper.style.display = "flex";
       pageWrapper.style.gap = "0.5rem";
@@ -943,15 +762,14 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       replySection.append(replyInput, replyBtn, cancelBtn);
       commentsListWrapper.append(replySection);
       pageWrapper.append(snapshotWrapper, commentsListWrapper);
-      commentsContainer.append(pageWrapper);
-
-      renderPaginationControls();
+      rightPane.append(pageWrapper);
+      commentsContainer.append(leftPane, rightPane);
       return;
     }
 
     if (currentCommentPage >= totalPages) currentCommentPage = Math.max(0, totalPages - 1);
     const currentGroup = groups[currentCommentPage];
-    activeViewpointGuid = currentGroup ? currentGroup.viewpointGuid : null;
+
 
     // 1. Viewpoint 페이지의 전체 레이아웃 컨테이너
     const pageWrapper = document.createElement("div");
@@ -1390,9 +1208,8 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
     }
 
     pageWrapper.append(commentsListWrapper);
-    commentsContainer.append(pageWrapper);
-
-    renderPaginationControls();
+    rightPane.append(pageWrapper);
+    commentsContainer.append(leftPane, rightPane);
   };
 
   // Comments UI Wrapper 생성
@@ -1402,19 +1219,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
   commentsWrapper.style.height = "100%";
   commentsWrapper.style.minHeight = "0";
 
-  const commentsHeaderWrapper = document.createElement("div");
-  commentsHeaderWrapper.style.display = "flex";
-  commentsHeaderWrapper.style.justifyContent = "space-between";
-  commentsHeaderWrapper.style.alignItems = "center";
-  commentsHeaderWrapper.style.flexShrink = "0";
-  commentsHeaderWrapper.style.gap = "0.5rem";
-  
-  const commentsHeader = document.createElement("bim-label");
-  commentsHeader.textContent = "Comments";
-  commentsHeader.style.fontWeight = "bold";
-
-  commentsHeaderWrapper.append(commentsHeader, paginationContainer);
-  commentsWrapper.append(commentsHeaderWrapper, commentsContainer);
+  commentsWrapper.append(commentsContainer);
 
   const resetState = () => {
     isAddingNewComment = false;

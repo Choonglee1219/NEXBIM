@@ -4,10 +4,10 @@ import { users } from "../../../setup/users";
 import { topicFormTemplate, TopicFormUI } from "../../../ui-components/TopicsList/src/form-template";
 
 export const newTopic = (components: OBC.Components) => {
-  const formTemplate = (state: TopicFormUI) => {
+  const formTemplate = (state: TopicFormUI, update: any) => {
     return BUI.html`
       <div style="flex: 1; display: flex; flex-direction: column; padding: 0; box-sizing: border-box; min-height: 0;">
-        ${topicFormTemplate(state)}
+        ${topicFormTemplate(state, update)}
       </div>
     `;
   };

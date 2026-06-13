@@ -81,6 +81,7 @@ export const updateTopic = (bcfTopics: any) => {
 
     let currentCapturedViewpoint: any = null;
     let currentCapturedSnapshot: string | null = null;
+    let isCommentsExpanded = false;
 
     const selectedTopics = bcfTopics.getSelectedTopics(selection);
     if (selectedTopics.length > 0) {
@@ -125,6 +126,11 @@ export const updateTopic = (bcfTopics: any) => {
           commentsUI: commentsUI.ui,
           capturedViewpoint: currentCapturedViewpoint,
           capturedSnapshot: currentCapturedSnapshot,
+          isCommentsExpanded,
+          onToggleComments: () => {
+            isCommentsExpanded = !isCommentsExpanded;
+            updateForm();
+          },
           onCancel: () => {
             // 🎯 Cancel 클릭 시 백업 데이터로 롤백 수행
             if (currentTopic) {

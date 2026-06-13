@@ -201,6 +201,7 @@ export const topicListTemplate: BUI.StatefullComponent<
     topicCountBeforeNew = bcfTopics.list.size;
     let currentCapturedViewpoint: any = null;
     let currentCapturedSnapshot: string | null = null;
+    let isCommentsExpanded = false;
 
     const updateForm = () => {
       updateNewTopicForm({
@@ -208,6 +209,11 @@ export const topicListTemplate: BUI.StatefullComponent<
         styles: { users },
         capturedViewpoint: currentCapturedViewpoint,
         capturedSnapshot: currentCapturedSnapshot,
+        isCommentsExpanded,
+        onToggleComments: () => {
+          isCommentsExpanded = !isCommentsExpanded;
+          updateForm();
+        },
         onCancel: () => { setView("list"); },
         onCapture: async () => {
           const { viewpoint, snapshot } = await bcfTopics.captureViewpoint();
