@@ -62,12 +62,12 @@ export const topicListTemplate: BUI.StatefullComponent<
   let currentTopicsCache: any[] = [];
   let searchQuery = "";
   let searchInput: BUI.TextInput;
+  let unsyncedTopicGuidsCache = new Set<string>();
+  let isCheckingSync = false;
 
   // --- Pagination UI Refs ---
   const paginationRefs: PaginationRefs = {};
   
-  let updateTopicBtn: BUI.Button | undefined;
-  let deleteTopicBtn: BUI.Button | undefined;
   let syncTdvsBtn: BUI.Button | undefined;
 
   let isMarkersVisible = false;
@@ -100,20 +100,36 @@ export const topicListTemplate: BUI.StatefullComponent<
     updateMarkers();
   };
 
-  const updateButtonStates = () => {
-    const hasSelection = topicListTable.selection.size > 0;
-    if (updateTopicBtn) updateTopicBtn.disabled = !hasSelection;
-    if (deleteTopicBtn) deleteTopicBtn.disabled = !hasSelection;
-  };
+  topicListTable.addEventListener("topic-edit", (evt: any) => {
+    const { guid, rowData } = evt.detail;
+    topicListTable.selection.clear();
+    const targetGroup = topicListTable.value?.find((row: any) => row.data && row.data.Guid === guid);
+    if (targetGroup) {
+      topicListTable.selection.add(targetGroup.data);
+    } else if (rowData) {
+      topicListTable.selection.add(rowData);
+    }
+    onUpdateTopicOpen();
+  });
 
-  topicListTable.addEventListener("change", updateButtonStates);
+  topicListTable.addEventListener("topic-delete", (evt: any) => {
+    const { guid, rowData } = evt.detail;
+    topicListTable.selection.clear();
+    const targetGroup = topicListTable.value?.find((row: any) => row.data && row.data.Guid === guid);
+    if (targetGroup) {
+      topicListTable.selection.add(targetGroup.data);
+    } else if (rowData) {
+      topicListTable.selection.add(rowData);
+    }
+    onDeleteTopic();
+  });
 
   const updatePage = () => {
     const start = currentPage * pageSize;
     const end = start + pageSize;
     const slicedTopics = currentTopicsCache.slice(start, end);
 
-    updateTopicListTable({ topics: slicedTopics });
+    updateTopicListTable({ topics: slicedTopics, unsyncedTopicGuids: unsyncedTopicGuidsCache });
 
     if (paginationRefs.container) {
       paginationRefs.container.style.display = totalPages > 1 ? "flex" : "none";
@@ -127,7 +143,6 @@ export const topicListTemplate: BUI.StatefullComponent<
     if (paginationRefs.next) {
       paginationRefs.next.disabled = currentPage >= totalPages - 1;
     }
-    updateButtonStates();
   };
 
   const refreshTopicsCache = () => {
@@ -180,7 +195,6 @@ export const topicListTemplate: BUI.StatefullComponent<
     if (targetGroup) {
       topicListTable.selection.clear();
       topicListTable.selection.add(targetGroup.data);
-      updateButtonStates();
     }
 
     const now = Date.now();
@@ -261,7 +275,6 @@ export const topicListTemplate: BUI.StatefullComponent<
               if (targetGroup) {
                 topicListTable.selection.clear();
                 topicListTable.selection.add(targetGroup.data);
-                updateButtonStates();
               }
             }, 150);
           }
@@ -286,7 +299,6 @@ export const topicListTemplate: BUI.StatefullComponent<
             topicListTable.selection.add(targetGroup.data);
           }
         }
-        updateButtonStates();
       }, 150);
     };
 
@@ -300,12 +312,10 @@ export const topicListTemplate: BUI.StatefullComponent<
   const onDeleteTopic = () => {
     bcfTopics.delete(topicListTable.selection);
     topicListTable.selection.clear();
-    updateButtonStates();
   };
   const onClearTopicsList = () => {
     bcfTopics.deleteAll();
     topicListTable.selection.clear();
-    updateButtonStates();
   };
   const onSaveTopicsToBCF = () => {
     bcfTopics.saveBCF();
@@ -492,6 +502,7 @@ export const topicListTemplate: BUI.StatefullComponent<
   };
 
   const checkTdvsSyncState = async () => {
+    if (isCheckingSync) return;
     if (!syncTdvsBtn) return;
     
     const fragments = components.get(OBC.FragmentsManager);
@@ -508,12 +519,14 @@ export const topicListTemplate: BUI.StatefullComponent<
     }
 
     try {
+      isCheckingSync = true;
       const response = await fetch(`/api/bcf/sync?priFiles=${encodeURIComponent(loadedModelNames.join(','))}`);
       if (!response.ok) throw new Error();
       const serverTopics = await response.json();
 
       const localTopics = Array.from(bcfTopics._bcf.list.values()) as any[];
       let needSync = false;
+      const unsyncedTopicGuids = new Set<string>();
 
       for (const serverTopic of serverTopics) {
         let topic = localTopics.find(t => t.mrimsNo === serverTopic.mrimsNo);
@@ -527,7 +540,7 @@ export const topicListTemplate: BUI.StatefullComponent<
 
         if (!topic) {
           needSync = true;
-          break;
+          continue;
         }
 
         if (serverTopic.comments && Array.isArray(serverTopic.comments)) {
@@ -537,20 +550,20 @@ export const topicListTemplate: BUI.StatefullComponent<
           };
 
           const hasNewComments = serverTopic.comments.some((item: any) => {
-            const checkPart = (commentObj: any) => {
-              if (!commentObj || !commentObj.comment) return false;
-              const parts = commentObj.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
-              return parts.some((partText: string) => !isAlreadyImported(partText));
-            };
-            return checkPart(item.reviewComment) || checkPart(item.solveComment);
+            if (!item || !item.comment) return false;
+            const parts = item.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
+            return parts.some((partText: string) => !isAlreadyImported(partText));
           });
 
           if (hasNewComments) {
             needSync = true;
-            break;
+            unsyncedTopicGuids.add(topic.guid);
           }
         }
       }
+
+      unsyncedTopicGuidsCache = unsyncedTopicGuids;
+      updatePage();
 
       if (needSync) {
         syncTdvsBtn.disabled = false;
@@ -569,6 +582,8 @@ export const topicListTemplate: BUI.StatefullComponent<
       syncTdvsBtn.active = false;
       syncTdvsBtn.style.removeProperty("--bim-button--bg");
       syncTdvsBtn.style.removeProperty("--bim-button--c");
+    } finally {
+      isCheckingSync = false;
     }
   };
 
@@ -715,7 +730,6 @@ export const topicListTemplate: BUI.StatefullComponent<
     bcfTopics.delete(toDelete);
     
     topicListTable.selection.clear();
-    updateButtonStates();
     onClearSearch();
   };
 
@@ -730,7 +744,6 @@ export const topicListTemplate: BUI.StatefullComponent<
     if (toDelete.size > 0) bcfTopics.delete(toDelete);
     
     topicListTable.selection.clear();
-    updateButtonStates();
     onClearSearch();
   };
 
@@ -755,8 +768,6 @@ export const topicListTemplate: BUI.StatefullComponent<
       <div style="display: flex; gap: 0.5rem; flex-shrink: 0; position: relative; z-index: 10;">
         <div style="display: flex; gap: 0.25rem; flex: 1;">
           <bim-button style="flex: 1;" @click=${onNewTopicOpen} label="Create Topic" icon=${appIcons.ADD}></bim-button>
-          <bim-button ${BUI.ref(e => { updateTopicBtn = e as BUI.Button; updateButtonStates(); })} style="flex: 1;" @click=${onUpdateTopicOpen} label="Update Topic" icon=${appIcons.REF} disabled></bim-button>
-          <bim-button ${BUI.ref(e => { deleteTopicBtn = e as BUI.Button; updateButtonStates(); })} style="flex: 1;" @click=${onDeleteTopic} label="Delete Topic" icon=${appIcons.DELETE} disabled></bim-button>
           <bim-button ${BUI.ref(e => { markerBtn = e as BUI.Button; })} style="flex: 1;" @click=${toggleMarkers} label="Markers" ?active=${isMarkersVisible} icon=${appIcons.MAP}></bim-button>
           <bim-button style="flex: 1;" @click=${onClearTopicsList} label="Clear" icon=${appIcons.CLEAR}></bim-button>
           <bim-button style="flex: 1;" @click=${onSaveTopicsToBCF} label="Save BCF" icon=${appIcons.SAVE}></bim-button>

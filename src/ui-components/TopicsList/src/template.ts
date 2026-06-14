@@ -13,28 +13,24 @@ export const topicsListTemplate: BUI.StatefullComponent<TopicsListState> = (
 
   const bcfTopics = components.get(EngineBCFTopics);
   const topics = state.topics ?? bcfTopics.list.values();
-  const onTableCreated = (e?: Element) => {
-    if (!e) return;
-    const table = e as BUI.Table<TopicsListTableData>;
-    table.data = [...topics].map((topic) => {
-      return {
-        data: {
-          Guid: topic.guid,
-          Title: topic.title,
-          Snapshot: (topic as any).snapshot ?? "",
-          Status: topic.status,
-          Description: topic.description ?? "",
-          Author: topic.creationAuthor,
-          Assignee: topic.assignedTo ?? "",
-          Date: topic.creationDate.toDateString(),
-          DueDate: topic.dueDate?.toDateString() ?? "",
-          Type: topic.type,
-          Priority: topic.priority ?? "",
-          Actions: "",
-        },
-      };
-    });
-  };
+  const tableData = [...topics].map((topic) => {
+    return {
+      data: {
+        Guid: topic.guid,
+        Title: topic.title,
+        Snapshot: (topic as any).snapshot ?? "",
+        Status: topic.status,
+        Description: topic.description ?? "",
+        Author: topic.creationAuthor,
+        Assignee: topic.assignedTo ?? "",
+        Date: topic.creationDate.toDateString(),
+        DueDate: topic.dueDate?.toDateString() ?? "",
+        Type: topic.type,
+        Priority: topic.priority ?? "",
+        Actions: state.unsyncedTopicGuids?.has(topic.guid) ? "unsynced" : "synced",
+      },
+    };
+  });
 
   const onRowCreated = (e: Event) => {
     onTableRowCreated(e);
@@ -65,7 +61,7 @@ export const topicsListTemplate: BUI.StatefullComponent<TopicsListState> = (
   };
 
   return BUI.html`
-    <bim-table no-indentation @rowcreated=${onRowCreated} @cellcreated=${onTableCellCreated} ${BUI.ref(onTableCreated)}>
+    <bim-table no-indentation @rowcreated=${onRowCreated} @cellcreated=${onTableCellCreated} .data=${tableData}>
       <bim-label slot="missing-data" icon=${appIcons.WARNING} style="--bim-icon--c: gold;">${missingDataMessage}</bim-label>
     </bim-table>
   `;

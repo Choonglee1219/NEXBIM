@@ -554,6 +554,45 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
 
 
     if (isAddingNewComment) {
+      if (!pendingCommentViewpoint && flatTdvsComments.length > 0) {
+        const firstUnsynced = flatTdvsComments[0];
+        const viewpointsObj = components.get(OBC.Viewpoints);
+        if (firstUnsynced.coord && firstUnsynced.coord.x !== null && firstUnsynced.coord.y !== null && firstUnsynced.coord.z !== null) {
+          const worlds = components.get(OBC.Worlds);
+          const world = worlds.list.values().next().value;
+          const newVp = viewpointsObj.create();
+          if (world) {
+            newVp.world = world;
+            newVp.camera.camera_view_point = {
+              x: Number(firstUnsynced.coord.x),
+              y: Number(firstUnsynced.coord.z),
+              z: -Number(firstUnsynced.coord.y)
+            };
+            newVp.camera.camera_direction = { x: 0, y: 0, z: -1 };
+            newVp.camera.camera_up_vector = { x: 0, y: 1, z: 0 };
+          }
+          pendingCommentViewpoint = newVp;
+        } else {
+          if (topic.viewpoints.size > 0) {
+            const repVpGuid = Array.from(topic.viewpoints)[0];
+            const repVp = viewpointsObj.list.get(repVpGuid);
+            if (repVp) {
+              const newVp = viewpointsObj.create();
+              copyViewpoint(repVp, newVp);
+              if (repVp.snapshot) {
+                newVp.snapshot = newVp.guid;
+                const snapshotData = viewpointsObj.snapshots.get(repVp.snapshot);
+                if (snapshotData) {
+                  viewpointsObj.snapshots.set(newVp.guid, snapshotData);
+                  const blob = new Blob([snapshotData as any], { type: "image/png" });
+                  pendingCommentSnapshot = URL.createObjectURL(blob);
+                }
+              }
+              pendingCommentViewpoint = newVp;
+            }
+          }
+        }
+      }
 
       const pageWrapper = document.createElement("div");
       pageWrapper.style.display = "flex";
@@ -635,7 +674,16 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       fakeViewBtn.style.margin = "0";
       fakeViewBtn.style.flex = "1";
       fakeViewBtn.style.boxSizing = "border-box";
-      fakeViewBtn.disabled = true;
+      if (pendingCommentViewpoint) {
+        fakeViewBtn.disabled = false;
+        fakeViewBtn.addEventListener("click", async () => {
+          fakeViewBtn.loading = true;
+          await bcfTopics.restoreViewpoint(topic, { viewpointGuid: pendingCommentViewpoint.guid });
+          fakeViewBtn.loading = false;
+        });
+      } else {
+        fakeViewBtn.disabled = true;
+      }
 
       const captureBtn = document.createElement("bim-button") as BUI.Button;
       captureBtn.title = "Capture";

@@ -20,6 +20,7 @@ export interface TopicsListState {
   topics?: Iterable<OBC.Topic>;
   dataStyles?: TopicStyles;
   missingDataMessage?: string;
+  unsyncedTopicGuids?: Set<string>;
 };
 
 export interface TopicDataStyles {

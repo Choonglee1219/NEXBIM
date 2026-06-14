@@ -12,7 +12,7 @@ export const setDefaults = (
   const { dataStyles: styles } = state;
 
   if (table.hiddenColumns.length === 0)
-    table.hiddenColumns = ["Guid", "Actions"];
+    table.hiddenColumns = ["Guid"];
   table.columns = [
     { name: "Title", width: "minmax(0, 2fr)" },
     { name: "Snapshot", width: "70px" },
@@ -24,6 +24,7 @@ export const setDefaults = (
     { name: "Date", width: "minmax(0, 1fr)" },
     { name: "DueDate", width: "minmax(0, 1fr)" },
     { name: "Description", width: "minmax(0, 2fr)" },
+    { name: "Actions", width: "120px" },
   ];
 
   table.defaultContentTemplate = tableDefaultContentTemplate;
@@ -31,7 +32,7 @@ export const setDefaults = (
   table.dataTransform = {
     Snapshot: (value) => {
       if (typeof value !== "string" || !value) return "";
-      
+
       const openLightbox = (e: Event) => {
         e.stopPropagation();
         showLightbox(value);
@@ -109,6 +110,59 @@ export const setDefaults = (
     Assignee: (value) => {
       if (typeof value !== "string") return value;
       return createAuthorTag(value, styles?.users ?? defaultTopicStyles.users);
+    },
+    Actions: (value, rowData) => {
+      const guid = rowData.Guid;
+      const isUnsynced = value === "unsynced";
+
+      const onUpdateClick = (e: Event) => {
+        e.stopPropagation();
+        table.dispatchEvent(new CustomEvent("topic-edit", {
+          detail: { guid, rowData }
+        }));
+      };
+
+      const onDeleteClick = (e: Event) => {
+        e.stopPropagation();
+        table.dispatchEvent(new CustomEvent("topic-delete", {
+          detail: { guid, rowData }
+        }));
+      };
+
+      const syncIcon = isUnsynced
+        ? BUI.html`
+            <bim-button 
+              icon=${appIcons.WARNING} 
+              style="${tableButtonStyle} pointer-events: none;" 
+              title="Unsynced comments available. Please open topic details to sync."
+              active
+            ></bim-button>
+          `
+        : BUI.html`
+            <bim-button 
+              icon=${appIcons.IDS_CHECK} 
+              style="${tableButtonStyle} opacity: 0.5; pointer-events: none;" 
+              title="Synced with TDVS"
+            ></bim-button>
+          `;
+
+      return BUI.html`
+        <div style="display: flex; align-items: center; justify-content: center; gap: 0.375rem; height: 100%; width: 100%;">
+          ${syncIcon}
+          <bim-button 
+            icon=${appIcons.EDIT} 
+            @click=${onUpdateClick} 
+            title="Update Topic" 
+            style="${tableButtonStyle}"
+          ></bim-button>
+          <bim-button 
+            icon=${appIcons.DELETE} 
+            @click=${onDeleteClick} 
+            title="Delete Topic" 
+            style="${tableButtonStyle}"
+          ></bim-button>
+        </div>
+      `;
     },
   };
 };
