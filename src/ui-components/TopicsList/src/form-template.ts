@@ -255,10 +255,48 @@ export const topicFormTemplate = (state: TopicFormUI, _update?: (state: Partial<
   const acceptBtnID = `btn-${BUI.Manager.newRandomId()}`;
   const cancelBtnID = `btn-${BUI.Manager.newRandomId()}`;
 
+  const updateLabelsBadges = (selected: string[]) => {
+    const container = topicForm.value?.querySelector("#labels-badge-container") as HTMLDivElement;
+    if (!container) return;
+    container.innerHTML = "";
+    
+    const labelStylesMap = styles?.labels ?? defaultTopicStyles.labels;
+    
+    selected.forEach(val => {
+      const badge = document.createElement("bim-label") as any;
+      badge.textContent = val;
+      
+      // Default tag styles
+      badge.style.padding = "0.15rem 0.4rem";
+      badge.style.borderRadius = "999px";
+      badge.style.fontSize = "0.7rem";
+      badge.style.backgroundColor = "var(--bim-ui_bg-contrast-20)";
+      badge.style.color = "var(--bim-ui_bg-contrast-100)";
+      
+      const config = labelStylesMap[val];
+      if (config) {
+        if (config.icon) {
+          badge.icon = config.icon;
+        }
+        if (config.style) {
+          for (const [k, v] of Object.entries(config.style)) {
+            if (k.startsWith("--")) {
+              badge.style.setProperty(k, v);
+            } else {
+              badge.style[k as any] = v;
+            }
+          }
+        }
+      }
+      container.append(badge);
+    });
+  };
+
   // Lit과 Custom Element의 DOM 렌더링 충돌을 피해 옵션을 확실하게 마운트하는 헬퍼 함수
   const setupDropdown = (
     options: { label: string; value: string; img?: string }[],
-    selectedValues: string | Iterable<string> | undefined | null
+    selectedValues: string | Iterable<string> | undefined | null,
+    isLabels = false
   ) => (e: Element | undefined) => {
     if (!e) return;
     const dropdown = e as BUI.Dropdown;
@@ -283,6 +321,9 @@ export const topicFormTemplate = (state: TopicFormUI, _update?: (state: Partial<
 
     setTimeout(() => {
       dropdown.value = selectedArray;
+      if (isLabels) {
+        updateLabelsBadges(selectedArray);
+      }
     }, 10);
   };
 
@@ -344,13 +385,23 @@ export const topicFormTemplate = (state: TopicFormUI, _update?: (state: Partial<
                 <bim-text-input vertical label="Description" name="description" type="area" rows="4" .value=${description}></bim-text-input>
               </div>
             </div>
-            <div style="display: grid; grid-template-columns: ${isExpanded ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)'}; gap: 0.375rem; flex-shrink: 0;">
+            <div style="display: ${isExpanded ? 'none' : 'grid'}; grid-template-columns: repeat(4, 1fr); gap: 0.375rem; flex-shrink: 0;">
             <bim-dropdown vertical label="Type" name="type" required ${BUI.ref(setupDropdown([...types].map(t => ({label: t, value: t})), type))}></bim-dropdown>
             <bim-dropdown vertical label="Status" name="status" required ${BUI.ref(setupDropdown([...statuses].map(s => ({label: s, value: s})), status))}></bim-dropdown>
             <bim-dropdown vertical label="Author" name="creationAuthor" ?disabled=${!appState.isAdmin} style=${!appState.isAdmin ? "pointer-events: none; opacity: 0.5;" : ""} ${BUI.ref(setupDropdown([...users].map(u => ({ label: styles?.users?.[u]?.name || u, value: u, img: styles?.users?.[u]?.picture })), creationAuthor))}></bim-dropdown>
             <bim-dropdown vertical label="Assignee" name="assignedTo" ${BUI.ref(setupDropdown([...users].map(u => ({ label: styles?.users?.[u]?.name || u, value: u, img: styles?.users?.[u]?.picture })), assignedTo))}></bim-dropdown>
             <bim-dropdown vertical label="Priority" name="priority" ${BUI.ref(setupDropdown([...priorities].map(p => ({label: p, value: p})), priority))}></bim-dropdown>
-            <bim-dropdown vertical label="Labels" name="labels" multiple ${BUI.ref(setupDropdown([...labelsList].map(l => ({label: l, value: l})), labels))}></bim-dropdown>
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <bim-dropdown vertical label="Labels" name="labels" multiple
+                @change=${(e: Event) => {
+                  const dropdown = e.target as BUI.Dropdown;
+                  const selected = Array.isArray(dropdown.value) ? dropdown.value : (dropdown.value ? [dropdown.value] : []);
+                  updateLabelsBadges(selected);
+                }}
+                ${BUI.ref(setupDropdown([...labelsList].map(l => ({label: l, value: l})), labels, true))}>
+              </bim-dropdown>
+              <div id="labels-badge-container" style="display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem;"></div>
+            </div>
             <bim-text-input vertical type="date" label="Due Date" name="dueDate" .value=${dueDate}></bim-text-input> 
             <bim-dropdown vertical label="Stage" name="stage" ${BUI.ref(setupDropdown([...stagesList].map(s => ({label: s, value: s})), stage))}></bim-dropdown>
           </div>

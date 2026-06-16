@@ -19,6 +19,7 @@ export const setDefaults = (
     { name: "Status", width: "minmax(0, 1fr)" },
     { name: "Type", width: "minmax(0, 1fr)" },
     { name: "Priority", width: "minmax(0, 1fr)" },
+    { name: "Labels", width: "minmax(0, 0.8fr)" },
     { name: "Author", width: "minmax(0, 1fr)" },
     { name: "Assignee", width: "minmax(0, 1fr)" },
     { name: "Date", width: "minmax(0, 1fr)" },
@@ -78,6 +79,33 @@ export const setDefaults = (
             >${value}
             </bim-label>
           `;
+    },
+    Labels: (value) => {
+      if (typeof value !== "string" || !value.trim()) return "";
+      const labelList = value.split(",").map((s) => s.trim()).filter((s) => s !== "");
+      const labelStyles = styles?.labels ?? defaultTopicStyles.labels;
+
+      return BUI.html`
+        <div style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
+          ${labelList.map((val) => {
+        const config = labelStyles[val];
+        const baseStyle = {
+          padding: "0.15rem 0.4rem",
+          borderRadius: "999px",
+          fontSize: "0.7rem",
+          backgroundColor: "var(--bim-ui_bg-contrast-20)",
+          "--bim-label--c": "var(--bim-ui_bg-contrast-100)",
+        };
+        const labelStyle = config ? { ...baseStyle, ...config.style } : baseStyle;
+        return BUI.html`
+              <bim-label
+                .icon=${config?.icon}
+                style=${BUI.styleMap(labelStyle)}
+              >${val}</bim-label>
+            `;
+      })}
+        </div>
+      `;
     },
     Status: (value) => {
       if (typeof value !== "string") return value;

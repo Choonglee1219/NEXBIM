@@ -50,6 +50,7 @@ async function initPools() {
     console.log("✅ IFC Connection Pool 생성 완료");
     mrimsPool = await OracleDB.createPool(mrimsPoolConfig);
     console.log("✅ MRIMS Connection Pool 생성 완료");
+
     // 애플리케이션 종료 시 Connection Pool 종료
     process.on("SIGTERM", closeDatabase);
     process.on("SIGINT", closeDatabase);
@@ -65,7 +66,7 @@ app.listen(PORT, () => {
   console.log("oracledb:", OracleDB.versionString);
   console.log("Thin:", OracleDB.thin);
   console.log("Client:", OracleDB.oracleClientVersionString);
-});    
+});
 
 // ✅ 공통 Connection Pool 연결 함수 (IFC DB)
 async function getConnection(): Promise<OracleDB.Connection> {
@@ -110,8 +111,8 @@ app.get("/", (_req: Request, res: Response) => {
   } catch (err) {
     console.error("Error in root endpoint:", err);
     res.status(500).json({ error: "Internal server error" });
-  }  
-});  
+  }
+});
 
 
 // Get ifcs name
@@ -123,7 +124,7 @@ app.get("/api/ifcs/name", async (_req: Request, res: Response): Promise<any> => 
       `SELECT "id", "name" FROM "ifc"`,
       [],
       { outFormat: OracleDB.OUT_FORMAT_OBJECT },
-    );  
+    );
     res.json(result.rows);
   } catch (err) {
     console.error("Error fetching ifcs: ", err);
@@ -134,10 +135,10 @@ app.get("/api/ifcs/name", async (_req: Request, res: Response): Promise<any> => 
         await connection.close();
       } catch (err) {
         console.error("Error closing connection:", err);
-      }  
-    }  
-  }  
-});  
+      }
+    }
+  }
+});
 
 // Get IFC
 app.get("/api/ifc/:id", async (req: Request, res: Response): Promise<void> => {
@@ -152,11 +153,11 @@ app.get("/api/ifc/:id", async (req: Request, res: Response): Promise<void> => {
     const result = await connection.execute(
       `SELECT "content", "name" FROM "ifc" WHERE "id" = :id`,
       { id: ifcid },
-      { 
+      {
         outFormat: OracleDB.OUT_FORMAT_OBJECT,
         fetchInfo: { content: { type: OracleDB.BUFFER } },
       } as any
-    );  
+    );
     const ifc = result.rows?.[0] as {
       content: Buffer | null,
       name: string | null
@@ -165,7 +166,7 @@ app.get("/api/ifc/:id", async (req: Request, res: Response): Promise<void> => {
       console.warn(`IFC data not found for id: ${ifcid}`);
       res.status(404).json({ error: "IFC data not found" });
       return;
-    }  
+    }
     const base64Content = ifc.content.toString("base64");
     res.json({ name: ifc.name, content: base64Content });
   } catch (err) {
@@ -177,27 +178,27 @@ app.get("/api/ifc/:id", async (req: Request, res: Response): Promise<void> => {
         await connection.close();
       } catch (err) {
         console.error("Error closing connection:", err);
-      }  
-    }  
-  }  
-});  
+      }
+    }
+  }
+});
 
 // Post IFC
 app.post("/api/ifc", upload.single("file"), async (req: Request, res: Response) => {
   let connection: OracleDB.Connection | undefined;
   try {
     connection = await getConnection();
-    
+
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded." });
     }
 
     const name = req.file.originalname;
     const bufferContent = req.file.buffer;
-    
+
     const sql = `INSERT INTO "ifc" ("name", "content") VALUES (:name, :content) RETURNING "id" INTO :id`;
 
-    const result = await connection.execute<{ id: number[] }> (
+    const result = await connection.execute<{ id: number[] }>(
       sql,
       {
         name: {
@@ -208,22 +209,22 @@ app.post("/api/ifc", upload.single("file"), async (req: Request, res: Response) 
           val: bufferContent,
           type: OracleDB.DB_TYPE_BLOB,
         },
-        id: { 
-          type: OracleDB.DB_TYPE_NUMBER, 
-          dir: OracleDB.BIND_OUT, 
+        id: {
+          type: OracleDB.DB_TYPE_NUMBER,
+          dir: OracleDB.BIND_OUT,
         },
-      },  
+      },
       { autoCommit: true },
-    );  
+    );
     if (result.outBinds && Array.isArray(result.outBinds.id) && result.outBinds.id.length > 0) {
       res.status(201).json({
         message: "IFC inserted successfully",
         id: result.outBinds.id[0],
-      });  
+      });
     } else {
       console.error("Error inserting IFC: No ID returned");
       res.status(500).json({ error: "Failed to insert IFC" });
-    }  
+    }
   } catch (err) {
     console.error("Error reading or inserting the ifc file: ", err);
     res.status(500).json({ error: "Failed to insert IFC: ", details: err instanceof Error ? err.message : String(err) });
@@ -233,10 +234,10 @@ app.post("/api/ifc", upload.single("file"), async (req: Request, res: Response) 
         await connection.close();
       } catch (err) {
         console.error("Error closing connection:", err);
-      }  
-    }  
-  }  
-});  
+      }
+    }
+  }
+});
 
 // Delete IFC
 app.delete("/api/ifc/:id", async (req: Request, res: Response) => {
@@ -283,7 +284,7 @@ app.get("/api/frags/name", async (_req: Request, res: Response): Promise<any> =>
       `SELECT "id", "name" FROM "frag"`,
       [],
       { outFormat: OracleDB.OUT_FORMAT_OBJECT },
-    );  
+    );
     res.json(result.rows);
   } catch (err) {
     console.error("Error fetching frags: ", err);
@@ -294,10 +295,10 @@ app.get("/api/frags/name", async (_req: Request, res: Response): Promise<any> =>
         await connection.close();
       } catch (err) {
         console.error("Error closing connection:", err);
-      }  
-    }  
-  }  
-});  
+      }
+    }
+  }
+});
 
 // Get FRAG
 app.get("/api/frag/:id", async (req: Request, res: Response): Promise<void> => {
@@ -312,11 +313,11 @@ app.get("/api/frag/:id", async (req: Request, res: Response): Promise<void> => {
     const result = await connection.execute(
       `SELECT "content", "name" FROM "frag" WHERE "id" = :id`,
       { id: fragid },
-      { 
+      {
         outFormat: OracleDB.OUT_FORMAT_OBJECT,
         fetchInfo: { content: { type: OracleDB.BUFFER } },
       } as any
-    );  
+    );
     const frag = result.rows?.[0] as {
       content: Buffer | null,
       name: string | null
@@ -325,7 +326,7 @@ app.get("/api/frag/:id", async (req: Request, res: Response): Promise<void> => {
       console.warn(`FRAG data not found for id: ${fragid}`);
       res.status(404).json({ error: "FRAG data not found" });
       return;
-    }  
+    }
     const base64Content = frag.content.toString("base64");
     res.json({ name: frag.name, content: base64Content });
   } catch (err) {
@@ -337,27 +338,27 @@ app.get("/api/frag/:id", async (req: Request, res: Response): Promise<void> => {
         await connection.close();
       } catch (err) {
         console.error("Error closing connection:", err);
-      }  
-    }  
-  }  
-});  
+      }
+    }
+  }
+});
 
 // Post FRAG
 app.post("/api/frag", upload.single("file"), async (req: Request, res: Response) => {
   let connection: OracleDB.Connection | undefined;
   try {
     connection = await getConnection();
-    
+
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded." });
     }
-    
+
     const name = req.file.originalname;
     const bufferContent = req.file.buffer;
-    
+
     const sql = `INSERT INTO "frag" ("name", "content") VALUES (:name, :content) RETURNING "id" INTO :id`;
-    
-    const result = await connection.execute<{ id: number[] }> (
+
+    const result = await connection.execute<{ id: number[] }>(
       sql,
       {
         name: {
@@ -368,22 +369,22 @@ app.post("/api/frag", upload.single("file"), async (req: Request, res: Response)
           val: bufferContent,
           type: OracleDB.DB_TYPE_BLOB,
         },
-        id: { 
-          type: OracleDB.DB_TYPE_NUMBER, 
-          dir: OracleDB.BIND_OUT, 
+        id: {
+          type: OracleDB.DB_TYPE_NUMBER,
+          dir: OracleDB.BIND_OUT,
         },
-      },  
+      },
       { autoCommit: true },
-    );  
+    );
     if (result.outBinds && Array.isArray(result.outBinds.id) && result.outBinds.id.length > 0) {
       res.status(201).json({
         message: "FRAG inserted successfully",
         id: result.outBinds.id[0],
-      });  
+      });
     } else {
       console.error("Error inserting FRAG: No ID returned");
       res.status(500).json({ error: "Failed to insert FRAG" });
-    }  
+    }
   } catch (err) {
     console.error("Error reading or inserting the frag file: ", err);
     res.status(500).json({ error: "Failed to insert FRAG: ", details: err instanceof Error ? err.message : String(err) });
@@ -393,10 +394,10 @@ app.post("/api/frag", upload.single("file"), async (req: Request, res: Response)
         await connection.close();
       } catch (err) {
         console.error("Error closing connection:", err);
-      }  
-    }  
-  }  
-});  
+      }
+    }
+  }
+});
 
 // Delete FRAG
 app.delete("/api/frag/:id", async (req: Request, res: Response) => {
@@ -408,7 +409,7 @@ app.delete("/api/frag/:id", async (req: Request, res: Response) => {
       res.status(400).json({ error: "Invalid FRAG ID" });
       return;
     }
-    
+
     const result = await connection.execute(
       `DELETE FROM "frag" WHERE "id" = :id`,
       { id: fragid },
@@ -443,7 +444,7 @@ app.get("/api/bcfs/name", async (_req: Request, res: Response): Promise<any> => 
       `SELECT b."id", b."name", ib."ifc_id" as "ifcid" FROM "bcf" b JOIN "ifc_bcf" ib ON b."id" = ib."bcf_id"`,
       [],
       { outFormat: OracleDB.OUT_FORMAT_OBJECT },
-    );  
+    );
     res.json(result.rows);
   } catch (err) {
     console.error("Error fetching bcfs: ", err);
@@ -454,10 +455,10 @@ app.get("/api/bcfs/name", async (_req: Request, res: Response): Promise<any> => 
         await connection.close();
       } catch (err) {
         console.error("Error closing connection:", err);
-      }  
-    }  
-  }  
-});  
+      }
+    }
+  }
+});
 
 app.get("/api/bcf/comments", async (req: Request, res: Response): Promise<any> => {
   const mrimsNo = req.query.mrimsNo;
@@ -477,9 +478,9 @@ app.get("/api/bcf/comments", async (req: Request, res: Response): Promise<any> =
        WHERE TOPIC_NO = :topic_no
        ORDER BY COMMENT_NO ASC`,
       { topic_no: Number(mrimsNo) },
-      { 
+      {
         outFormat: OracleDB.OUT_FORMAT_OBJECT,
-        fetchInfo: { 
+        fetchInfo: {
           REVIEW_COMMENT: { type: OracleDB.STRING },
           SOLVE_COMMENT: { type: OracleDB.STRING }
         }
@@ -492,7 +493,7 @@ app.get("/api/bcf/comments", async (req: Request, res: Response): Promise<any> =
         const commentNo = (row.COMMENT_NO !== undefined && row.COMMENT_NO !== null) ? row.COMMENT_NO : row.comment_no;
         const reviewComment = row.REVIEW_COMMENT || row.review_comment || "";
         const solveComment = row.SOLVE_COMMENT || row.solve_comment || "";
-        
+
         let parsedReviewAuthor = row.ISSUE_PREPARE_NAME || row.issue_prepare_name || "External System";
         let parsedReviewComment = reviewComment;
         let parsedReviewDate = row.ISSUE_PREPARE_DATE || row.issue_prepare_date || row.INSERT_DATE || row.insert_date || new Date().toISOString();
@@ -519,7 +520,7 @@ app.get("/api/bcf/comments", async (req: Request, res: Response): Promise<any> =
         const coordX = row.COORDX !== undefined && row.COORDX !== null ? Number(row.COORDX) : (row.coordx !== undefined && row.coordx !== null ? Number(row.coordx) : null);
         const coordY = row.COORDY !== undefined && row.COORDY !== null ? Number(row.COORDY) : (row.coordy !== undefined && row.coordy !== null ? Number(row.coordy) : null);
         const coordZ = row.COORDZ !== undefined && row.COORDZ !== null ? Number(row.COORDZ) : (row.coordz !== undefined && row.coordz !== null ? Number(row.coordz) : null);
-        
+
         const coord = (coordX !== null || coordY !== null || coordZ !== null) ? { x: coordX, y: coordY, z: coordZ } : null;
 
         comments.push({
@@ -575,12 +576,12 @@ app.get("/api/bcf/sync", async (_req: Request, res: Response): Promise<any> => {
 
     // 1. Topic 조회 (CLOB 컬럼인 REVIEW_COMMENT을 String으로 가져오도록 fetchInfo 설정)
     const topicResult = await connection.execute(
-      `SELECT TOPIC_NO, MRIMS_TYPE, PRI_DISP, REVIEW_COMMENT, COORDX, COORDY, COORDZ, 
-              INSERT_DATE, ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, DUE_DATE, PRI_FILE
+      `SELECT TOPIC_NO, MRIMS_TYPE, PRI_DISP, SEC_DISP, REVIEW_COMMENT, COORDX, COORDY, COORDZ, 
+              INSERT_DATE, ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, DUE_DATE, PRI_FILE, ACK_COMMENT_NO
        FROM SI_BCF_TOPIC
        WHERE PRI_FILE IN (${placeholders})`,
       bindParams,
-      { 
+      {
         outFormat: OracleDB.OUT_FORMAT_OBJECT,
         fetchInfo: { REVIEW_COMMENT: { type: OracleDB.STRING } }
       } as any
@@ -597,9 +598,9 @@ app.get("/api/bcf/sync", async (_req: Request, res: Response): Promise<any> => {
          WHERE PRI_FILE IN (${placeholders})
        )`,
       bindParams,
-      { 
+      {
         outFormat: OracleDB.OUT_FORMAT_OBJECT,
-        fetchInfo: { 
+        fetchInfo: {
           REVIEW_COMMENT: { type: OracleDB.STRING },
           SOLVE_COMMENT: { type: OracleDB.STRING }
         }
@@ -650,6 +651,7 @@ app.get("/api/bcf/sync", async (_req: Request, res: Response): Promise<any> => {
           }
 
           commentsMap.get(topicNo)!.push({
+            commentNo: Number(row.COMMENT_NO || row.comment_no || 0),
             comment: parsedComment,
             author: parsedAuthor,
             date: parsedDate,
@@ -685,6 +687,7 @@ app.get("/api/bcf/sync", async (_req: Request, res: Response): Promise<any> => {
           }
 
           commentsMap.get(topicNo)!.push({
+            commentNo: Number(row.COMMENT_NO || row.comment_no || 0),
             comment: parsedComment,
             modifiedAuthor: parsedAuthor,
             modifiedDate: parsedDate,
@@ -713,19 +716,32 @@ app.get("/api/bcf/sync", async (_req: Request, res: Response): Promise<any> => {
           coord = { x: Number(tx), y: Number(tz), z: -Number(ty) };
         }
 
+        const labels: string[] = [];
+        const priDisp = row.PRI_DISP || row.pri_disp;
+        const secDisp = row.SEC_DISP || row.sec_disp;
+        if (priDisp) {
+          labels.push(priDisp.trim());
+        }
+        if (secDisp) {
+          const secLabels = secDisp.split(/[,;]+/).map((s: string) => s.trim()).filter((s: string) => s !== "");
+          labels.push(...secLabels);
+        }
+
         topics.push({
           mrimsNo: topicNo, // 프론트엔드 호환을 위해 mrimsNo로 매핑
           title,
           description,
           type: row.MRIMS_TYPE || row.mrims_type || "Info",
-          priority: row.PRI_DISP || row.pri_disp || "Normal",
+          priority: "Normal",
           creationAuthor: row.ISSUE_PREPARE_NAME || row.issue_prepare_name || "Admin",
           creationDate: row.ISSUE_PREPARE_DATE || row.issue_prepare_date || new Date().toISOString(),
           assignedTo: row.RESOL_PREPARE_NAME || row.resol_prepare_name || "",
           dueDate: row.DUE_DATE || row.due_date || null,
           coord,
           priFile: row.PRI_FILE || row.pri_file || "",
-          comments: commentsMap.get(topicNo) || []
+          comments: commentsMap.get(topicNo) || [],
+          ackCommentNo: Number(row.ACK_COMMENT_NO || 0),
+          labels
         });
       }
     }
@@ -754,11 +770,11 @@ app.get("/api/bcf/:id", async (req: Request, res: Response): Promise<void> => {
     const result = await connection.execute(
       `SELECT "content", "name" FROM "bcf" WHERE "id" = :id`,
       { id: bcfId },
-      { 
+      {
         outFormat: OracleDB.OUT_FORMAT_OBJECT,
         fetchInfo: { content: { type: OracleDB.BUFFER } },
       } as any
-    );  
+    );
     const bcf = result.rows?.[0] as {
       content: Buffer | null,
       name: string | null
@@ -767,7 +783,7 @@ app.get("/api/bcf/:id", async (req: Request, res: Response): Promise<void> => {
       console.warn(`BCF data not found for id: ${bcfId}`);
       res.status(404).json({ error: "BCF data not found" });
       return;
-    }  
+    }
     const base64Content = bcf.content.toString("base64");
     res.json({ name: bcf.name, content: base64Content });
   } catch (err) {
@@ -779,24 +795,24 @@ app.get("/api/bcf/:id", async (req: Request, res: Response): Promise<void> => {
         await connection.close();
       } catch (err) {
         console.error("Error closing connection:", err);
-      }  
-    }  
-  }  
-});  
+      }
+    }
+  }
+});
 
 // Post BCF
 app.post("/api/bcf", upload.single("file"), async (req: Request, res: Response) => {
   let connection: OracleDB.Connection | undefined;
   try {
     connection = await getConnection();
-    
+
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded." });
     }
-    
+
     const name = req.file.originalname;
     const bufferContent = req.file.buffer;
-    
+
     // Validate ifcid
     const rawifcid = req.body.ifcid;
     if (rawifcid === undefined || rawifcid === null || rawifcid === "") {
@@ -817,14 +833,14 @@ app.post("/api/bcf", upload.single("file"), async (req: Request, res: Response) 
     } catch (e) {
       return res.status(400).json({ error: "Invalid ifcid format." });
     }
-    
+
     if (ifcIds.length === 0) {
       return res.status(400).json({ error: "No valid ifcid provided." });
     }
 
     const sql = `INSERT INTO "bcf" ("name", "content") VALUES (:name, :content) RETURNING "id" INTO :id`;
-    
-    const result = await connection.execute<{ id: number[] }> (
+
+    const result = await connection.execute<{ id: number[] }>(
       sql,
       {
         name: {
@@ -837,18 +853,18 @@ app.post("/api/bcf", upload.single("file"), async (req: Request, res: Response) 
           type: OracleDB.DB_TYPE_BLOB,
           dir: OracleDB.BIND_IN,
         },
-        id: { 
+        id: {
           type: OracleDB.DB_TYPE_NUMBER,
           dir: OracleDB.BIND_OUT,
         },
-      },  
-      { autoCommit: false, outFormat: OracleDB.OUT_FORMAT_OBJECT},
-    );  
+      },
+      { autoCommit: false, outFormat: OracleDB.OUT_FORMAT_OBJECT },
+    );
     if (result.outBinds && Array.isArray(result.outBinds.id) && result.outBinds.id.length > 0) {
       const bcfId = result.outBinds.id[0];
-      
+
       const relationSql = `INSERT INTO "ifc_bcf" ("ifc_id", "bcf_id") VALUES (:ifc_id, :bcf_id)`;
-      
+
       for (const ifcId of ifcIds) {
         await connection.execute(
           relationSql,
@@ -860,15 +876,15 @@ app.post("/api/bcf", upload.single("file"), async (req: Request, res: Response) 
         );
       }
       await connection.commit();
-      
+
       res.status(201).json({
         message: "BCF inserted successfully",
         id: bcfId,
-      });  
+      });
     } else {
       console.error("Error inserting BCF: No ID returned");
       res.status(500).json({ error: "Failed to insert BCF" });
-    }  
+    }
   } catch (err) {
     console.error("Error reading or inserting the bcf file:", err);
     res.status(500).json({ error: "Failed to insert BCF", details: err instanceof Error ? err.message : String(err) });
@@ -878,10 +894,10 @@ app.post("/api/bcf", upload.single("file"), async (req: Request, res: Response) 
         await connection.close();
       } catch (err) {
         console.error("Error closing connection:", err);
-      }  
-    }  
-  }  
-});  
+      }
+    }
+  }
+});
 
 // Delete BCF
 app.delete("/api/bcf/:id", async (req: Request, res: Response) => {
@@ -983,10 +999,14 @@ app.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promise<a
       const coordX = topic.coord ? topic.coord.x : null;
       const coordY = topic.coord ? topic.coord.y : null;
       const coordZ = topic.coord ? topic.coord.z : null;
-      
+
       const insertDate = topic.creationDate ? new Date(topic.creationDate) : new Date();
       const issuePrepareDate = topic.creationDate ? new Date(topic.creationDate) : new Date();
       const dueDate = topic.dueDate ? new Date(topic.dueDate) : null;
+
+      const labels = topic.labels || [];
+      const priDisp = labels[0] || null;
+      const secDisp = labels.slice(1).join(",") || null;
 
       if (isExisting) {
         // 1. 기존 토픽인 경우 UPDATE 처리 (작성자와 최초작성일은 유지)
@@ -994,6 +1014,7 @@ app.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promise<a
           UPDATE SI_BCF_TOPIC SET
             MRIMS_TYPE = :mrims_type,
             PRI_DISP = :pri_disp,
+            SEC_DISP = :sec_disp,
             REVIEW_COMMENT = :review_comment,
             COORDX = :coordx,
             COORDY = :coordy,
@@ -1007,7 +1028,8 @@ app.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promise<a
         const bindsUpdateTopic = {
           topic_no: { val: topicNo, type: OracleDB.DB_TYPE_NUMBER },
           mrims_type: { val: topic.type || null, type: OracleDB.DB_TYPE_VARCHAR },
-          pri_disp: { val: null, type: OracleDB.DB_TYPE_VARCHAR },
+          pri_disp: { val: priDisp, type: OracleDB.DB_TYPE_VARCHAR },
+          sec_disp: { val: secDisp, type: OracleDB.DB_TYPE_VARCHAR },
           review_comment: { val: reviewComment, type: OracleDB.DB_TYPE_VARCHAR },
           coordx: coordX !== null ? { val: coordX, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
           coordy: coordY !== null ? { val: coordY, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
@@ -1029,10 +1051,10 @@ app.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promise<a
         // 3. 신규 토픽인 경우 INSERT 처리
         const sqlInsertTopic = `
           INSERT INTO SI_BCF_TOPIC (
-            TOPIC_NO, MRIMS_TYPE, PRI_DISP, REVIEW_COMMENT, COORDX, COORDY, COORDZ, 
+            TOPIC_NO, MRIMS_TYPE, PRI_DISP, SEC_DISP, REVIEW_COMMENT, COORDX, COORDY, COORDZ, 
             INSERT_DATE, ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, DUE_DATE, PRI_FILE
           ) VALUES (
-            :topic_no, :mrims_type, :pri_disp, :review_comment, :coordx, :coordy, :coordz,
+            :topic_no, :mrims_type, :pri_disp, :sec_disp, :review_comment, :coordx, :coordy, :coordz,
             :insert_date, :issue_prepare_name, :issue_prepare_date, :resol_prepare_name, :due_date, :pri_file
           )
         `;
@@ -1040,7 +1062,8 @@ app.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promise<a
         const bindsInsertTopic = {
           topic_no: { val: topicNo, type: OracleDB.DB_TYPE_NUMBER },
           mrims_type: { val: topic.type || null, type: OracleDB.DB_TYPE_VARCHAR },
-          pri_disp: { val: null, type: OracleDB.DB_TYPE_VARCHAR },
+          pri_disp: { val: priDisp, type: OracleDB.DB_TYPE_VARCHAR },
+          sec_disp: { val: secDisp, type: OracleDB.DB_TYPE_VARCHAR },
           review_comment: { val: reviewComment, type: OracleDB.DB_TYPE_VARCHAR },
           coordx: coordX !== null ? { val: coordX, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
           coordy: coordY !== null ? { val: coordY, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
@@ -1099,7 +1122,7 @@ app.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promise<a
     }
 
     await connection.commit();
-    res.status(201).json({ 
+    res.status(201).json({
       message: "BCF Topics and Comments successfully saved to DB.",
       mapping
     });
@@ -1120,6 +1143,36 @@ app.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promise<a
       } catch (err) {
         console.error("Error closing connection:", err);
       }
+    }
+  }
+});
+
+
+// POST Acknowledge Sync for a BCF Topic
+app.post("/api/bcf/acknowledge-sync", async (req: Request, res: Response): Promise<any> => {
+  let connection: OracleDB.Connection | undefined;
+  try {
+    const { mrimsNo, ackCommentNo } = req.body;
+    if (!mrimsNo) {
+      return res.status(400).json({ error: "mrimsNo is required" });
+    }
+
+    connection = await getMrimsConnection();
+    await connection.execute(
+      `UPDATE SI_BCF_TOPIC SET ACK_COMMENT_NO = :ack_comment_no WHERE TOPIC_NO = :topic_no`,
+      {
+        ack_comment_no: Number(ackCommentNo || 0),
+        topic_no: Number(mrimsNo)
+      },
+      { autoCommit: true }
+    );
+    res.json({ message: "Sync acknowledged successfully." });
+  } catch (err) {
+    console.error("Error acknowledging BCF sync:", err);
+    res.status(500).json({ error: "Failed to acknowledge sync", details: err instanceof Error ? err.message : String(err) });
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (err) { console.error(err); }
     }
   }
 });
@@ -1150,7 +1203,7 @@ app.post("/api/add-edb-data", upload.single("file"), async (req: Request, res: R
     // 파이썬 서버로부터 처리된 IFC 파일을 받아옵니다.
     const arrayBuffer = await response.arrayBuffer();
     const processedBuffer = Buffer.from(arrayBuffer);
-    
+
     res.setHeader("Content-Type", response.headers.get("Content-Type") || "application/octet-stream");
     res.send(processedBuffer);
   } catch (err) {
@@ -1167,7 +1220,7 @@ app.post("/api/process-properties", upload.single("file"), async (req: Request, 
     }
 
     const { action, expressIds, propertiesData } = req.body;
-    
+
     if (!action || !expressIds || !propertiesData) {
       return res.status(400).json({ error: "Missing required property data." });
     }
@@ -1191,7 +1244,7 @@ app.post("/api/process-properties", upload.single("file"), async (req: Request, 
 
     const arrayBuffer = await response.arrayBuffer();
     const processedBuffer = Buffer.from(arrayBuffer);
-    
+
     res.setHeader("Content-Type", response.headers.get("Content-Type") || "application/octet-stream");
     res.send(processedBuffer);
   } catch (err) {
@@ -1233,7 +1286,7 @@ app.post("/api/clash-manager/filter", async (req: Request, res: Response): Promi
 
     connection = await getConnection();
     const results: any[] = [];
-    
+
     // Oracle DB의 쿼리 길이 및 바인드 변수 제한을 우회하기 위해 500개씩 청크 분할 처리
     const chunkSize = 500;
     for (let i = 0; i < pairs.length; i += chunkSize) {
@@ -1244,12 +1297,12 @@ app.post("/api/clash-manager/filter", async (req: Request, res: Response): Promi
         binds[`g2_${idx}`] = p[1];
         return `("guid1" = :g1_${idx} AND "guid2" = :g2_${idx})`;
       });
-      
+
       const sql = `SELECT "guid1", "guid2", "badge" FROM "clash_manager" WHERE ${conditions.join(" OR ")}`;
       const result = await connection.execute(sql, binds, { outFormat: OracleDB.OUT_FORMAT_OBJECT });
       if (result.rows) results.push(...result.rows);
     }
-    
+
     res.json(results);
   } catch (err) {
     console.error("Error filtering clash statuses:", err);
@@ -1272,7 +1325,7 @@ app.post("/api/clash-manager/upsert", async (req: Request, res: Response): Promi
     }
 
     connection = await getConnection();
-    
+
     const sql = `
       MERGE INTO "clash_manager" dest
       USING (SELECT :guid1 AS "guid1", :guid2 AS "guid2", :badge AS "badge", 
@@ -1304,7 +1357,7 @@ app.post("/api/clash-manager/upsert", async (req: Request, res: Response): Promi
     };
 
     await connection.executeMany(sql, payload, options);
-    
+
     res.status(200).json({ message: "Clash statuses synchronized successfully." });
   } catch (err) {
     console.error("Error upserting clash statuses:", err);
@@ -1327,7 +1380,7 @@ app.post("/api/clash-manager/delete-pairs", async (req: Request, res: Response):
     }
 
     connection = await getConnection();
-    
+
     const sql = `DELETE FROM "clash_manager" WHERE "guid1" = :guid1 AND "guid2" = :guid2`;
     const options = {
       autoCommit: true,

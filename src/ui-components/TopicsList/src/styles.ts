@@ -118,11 +118,13 @@ export const defaultTopicStyles: Required<TopicStyles> = {
     },
   },
   labels: {
-    Architecture: { style: { backgroundColor: "var(--bim-ui_bg-contrast-20)" } },
-    Structure: { style: { backgroundColor: "var(--bim-ui_bg-contrast-20)" } },
-    MEP: { style: { backgroundColor: "var(--bim-ui_bg-contrast-20)" } },
-    Clash: { icon: appIcons.CLASH, style: { backgroundColor: "#FF5252", "--bim-label--c": "#ffffff", "--bim-icon--c": "#ffffff" } },
-    Issue: { icon: appIcons.WARNING, style: { backgroundColor: "#FB8C00", "--bim-label--c": "#ffffff", "--bim-icon--c": "#ffffff" } },
+    A: { style: { backgroundColor: "#2196F3", "--bim-label--c": "#ffffff" } },
+    C: { style: { backgroundColor: "#795548", "--bim-label--c": "#ffffff" } },
+    E: { style: { backgroundColor: "#FFC107", "--bim-label--c": "#000000" } },
+    J: { style: { backgroundColor: "#9E9E9E", "--bim-label--c": "#ffffff" } },
+    M: { style: { backgroundColor: "#0D47A1", "--bim-label--c": "#ffffff" } },
+    P: { style: { backgroundColor: "#009688", "--bim-label--c": "#ffffff" } },
+    R: { style: { backgroundColor: "#9C27B0", "--bim-label--c": "#ffffff" } },
   },
   stages: {
     Design: { style: { backgroundColor: "var(--bim-ui_bg-contrast-20)" } },

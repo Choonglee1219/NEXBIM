@@ -28,6 +28,7 @@ CREATE TABLE SI_BCF_TOPIC (
     RESOL_PREPARE_NAME  VARCHAR2(100),               -- 해결방안 제출자
     RESOL_PREPARE_DATE  DATE,                        -- 해결방안 제출 일자
     DUE_DATE            DATE,                        -- 검토 완료 요구일
+    ACK_COMMENT_NO      NUMBER(10) DEFAULT 0 NOT NULL, -- 최종 동기화 처리(Acknowledge) 댓글 번호
     
     CONSTRAINT PK_SI_BCF_TOPIC PRIMARY KEY (TOPIC_NO)
 );

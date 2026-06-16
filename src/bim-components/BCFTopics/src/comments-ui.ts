@@ -203,7 +203,12 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
 
     if (mrimsNo) {
       generalSyncBtn.disabled = false;
-      if (flatTdvsComments.length > 0) {
+
+      const dismissedCount = (topic as any).ackCommentNo || 0;
+      const maxServerCommentNo = tdvsComments.length > 0 ? Math.max(...tdvsComments.map(c => c.commentNo || 0)) : 0;
+      const isDismissed = maxServerCommentNo <= dismissedCount;
+
+      if (flatTdvsComments.length > 0 && !isDismissed) {
         generalSyncBtn.active = true;
         generalSyncBtn.style.setProperty("--bim-button--bg", "var(--bim-ui_accent, #3880ff)");
         generalSyncBtn.style.setProperty("--bim-button--c", "var(--bim-ui_accent-contrast, #ffffff)");
@@ -354,8 +359,56 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       renderComments(topic);
     });
 
+    const leftSubToolbar = document.createElement("div");
+    leftSubToolbar.style.display = "flex";
+    leftSubToolbar.style.gap = "0.25rem";
+    leftSubToolbar.style.flexShrink = "0";
+
+    const ackSyncBtn = document.createElement("bim-button") as BUI.Button;
+    ackSyncBtn.style.flex = "1";
+    ackSyncBtn.style.margin = "0";
+
+    const dismissedCount = (topic as any).ackCommentNo || 0;
+    const maxServerCommentNo = tdvsComments.length > 0 ? Math.max(...tdvsComments.map(c => c.commentNo || 0)) : 0;
+    const isDismissed = maxServerCommentNo <= dismissedCount;
+
+    if (mrimsNo && flatTdvsComments.length > 0 && !isDismissed) {
+      ackSyncBtn.disabled = false;
+      ackSyncBtn.label = "Acknowledge Sync";
+      ackSyncBtn.icon = appIcons.IDS_CHECK;
+      ackSyncBtn.title = "Mark this topic's comments as synced / acknowledged";
+      ackSyncBtn.addEventListener("click", async () => {
+        ackSyncBtn.loading = true;
+        try {
+          const response = await fetch("/api/bcf/acknowledge-sync", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ mrimsNo, ackCommentNo: maxServerCommentNo })
+          });
+          if (!response.ok) throw new Error("네트워크 오류");
+          
+          (topic as any).ackCommentNo = maxServerCommentNo;
+          bcfTopics.onRefresh.trigger();
+          alert("이 토픽의 동기화 경고를 해제(완료 처리)했습니다.");
+          renderComments(topic, true);
+        } catch (err) {
+          alert(`동기화 완료 처리 실패: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+          ackSyncBtn.loading = false;
+        }
+      });
+    } else {
+      ackSyncBtn.disabled = true;
+      ackSyncBtn.label = "Synced / Acknowledged";
+      ackSyncBtn.icon = appIcons.IDS_CHECK;
+    }
+
+    leftSubToolbar.append(ackSyncBtn);
+
     leftToolbar.append(generalSyncBtn, addNewGroupBtn);
-    leftPane.append(leftToolbar);
+    leftPane.append(leftToolbar, leftSubToolbar);
 
     const listScroll = document.createElement("div");
     listScroll.style.flex = "1";

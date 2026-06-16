@@ -27,6 +27,7 @@ export const topicsListTemplate: BUI.StatefullComponent<TopicsListState> = (
         DueDate: topic.dueDate?.toDateString() ?? "",
         Type: topic.type,
         Priority: topic.priority ?? "",
+        Labels: Array.from(topic.labels).join(", "),
         Actions: state.unsyncedTopicGuids?.has(topic.guid) ? "unsynced" : "synced",
       },
     };

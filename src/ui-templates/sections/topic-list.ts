@@ -462,7 +462,8 @@ export const topicListTemplate: BUI.StatefullComponent<
         dueDate: topic.dueDate ? topic.dueDate.toISOString() : null,
         coord: topicCoord,
         priFile: ifcFileName, // BCF 연계 IFC 파일명 매핑
-        comments: commentsData
+        comments: commentsData,
+        labels: Array.from(topic.labels)
       });
     }
 
@@ -536,6 +537,13 @@ export const topicListTemplate: BUI.StatefullComponent<
             const dateDiff = Math.abs(new Date(t.creationDate).getTime() - new Date(serverTopic.creationDate).getTime());
             return t.title === serverTopic.title && dateDiff < 5000;
           });
+          if (topic) {
+            topic.mrimsNo = serverTopic.mrimsNo;
+          }
+        }
+
+        if (topic) {
+          (topic as any).ackCommentNo = serverTopic.ackCommentNo || 0;
         }
 
         if (!topic) {
@@ -544,6 +552,7 @@ export const topicListTemplate: BUI.StatefullComponent<
         }
 
         if (serverTopic.comments && Array.isArray(serverTopic.comments)) {
+          const dismissedCount = serverTopic.ackCommentNo || 0;
           const localComments = Array.from(topic.comments.values()) as any[];
           const isAlreadyImported = (text: string) => {
             return localComments.some(lc => lc.comment === text);
@@ -551,6 +560,12 @@ export const topicListTemplate: BUI.StatefullComponent<
 
           const hasNewComments = serverTopic.comments.some((item: any) => {
             if (!item || !item.comment) return false;
+
+            const cNo = item.commentNo || 0;
+            if (cNo > 0 && cNo <= dismissedCount) {
+              return false;
+            }
+
             const parts = item.comment.split(";;").map((p: string) => p.trim()).filter((p: string) => p !== "");
             return parts.some((partText: string) => !isAlreadyImported(partText));
           });
@@ -639,6 +654,7 @@ export const topicListTemplate: BUI.StatefullComponent<
         if (!topic) {
           topic = bcfTopics._bcf.create();
           topic.mrimsNo = serverTopic.mrimsNo;
+          topic.status = "Open";
           isNewTopic = true;
         }
 
@@ -655,6 +671,14 @@ export const topicListTemplate: BUI.StatefullComponent<
         topic.dueDate = serverTopic.dueDate ? new Date(serverTopic.dueDate) : undefined;
         if (serverTopic.priFile) {
           topic.priFile = serverTopic.priFile;
+        }
+        (topic as any).ackCommentNo = serverTopic.ackCommentNo || 0;
+
+        if (serverTopic.labels && Array.isArray(serverTopic.labels)) {
+          topic.labels.clear();
+          for (const label of serverTopic.labels) {
+            topic.labels.add(label);
+          }
         }
 
         if (serverTopic.coord && isNewTopic) {
