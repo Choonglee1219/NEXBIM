@@ -5,6 +5,7 @@ import { ViewerToolbarState, viewerToolbarTemplate } from "..";
 import { appIcons } from "../../globals";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { Measurer } from "../../bim-components/Measurer";
+import { ClipperBox } from "../../bim-components/ClipperBox";
 
 type BottomToolbar = { name: "bottomToolbar"; state: ViewerToolbarState };
 type LeftToolbar = { name: "leftToolbar"; state: {} };
@@ -29,6 +30,7 @@ export const viewportGridTemplate: BUI.StatefullComponent<ViewportGridState> = (
     const areaMeasurer = components.get(OBF.AreaMeasurement);
     const clipper = components.get(OBC.Clipper);
     const measurer = components.get(Measurer);
+    const clipperBox = components.get(ClipperBox);
 
     const updateHighlighter = () => {
       highlighter.enabled = !lengthMeasurer.enabled && !areaMeasurer.enabled;
@@ -49,7 +51,10 @@ export const viewportGridTemplate: BUI.StatefullComponent<ViewportGridState> = (
       highlighter.enabled = false;
       if (!exceptions?.includes("length")) lengthMeasurer.enabled = false;
       if (!exceptions?.includes("area")) areaMeasurer.enabled = false;
-      if (!exceptions?.includes("clipper")) clipper.enabled = false;
+      if (!exceptions?.includes("clipper")) {
+        clipper.enabled = false;
+        clipperBox.disable();
+      }
     };
 
     const onLengthMeasurement = () => {
@@ -69,7 +74,25 @@ export const viewportGridTemplate: BUI.StatefullComponent<ViewportGridState> = (
     const onModelSection = () => {
       disableAll(["clipper"]);
       clipper.enabled = !clipper.enabled;
+      if (clipper.enabled) {
+        clipperBox.disable();
+      }
       highlighter.enabled = true; // Clipper 활성화 시에도 객체 선택 가능하도록 변경
+      update();
+    };
+
+    const onClipperBox = () => {
+      disableAll(["clipper"]);
+      if (clipperBox.enabled) {
+        clipperBox.disable();
+        if (clipper.list.size === 0) {
+          clipper.enabled = false;
+        }
+      } else {
+        clipper.enabled = true;
+        clipperBox.enable();
+      }
+      highlighter.enabled = true;
       update();
     };
 
@@ -77,6 +100,7 @@ export const viewportGridTemplate: BUI.StatefullComponent<ViewportGridState> = (
       if (clipper.deleteAll) clipper.deleteAll();
       else if ((clipper as any).clear) (clipper as any).clear();
       clipper.enabled = false;
+      clipperBox.disable();
       BUI.ContextMenu.removeMenus();
       update();
     };
@@ -116,10 +140,11 @@ export const viewportGridTemplate: BUI.StatefullComponent<ViewportGridState> = (
               </div>
             </bim-context-menu>
           </bim-button>
-          <bim-button ?active=${clipper.enabled} label="Section" title="Model Section" icon=${appIcons.CLIPPING}>
+          <bim-button ?active=${clipper.enabled || clipperBox.enabled} label="Section" title="Model Section" icon=${appIcons.CLIPPING}>
             <bim-context-menu>
               <div style="display: flex; gap: 0.25rem; overflow: hidden; width: max-content;">
-                <bim-button ?active=${clipper.enabled} title="Add Section" icon=${appIcons.CLIPPING} @click=${onModelSection}></bim-button>
+                <bim-button ?active=${clipper.enabled} title="Clipper Face" icon=${appIcons.CLIPPER_FACE} @click=${onModelSection}></bim-button>
+                <bim-button ?active=${clipperBox.enabled} title="Clipper Box" icon=${appIcons.CLIPPER_BOX} @click=${onClipperBox}></bim-button>
                 <bim-button icon=${appIcons.CLEAR} title=" All Clear" @click=${onClipperClearAll}></bim-button>
               </div>
             </bim-context-menu>

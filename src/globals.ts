@@ -138,6 +138,8 @@ export const appIcons = {
   DRAFT: "/icons/mdi--flash.svg",
   SORT: "/icons/mdi--sort-clock-ascending.svg",
   REPEAT: "/icons/mdi--repeat.svg",
+  CLIPPER_FACE: "/icons/at-icons--face.svg",
+  CLIPPER_BOX: "/icons/at-icons--box.svg",
 };
 
 // 테이블 내 아이콘 버튼들의 공통 컴팩트 스타일
@@ -148,7 +150,7 @@ export const onToggleSection = (e: Event) => {
   const wrapper = header.parentElement as HTMLElement;
   const content = header.nextElementSibling as HTMLElement;
   const icon = header.querySelector(".toggle-icon") as any;
-  
+
   if (content.style.display === "none") {
     content.style.display = "flex";
     icon.icon = appIcons.MINOR;
@@ -271,7 +273,7 @@ export const onTableCellCreated = (e: Event) => {
         cell.style.backgroundColor = "var(--bim-ui_bg-contrast-20)";
         setTimeout(() => { cell.style.backgroundColor = originalBg; }, 150);
         alert(`복사되었습니다: ${textToCopy}`);
-      } catch (err) {}
+      } catch (err) { }
     }
   });
 };
@@ -300,7 +302,7 @@ export const showLightbox = (url: string) => {
   dialog.style.background = "transparent";
   dialog.style.maxWidth = "90vw";
   dialog.style.maxHeight = "90vh";
-  
+
   dialog.addEventListener("click", () => {
     dialog.close();
     dialog.remove();
@@ -309,7 +311,7 @@ export const showLightbox = (url: string) => {
   const style = document.createElement("style");
   style.textContent = `dialog::backdrop { background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); }`;
   dialog.appendChild(style);
-  
+
   const img = document.createElement("img");
   img.src = url;
   img.style.display = "block";

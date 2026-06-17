@@ -15,6 +15,7 @@ import { setupContextMenu } from "./ui-components/ContextMenu";
 import { CustomCameraControl } from "./bim-components/CustomCameraControl";
 import { setupBoxSelection } from "./ui-components/BoxSelection";
 import { Measurer } from "./bim-components/Measurer";
+import { ClipperBox } from "./bim-components/ClipperBox";
 
 // 🎨Override the bim-label template to use a local SVG icon and apply custom colors
 // @ts-ignore
@@ -203,7 +204,7 @@ highlighter.styles.set("transparentCyan", {
 // ✂️Clipper Setup
 const clipper = components.get(OBC.Clipper);
 viewport.ondblclick = () => {
-  if (clipper.enabled) clipper.create(world);
+  if (clipper.enabled && !components.get(ClipperBox).enabled) clipper.create(world);
 };
 
 window.addEventListener("keydown", (event) => {
@@ -218,6 +219,10 @@ new CustomCameraControl(components, world, viewport, highlighter);
 // 📐 Measurer Setup
 const measurer = components.get(Measurer);
 measurer.init(world, viewport);
+
+// 📦 Clipper Box Setup
+const clipperBox = components.get(ClipperBox);
+clipperBox.init(world);
 
 // 🔲 Box Selection Setup
 setupBoxSelection(components, world, viewport, highlighter);
