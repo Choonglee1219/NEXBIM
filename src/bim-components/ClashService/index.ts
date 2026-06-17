@@ -2,7 +2,6 @@ import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 import { ClashOptions } from "./src/obb-collision";
 import { Highlighter } from "../Highlighter";
-import { setModelTransparent } from "../../ui-templates/toolbars/viewer-toolbar";
 import { BCFTopics } from "../BCFTopics";
 import { appState } from "../../globals";
 
@@ -26,7 +25,7 @@ export interface ClashResult {
  */
 export class ClashService extends OBC.Component implements OBC.Disposable {
   static readonly uuid = "e456950d-bcba-4f18-bc1c-5d18d4513dbf" as const;
-  
+
   enabled = true;
   readonly onDisposed = new OBC.Event<string>();
   private _workers: Worker[] = [];
@@ -38,7 +37,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
   private _clashMarker?: THREE.Mesh;
   private _clashMarkersGroup?: THREE.Group;
   private readonly CLASH_PALETTE = [
-    "#C00000", "#00B050", "#0070C0", "#FFC000", "#7030A0", 
+    "#C00000", "#00B050", "#0070C0", "#FFC000", "#7030A0",
     "#FF66CC", "#00CCFF", "#FF9933", "#99CC00", "#3399FF"
   ];
 
@@ -75,44 +74,44 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       for (let i = 0; i < numWorkers; i++) {
         const worker = new Worker(new URL('./src/raw-ifc-clash-worker.ts', import.meta.url), { type: 'module' });
         this._workerCacheStatus.set(worker, new Set<string>());
-        
+
         worker.onmessage = (e) => {
-        const { jobId, results, error } = e.data;
-        const job = this._pendingJobs.get(jobId);
-        if (job) {
-          this._pendingJobs.delete(jobId);
-          if (error) {
-            job.reject(new Error(error));
-          } else {
-            // Worker에서 넘어온 raw 결과를 Three.js 객체(Vector3)와 BCF 카메라 데이터로 매핑
-            const transformedResults = results.map((r: any) => {
-              const pos = new THREE.Vector3(r.position.x, r.position.y, r.position.z);
-              if (r.id1.obb) r.id1.obb.center = new THREE.Vector3(r.id1.obb.center.x, r.id1.obb.center.y, r.id1.obb.center.z);
-              if (r.id2.obb) r.id2.obb.center = new THREE.Vector3(r.id2.obb.center.x, r.id2.obb.center.y, r.id2.obb.center.z);
-              
-              const bx = pos.x; const by = -pos.z; const bz = pos.y;
-              const D = 1.5; 
-              const clipping_planes: ViewpointClippingPlane[] = [
-                { location: { x: bx + D, y: by, z: bz }, direction: { x: 1, y: 0, z: 0 } },
-                { location: { x: bx - D, y: by, z: bz }, direction: { x: -1, y: 0, z: 0 } },
-                { location: { x: bx, y: by + D, z: bz }, direction: { x: 0, y: 1, z: 0 } },
-                { location: { x: bx, y: by - D, z: bz }, direction: { x: 0, y: -1, z: 0 } },
-                { location: { x: bx, y: by, z: bz + D }, direction: { x: 0, y: 0, z: 1 } },
-                { location: { x: bx, y: by, z: bz - D }, direction: { x: 0, y: 0, z: -1 } },
-              ];
-              const cx = bx + 2; const cy = by - 2; const cz = bz + 2;
-              const dirVec = new THREE.Vector3(bx - cx, by - cy, bz - cz).normalize();
-              
-              return { ...r, position: pos, camera_view_point: { x: cx, y: cy, z: cz }, camera_direction: { x: dirVec.x, y: dirVec.y, z: dirVec.z }, camera_up_vector: { x: 0, y: 0, z: 1 }, clipping_planes };
-            });
-            job.resolve(transformedResults);
+          const { jobId, results, error } = e.data;
+          const job = this._pendingJobs.get(jobId);
+          if (job) {
+            this._pendingJobs.delete(jobId);
+            if (error) {
+              job.reject(new Error(error));
+            } else {
+              // Worker에서 넘어온 raw 결과를 Three.js 객체(Vector3)와 BCF 카메라 데이터로 매핑
+              const transformedResults = results.map((r: any) => {
+                const pos = new THREE.Vector3(r.position.x, r.position.y, r.position.z);
+                if (r.id1.obb) r.id1.obb.center = new THREE.Vector3(r.id1.obb.center.x, r.id1.obb.center.y, r.id1.obb.center.z);
+                if (r.id2.obb) r.id2.obb.center = new THREE.Vector3(r.id2.obb.center.x, r.id2.obb.center.y, r.id2.obb.center.z);
+
+                const bx = pos.x; const by = -pos.z; const bz = pos.y;
+                const D = 1.5;
+                const clipping_planes: ViewpointClippingPlane[] = [
+                  { location: { x: bx + D, y: by, z: bz }, direction: { x: 1, y: 0, z: 0 } },
+                  { location: { x: bx - D, y: by, z: bz }, direction: { x: -1, y: 0, z: 0 } },
+                  { location: { x: bx, y: by + D, z: bz }, direction: { x: 0, y: 1, z: 0 } },
+                  { location: { x: bx, y: by - D, z: bz }, direction: { x: 0, y: -1, z: 0 } },
+                  { location: { x: bx, y: by, z: bz + D }, direction: { x: 0, y: 0, z: 1 } },
+                  { location: { x: bx, y: by, z: bz - D }, direction: { x: 0, y: 0, z: -1 } },
+                ];
+                const cx = bx + 2; const cy = by - 2; const cz = bz + 2;
+                const dirVec = new THREE.Vector3(bx - cx, by - cy, bz - cz).normalize();
+
+                return { ...r, position: pos, camera_view_point: { x: cx, y: cy, z: cz }, camera_direction: { x: dirVec.x, y: dirVec.y, z: dirVec.z }, camera_up_vector: { x: 0, y: 0, z: 1 }, clipping_planes };
+              });
+              job.resolve(transformedResults);
+            }
           }
-        }
-      };
-      worker.onerror = (err) => {
-        for (const job of this._pendingJobs.values()) job.reject(err);
-        this._pendingJobs.clear();
-      };
+        };
+        worker.onerror = (err) => {
+          for (const job of this._pendingJobs.values()) job.reject(err);
+          this._pendingJobs.clear();
+        };
         this._workers.push(worker);
       }
     }
@@ -294,7 +293,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
     const geometry = new THREE.SphereGeometry(0.2, 16, 16);
     // 마커의 개별 색상(InstanceColor)을 정상적으로 렌더링하기 위해 기본 Material 색상을 흰색(0xffffff)으로 설정합니다.
     const material = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.85 });
-    
+
     const instancedMesh = new THREE.InstancedMesh(geometry, material, markers.length);
     const dummy = new THREE.Object3D();
 
@@ -302,7 +301,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       const item = markers[i];
       let pos: THREE.Vector3;
       let col: THREE.Color | undefined;
-      
+
       if (item instanceof THREE.Vector3) {
         pos = item;
       } else {
@@ -358,12 +357,12 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
         highlighter.styles.set(color, {
           color: new THREE.Color(color),
           renderedFaces: 1,
-          opacity: 0.5,
+          opacity: 0.7,
           transparent: true,
           depthTest: true,
         });
       }
-      
+
       await highlighter.highlightByID(color, { [id.modelId]: new Set([id.expressID]) }, false, false);
     }
   }
@@ -387,7 +386,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
     let colorIndex = 0;
     for (const obj of uniqueObjects.values()) {
       const color = this.CLASH_PALETTE[colorIndex % this.CLASH_PALETTE.length];
-      
+
       if (!highlighter.styles.has(color)) {
         highlighter.styles.set(color, {
           color: new THREE.Color(color),
@@ -397,7 +396,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
           depthTest: true,
         });
       }
-      
+
       await highlighter.highlightByID(color, { [obj.modelId]: new Set([obj.expressID]) }, false, false);
       colorIndex++;
     }
@@ -433,7 +432,6 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       );
       world.camera.controls.update(0);
       await this.applyClashColor(res, highlighter);
-      setModelTransparent(this.components);
 
       // 해당 간섭 마커 표시
       this.clearClashMarkers();
@@ -456,7 +454,6 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       );
       world.camera.controls.update(0);
       await this.applyClashGroupColors(results, highlighter);
-      setModelTransparent(this.components);
 
       // 해당 그룹 간섭 마커들 표시
       this.clearClashMarkers();
@@ -481,7 +478,6 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       );
       world.camera.controls.update(0);
       await this.applyClashColor(res, highlighter);
-      setModelTransparent(this.components);
     }
 
     // 2. 하이라이트 색상이 렌더링에 반영될 수 있도록 최소한의 지연 대기
@@ -518,10 +514,10 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       const fragments = this.components.get(OBC.FragmentsManager);
       const map1 = { [res.id1.modelId]: new Set([res.id1.expressID]) };
       const map2 = { [res.id2.modelId]: new Set([res.id2.expressID]) };
-      
+
       const guids1 = await fragments.modelIdMapToGuids(map1);
       const guids2 = await fragments.modelIdMapToGuids(map2);
-      
+
       if (!capturedViewpoint.selectionComponents) capturedViewpoint.selectionComponents = new Set();
       for (const guid of guids1) capturedViewpoint.selectionComponents.add(guid);
       for (const guid of guids2) capturedViewpoint.selectionComponents.add(guid);
@@ -538,7 +534,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       const cat2 = (res.id2 as any).category || "Unknown";
       const title = `Clash: ${cat1}(${res.id1.expressID}) vs ${cat2}(${res.id2.expressID})`;
       const description = `Detected clash at X: ${res.position.x.toFixed(2)}, Y: ${res.position.y.toFixed(2)}, Z: ${res.position.z.toFixed(2)}`;
-      
+
       const formattedPosition = new THREE.Vector3(
         Number(res.position.x.toFixed(2)),
         Number(res.position.y.toFixed(2)),
@@ -548,54 +544,54 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       // ThatOpen의 공식 API를 우선적으로 사용하여 안전한 토픽 객체 생성
       let newTopic: any = null;
       if (bcfTopics._bcf && typeof bcfTopics._bcf.create === "function") {
-         newTopic = bcfTopics._bcf.create();
+        newTopic = bcfTopics._bcf.create();
       } else if (typeof (bcfTopics as any).create === "function") {
-         newTopic = (bcfTopics as any).create();
+        newTopic = (bcfTopics as any).create();
       }
 
       if (newTopic) {
-         newTopic.title = title;
-         newTopic.description = description;
-         newTopic.creationAuthor = appState.currentUser || "System";
-         newTopic.type = "Clash";
-         newTopic.status = "Open";
-         newTopic.clashPoint = formattedPosition;
-         newTopic.guid1 = res.id1.expressID;
-         newTopic.guid2 = res.id2.expressID;
-         newTopic.category1 = cat1;
-         newTopic.category2 = cat2;
-         if (capturedViewpoint) {
-            if (!newTopic.viewpoints) newTopic.viewpoints = new Set();
-            newTopic.viewpoints.add(capturedViewpoint.guid);
-         }
-         if (capturedSnapshot) newTopic.snapshot = capturedSnapshot;
-         
-         if (!bcfTopics.list.has(newTopic.guid)) bcfTopics.list.set(newTopic.guid, newTopic);
+        newTopic.title = title;
+        newTopic.description = description;
+        newTopic.creationAuthor = appState.currentUser || "System";
+        newTopic.type = "Clash";
+        newTopic.status = "Open";
+        newTopic.clashPoint = formattedPosition;
+        newTopic.guid1 = res.id1.expressID;
+        newTopic.guid2 = res.id2.expressID;
+        newTopic.category1 = cat1;
+        newTopic.category2 = cat2;
+        if (capturedViewpoint) {
+          if (!newTopic.viewpoints) newTopic.viewpoints = new Set();
+          newTopic.viewpoints.add(capturedViewpoint.guid);
+        }
+        if (capturedSnapshot) newTopic.snapshot = capturedSnapshot;
+
+        if (!bcfTopics.list.has(newTopic.guid)) bcfTopics.list.set(newTopic.guid, newTopic);
       } else if ((bcfTopics as any).createTopic) {
-         (bcfTopics as any).createTopic({ title, description, clashResult: res, viewpoint: capturedViewpoint, snapshot: capturedSnapshot });
+        (bcfTopics as any).createTopic({ title, description, clashResult: res, viewpoint: capturedViewpoint, snapshot: capturedSnapshot });
       } else {
-         newTopic = {
-            guid: topicId,
-            title,
-            description,
-            creationAuthor: appState.currentUser || "System",
-            creationDate: new Date().toISOString(),
-            type: "Clash",
-            status: "Open",
-            viewpoints: new Set<string>(),
-            labels: new Set<string>(),
-            comments: [],
-            clashPoint: formattedPosition,
-            guid1: res.id1.expressID,
-            guid2: res.id2.expressID,
-            category1: cat1,
-            category2: cat2,
-            snapshot: capturedSnapshot,
-         };
-         if (capturedViewpoint) newTopic.viewpoints.add(capturedViewpoint.guid);
-         bcfTopics.list.set(topicId, newTopic as any);
+        newTopic = {
+          guid: topicId,
+          title,
+          description,
+          creationAuthor: appState.currentUser || "System",
+          creationDate: new Date().toISOString(),
+          type: "Clash",
+          status: "Open",
+          viewpoints: new Set<string>(),
+          labels: new Set<string>(),
+          comments: [],
+          clashPoint: formattedPosition,
+          guid1: res.id1.expressID,
+          guid2: res.id2.expressID,
+          category1: cat1,
+          category2: cat2,
+          snapshot: capturedSnapshot,
+        };
+        if (capturedViewpoint) newTopic.viewpoints.add(capturedViewpoint.guid);
+        bcfTopics.list.set(topicId, newTopic as any);
       }
-      
+
       bcfTopics.onRefresh.trigger();
       alert(`간섭 결과가 BCF 토픽으로 생성되었습니다!\n제목: ${title}`);
     } catch (e) {
@@ -621,7 +617,6 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       );
       world.camera.controls.update(0);
       await this.applyClashGroupColors(results, highlighter);
-      setModelTransparent(this.components);
     }
 
     // 2. 렌더링 반영을 위한 짧은 대기 후 스냅샷/뷰포인트 캡처
@@ -670,17 +665,17 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
         const colorHex = this.CLASH_PALETTE[colorIndex % this.CLASH_PALETTE.length].replace("#", "");
         const map = { [obj.modelId]: new Set([obj.expressID]) };
         const guids = await fragments.modelIdMapToGuids(map);
-        
+
         for (const guid of guids) {
           capturedViewpoint.selectionComponents.add(guid);
         }
-        
+
         if (!capturedViewpoint.componentColors.has(colorHex)) {
           capturedViewpoint.componentColors.set(colorHex, new Set());
         }
         const colorSet = capturedViewpoint.componentColors.get(colorHex);
         for (const guid of guids) colorSet.add(guid);
-        
+
         colorIndex++;
       }
     }
@@ -695,7 +690,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       const entityStr = Array.from(entities).join(", ");
       const title = `Group Clash: ${entityStr} (${results.length} items)`;
       const description = `Grouped clash detected at X: ${groupPosition.x.toFixed(2)}, Y: ${groupPosition.y.toFixed(2)}, Z: ${groupPosition.z.toFixed(2)}`;
-      
+
       const formattedPosition = new THREE.Vector3(
         Number(groupPosition.x.toFixed(2)),
         Number(groupPosition.y.toFixed(2)),
@@ -707,55 +702,55 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
 
       let newTopic: any = null;
       if (bcfTopics._bcf && typeof bcfTopics._bcf.create === "function") {
-         newTopic = bcfTopics._bcf.create();
+        newTopic = bcfTopics._bcf.create();
       } else if (typeof (bcfTopics as any).create === "function") {
-         newTopic = (bcfTopics as any).create();
+        newTopic = (bcfTopics as any).create();
       }
 
       if (newTopic) {
-         newTopic.title = title;
-         newTopic.description = description;
-         newTopic.creationAuthor = appState.currentUser || "System";
-         newTopic.type = "Clash";
-         newTopic.status = "Open";
-         newTopic.clashPoint = formattedPosition;
-         // 그룹의 특성상 첫 번째 객체 정보를 대표값으로 저장
-         newTopic.guid1 = results[0].id1.expressID;
-         newTopic.guid2 = results[0].id2.expressID;
-         newTopic.category1 = (results[0].id1 as any).category || "Unknown";
-         newTopic.category2 = (results[0].id2 as any).category || "Unknown";
-         if (capturedViewpoint) {
-            if (!newTopic.viewpoints) newTopic.viewpoints = new Set();
-            newTopic.viewpoints.add(capturedViewpoint.guid);
-         }
-         if (capturedSnapshot) newTopic.snapshot = capturedSnapshot;
-         
-         if (!bcfTopics.list.has(newTopic.guid)) bcfTopics.list.set(newTopic.guid, newTopic);
+        newTopic.title = title;
+        newTopic.description = description;
+        newTopic.creationAuthor = appState.currentUser || "System";
+        newTopic.type = "Clash";
+        newTopic.status = "Open";
+        newTopic.clashPoint = formattedPosition;
+        // 그룹의 특성상 첫 번째 객체 정보를 대표값으로 저장
+        newTopic.guid1 = results[0].id1.expressID;
+        newTopic.guid2 = results[0].id2.expressID;
+        newTopic.category1 = (results[0].id1 as any).category || "Unknown";
+        newTopic.category2 = (results[0].id2 as any).category || "Unknown";
+        if (capturedViewpoint) {
+          if (!newTopic.viewpoints) newTopic.viewpoints = new Set();
+          newTopic.viewpoints.add(capturedViewpoint.guid);
+        }
+        if (capturedSnapshot) newTopic.snapshot = capturedSnapshot;
+
+        if (!bcfTopics.list.has(newTopic.guid)) bcfTopics.list.set(newTopic.guid, newTopic);
       } else if ((bcfTopics as any).createTopic) {
-         (bcfTopics as any).createTopic({ title, description, clashResult: results[0], viewpoint: capturedViewpoint, snapshot: capturedSnapshot });
+        (bcfTopics as any).createTopic({ title, description, clashResult: results[0], viewpoint: capturedViewpoint, snapshot: capturedSnapshot });
       } else {
-         newTopic = {
-            guid: topicId,
-            title,
-            description,
-            creationAuthor: appState.currentUser || "System",
-            creationDate: new Date().toISOString(),
-            type: "Clash",
-            status: "Open",
-            viewpoints: new Set<string>(),
-            labels: new Set<string>(),
-            comments: [],
-            clashPoint: formattedPosition,
-            guid1: results[0].id1.expressID,
-            guid2: results[0].id2.expressID,
-            category1: (results[0].id1 as any).category || "Unknown",
-            category2: (results[0].id2 as any).category || "Unknown",
-            snapshot: capturedSnapshot,
-         };
-         if (capturedViewpoint) newTopic.viewpoints.add(capturedViewpoint.guid);
-         bcfTopics.list.set(topicId, newTopic as any);
+        newTopic = {
+          guid: topicId,
+          title,
+          description,
+          creationAuthor: appState.currentUser || "System",
+          creationDate: new Date().toISOString(),
+          type: "Clash",
+          status: "Open",
+          viewpoints: new Set<string>(),
+          labels: new Set<string>(),
+          comments: [],
+          clashPoint: formattedPosition,
+          guid1: results[0].id1.expressID,
+          guid2: results[0].id2.expressID,
+          category1: (results[0].id1 as any).category || "Unknown",
+          category2: (results[0].id2 as any).category || "Unknown",
+          snapshot: capturedSnapshot,
+        };
+        if (capturedViewpoint) newTopic.viewpoints.add(capturedViewpoint.guid);
+        bcfTopics.list.set(topicId, newTopic as any);
       }
-      
+
       bcfTopics.onRefresh.trigger();
       alert(`간섭 그룹이 BCF 토픽으로 성공적으로 생성되었습니다!\n제목: ${title}`);
     } catch (e) {
@@ -788,7 +783,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       const cat2 = (res.id2 as any).category || "Unknown";
       const title = `Clash: ${cat1}(${res.id1.expressID}) vs ${cat2}(${res.id2.expressID})`;
       const description = `Detected clash at X: ${res.position.x.toFixed(2)}, Y: ${res.position.y.toFixed(2)}, Z: ${res.position.z.toFixed(2)}`;
-      
+
       const formattedPosition = new THREE.Vector3(
         Number(res.position.x.toFixed(2)),
         Number(res.position.y.toFixed(2)),
@@ -822,10 +817,10 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
           const fragments = this.components.get(OBC.FragmentsManager);
           const map1 = { [res.id1.modelId]: new Set([res.id1.expressID]) };
           const map2 = { [res.id2.modelId]: new Set([res.id2.expressID]) };
-          
+
           const guids1 = await fragments.modelIdMapToGuids(map1);
           const guids2 = await fragments.modelIdMapToGuids(map2);
-          
+
           if (!capturedViewpoint.selectionComponents) capturedViewpoint.selectionComponents = new Set();
           for (const guid of guids1) capturedViewpoint.selectionComponents.add(guid);
           for (const guid of guids2) capturedViewpoint.selectionComponents.add(guid);
@@ -838,56 +833,56 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
 
       let newTopic: any = null;
       if (bcfTopics._bcf && typeof bcfTopics._bcf.create === "function") {
-         newTopic = bcfTopics._bcf.create();
+        newTopic = bcfTopics._bcf.create();
       } else if (typeof (bcfTopics as any).create === "function") {
-         newTopic = (bcfTopics as any).create();
+        newTopic = (bcfTopics as any).create();
       }
 
       if (newTopic) {
-         newTopic.title = title;
-         newTopic.description = description;
-         newTopic.creationAuthor = appState.currentUser || "System";
-         newTopic.type = "Clash";
-         newTopic.status = "Open";
-         newTopic.clashPoint = formattedPosition;
-         newTopic.guid1 = res.id1.expressID;
-         newTopic.guid2 = res.id2.expressID;
-         newTopic.category1 = cat1;
-         newTopic.category2 = cat2;
-         
-         if (capturedViewpoint) {
-            if (!newTopic.viewpoints) newTopic.viewpoints = new Set();
-            newTopic.viewpoints.add(capturedViewpoint.guid);
-         }
-         if (capturedSnapshot) newTopic.snapshot = capturedSnapshot;
-         
-         if (!bcfTopics.list.has(newTopic.guid)) bcfTopics.list.set(newTopic.guid, newTopic);
-         addedCount++;
+        newTopic.title = title;
+        newTopic.description = description;
+        newTopic.creationAuthor = appState.currentUser || "System";
+        newTopic.type = "Clash";
+        newTopic.status = "Open";
+        newTopic.clashPoint = formattedPosition;
+        newTopic.guid1 = res.id1.expressID;
+        newTopic.guid2 = res.id2.expressID;
+        newTopic.category1 = cat1;
+        newTopic.category2 = cat2;
+
+        if (capturedViewpoint) {
+          if (!newTopic.viewpoints) newTopic.viewpoints = new Set();
+          newTopic.viewpoints.add(capturedViewpoint.guid);
+        }
+        if (capturedSnapshot) newTopic.snapshot = capturedSnapshot;
+
+        if (!bcfTopics.list.has(newTopic.guid)) bcfTopics.list.set(newTopic.guid, newTopic);
+        addedCount++;
       } else {
-         newTopic = {
-            guid: topicId,
-            title,
-            description,
-            creationAuthor: appState.currentUser || "System",
-            creationDate: new Date().toISOString(),
-            type: "Clash",
-            status: "Open",
-            viewpoints: new Set<string>(), 
-            labels: new Set<string>(),
-            comments: [],
-            clashPoint: formattedPosition,
-            guid1: res.id1.expressID,
-            guid2: res.id2.expressID,
-            category1: cat1,
-            category2: cat2,
-            snapshot: capturedSnapshot,
-         };
-         if (capturedViewpoint) newTopic.viewpoints.add(capturedViewpoint.guid);
-         bcfTopics.list.set(topicId, newTopic as any);
-         addedCount++;
+        newTopic = {
+          guid: topicId,
+          title,
+          description,
+          creationAuthor: appState.currentUser || "System",
+          creationDate: new Date().toISOString(),
+          type: "Clash",
+          status: "Open",
+          viewpoints: new Set<string>(),
+          labels: new Set<string>(),
+          comments: [],
+          clashPoint: formattedPosition,
+          guid1: res.id1.expressID,
+          guid2: res.id2.expressID,
+          category1: cat1,
+          category2: cat2,
+          snapshot: capturedSnapshot,
+        };
+        if (capturedViewpoint) newTopic.viewpoints.add(capturedViewpoint.guid);
+        bcfTopics.list.set(topicId, newTopic as any);
+        addedCount++;
       }
     }
-    
+
     // 처리 완료 후 하이라이트 초기화 및 뷰 복구
     await highlighter.clear("select");
     for (const color of this.CLASH_PALETTE) {

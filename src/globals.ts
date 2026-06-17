@@ -1,8 +1,67 @@
 import * as BUI from "@thatopen/ui";
 
+export interface ActiveProject {
+  id: number;
+  name: string;
+  description?: string;
+  security: "free" | "general";
+}
+
+const getSavedUser = () => {
+  if (typeof window !== "undefined" && window.sessionStorage) {
+    return window.sessionStorage.getItem("current_user") || "";
+  }
+  return "";
+};
+
+const getSavedProj = (): ActiveProject | null => {
+  if (typeof window !== "undefined" && window.sessionStorage) {
+    const val = window.sessionStorage.getItem("active_project");
+    try {
+      return val ? JSON.parse(val) : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+const getSavedIsAdmin = () => {
+  if (typeof window !== "undefined" && window.sessionStorage) {
+    return window.sessionStorage.getItem("is_admin") === "true";
+  }
+  return false;
+};
+
 export const appState = {
-  isAdmin: false,
-  currentUser: "",
+  get isAdmin() {
+    return getSavedIsAdmin();
+  },
+  set isAdmin(val: boolean) {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      window.sessionStorage.setItem("is_admin", String(val));
+    }
+  },
+  get currentUser() {
+    return getSavedUser();
+  },
+  set currentUser(val: string) {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      window.sessionStorage.setItem("current_user", val);
+    }
+  },
+  get currentProject() {
+    return getSavedProj();
+  },
+  set currentProject(val: ActiveProject | null) {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      if (val) {
+        window.sessionStorage.setItem("active_project", JSON.stringify(val));
+      } else {
+        window.sessionStorage.removeItem("active_project");
+      }
+    }
+  }
 };
 
 export const CONTENT_GRID_ID = "app-content";

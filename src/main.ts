@@ -5,7 +5,7 @@ import * as BUI from "@thatopen/ui";
 import * as CUI from "@thatopen/ui-obc";
 import { html } from "lit";
 import * as TEMPLATES from "./ui-templates";
-import { appIcons, CONTENT_GRID_ID } from "./globals";
+import { appIcons, CONTENT_GRID_ID, appState } from "./globals";
 import { setupFinders } from "./setup/finders";
 import { setupViewTemplates } from "./setup/templaters";
 import { initDrawingEditor } from "./ui-templates/sections/drawing";
@@ -149,7 +149,7 @@ fragments.core.models.materials.list.onItemSet.add(({ value: material }) => {
   const isHighlighterMaterial = !!material.userData.customId;
   if (!isHighlighterMaterial) {
     material.transparent = true;
-    material.opacity = 0.5;
+    material.opacity = 0.95;
   }
 });
 
@@ -187,7 +187,7 @@ highlighter.setup({
   selectMaterialDefinition: {
     color: new THREE.Color("#8fbc0c"),
     renderedFaces: 1,
-    opacity: 0.3,
+    opacity: 0.6,
     transparent: true,
   },
 });
@@ -231,22 +231,10 @@ const fitCameraToAllModels = () => {
     clearTimeout(fitCameraTimeout);
   }
   fitCameraTimeout = setTimeout(async () => {
-    const boxer = components.get(OBC.BoundingBoxer);
-    boxer.list.clear();
-    const modelIds = Array.from(fragments.list.keys());
-    if (modelIds.length === 0) return;
-
-    const modelRegexes = modelIds.map((id) => new RegExp(`^${id}$`));
-    boxer.addFromModels(modelRegexes);
-    const box = boxer.get();
-    boxer.list.clear();
-
-    if (!box.isEmpty()) {
-      const sphere = new THREE.Sphere();
-      box.getBoundingSphere(sphere);
-      world.camera.controls.fitToSphere(sphere, true);
+    if (world.camera instanceof OBC.SimpleCamera) {
+      await world.camera.fitToItems();
     }
-  }, 300);
+  }, 500);
 };
 
 // 🚚Model Load EventHandler
@@ -271,7 +259,7 @@ fragments.list.onItemSet.add(async ({ value: model }) => {
   const localIds = Object.values(items).flat();
   const modelIdMap = { [model.modelId]: new Set(localIds) };
   classifier.addGroupItems("PermanentHidden", "HiddenItems", modelIdMap);
-  
+
   await highlighter.highlightByID("transparentCyan", modelIdMap, false, false);
   await hider.set(false, modelIdMap);
 
@@ -363,7 +351,7 @@ const contentGridIcons: Record<TEMPLATES.ContentGridLayouts[number], string> = {
 };
 
 // 🏁App Grid Setup
-type AppLayouts = ["App"];
+type AppLayouts = ["App", "ProjectSelection"];
 
 type Sidebar = {
   name: "sidebar";
@@ -375,7 +363,12 @@ type ContentGrid = {
   state: TEMPLATES.ContentGridState;
 };
 
-type AppGridElements = [Sidebar, ContentGrid];
+type ProjectSelector = {
+  name: "projectSelector";
+  state: TEMPLATES.ProjectSelectorState;
+};
+
+type AppGridElements = [Sidebar, ContentGrid, ProjectSelector];
 
 const app = document.getElementById("app") as BUI.Grid<
   AppLayouts,
@@ -397,6 +390,17 @@ app.elements = {
     },
   },
   contentGrid,
+  projectSelector: {
+    template: TEMPLATES.projectSelectorTemplate,
+    initialState: {
+      onProjectSelect: (project) => {
+        appState.currentProject = project;
+        appState.isAdmin = project.security === "free";
+        window.location.hash = "Viewer";
+        window.location.reload();
+      },
+    },
+  },
 };
 
 contentGrid.addEventListener("layoutchange", () =>
@@ -410,6 +414,30 @@ app.layouts = {
       /auto 1fr
     `,
   },
+  ProjectSelection: {
+    template: `
+      "projectSelector" 1fr
+      /1fr
+    `,
+  },
 };
 
-app.layout = "App";
+const handleMainRouting = () => {
+  const hash = window.location.hash;
+  if (hash === "" || hash === "#projects" || !appState.currentProject) {
+    appState.currentProject = null;
+    window.location.hash = "projects";
+    app.layout = "ProjectSelection";
+  } else {
+    app.layout = "App";
+  }
+};
+
+window.addEventListener("hashchange", () => {
+  if (window.location.hash === "#projects") {
+    appState.currentProject = null;
+    app.layout = "ProjectSelection";
+  }
+});
+
+handleMainRouting();

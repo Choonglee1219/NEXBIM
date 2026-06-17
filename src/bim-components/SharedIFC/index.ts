@@ -16,9 +16,10 @@ export class SharedIFC {
 
   constructor() {}
 
-  async loadIFCFiles() {
+  async loadIFCFiles(projectId?: number) {
     try {
-      const ifcResponse = await fetch('/api/ifcs/name', {
+      const url = projectId ? `/api/ifcs/name?projectId=${projectId}` : '/api/ifcs/name';
+      const ifcResponse = await fetch(url, {
         credentials: "include",
         method: "GET",
       });
@@ -80,12 +81,15 @@ export class SharedIFC {
     }
   }
 
-  async saveIFC(file: File) {
+  async saveIFC(file: File, projectId?: number) {
     try {
       const newName = file.name.replace(/\.ifc$/i, "");
       const newFile = new File([file], newName, { type: file.type });
       const formData = new FormData();
       formData.append("file", newFile);
+      if (projectId !== undefined) {
+        formData.append("projectId", String(projectId));
+      }
 
       const ifcResponse = await fetch("/api/ifc", {
         credentials: "include",

@@ -1,6 +1,6 @@
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
-import { appIcons, onToggleSection, setupBIMTable, tableButtonStyle } from "../../globals";
+import { appIcons, appState, onToggleSection, setupBIMTable, tableButtonStyle } from "../../globals";
 import { SharedIFC } from '../../bim-components/SharedIFC';
 import { SharedFRAG } from '../../bim-components/SharedFRAG';
 import { BCFTopics } from "../../bim-components/BCFTopics";
@@ -257,10 +257,11 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     const fragData = await (model as any).getBuffer(false);
     const fragFile = new File([fragData], file.name.replace(".ifc", ".frag"));
 
-    const ifcid = await sharedIFC.saveIFC(file);
+    const activeProjectId = appState.currentProject?.id;
+    const ifcid = await sharedIFC.saveIFC(file, activeProjectId);
     let fragid = null;
     if (ifcid) {
-      fragid = await sharedFRAG.saveFRAG(fragFile);
+      fragid = await sharedFRAG.saveFRAG(fragFile, activeProjectId);
     }
 
     if (ifcid && fragid) {
@@ -756,14 +757,14 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
   const refreshSharedIFCList = async () => {
     sharedIFC.list = [];
-    await sharedIFC.loadIFCFiles();
+    await sharedIFC.loadIFCFiles(appState.currentProject?.id);
     sharedIFC.list.sort((a, b) => a.name.localeCompare(b.name));
     updateIFCTableData();
   };
 
   const refreshSharedFRAGList = async () => {
     sharedFRAG.list = [];
-    await sharedFRAG.loadFRAGFiles();
+    await sharedFRAG.loadFRAGFiles(appState.currentProject?.id);
     if (sharedModelLabel) {
       sharedModelLabel.textContent = `Shared Model (${sharedFRAG.list.length})`;
     }

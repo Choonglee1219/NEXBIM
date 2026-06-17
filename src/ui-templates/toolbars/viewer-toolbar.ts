@@ -56,10 +56,10 @@ export const setModelTransparent = (components: OBC.Components) => {
     material.depthWrite = false;
     if (isColor && "color" in material) {
       material.opacity = 0.01;
-      material.color.set("#2FA4D7");
+      material.color.set("#6d6d6d");
     } else if ("lodColor" in material) {
       material.opacity = 0.001;
-      material.lodColor.set("#1c5e7a");
+      material.lodColor.set("#4b4b4b");
     }
   }
 };
@@ -71,7 +71,7 @@ export const restoreModelMaterials = (components: OBC.Components) => {
       world.renderer.postproduction.edgesPass.enabled = true;
     }
   }
-  
+
   const fragments = components.get(OBC.FragmentsManager);
   for (const material of fragments.core.models.materials.list.values()) {
     const data = originalColors.get(material);
@@ -144,11 +144,11 @@ if (!(window as any)._toolbarHotkeyRegistered) {
   window.addEventListener("keydown", (e) => {
     // Shadow DOM 내부의 input 요소에 포커스가 있는 경우 단축키 비활성화
     let activeEl = document.activeElement;
-      while (activeEl?.shadowRoot?.activeElement) {
+    while (activeEl?.shadowRoot?.activeElement) {
       activeEl = activeEl.shadowRoot.activeElement;
     }
     if (activeEl?.tagName === "INPUT" || activeEl?.tagName === "TEXTAREA") {
-        e.stopPropagation(); // 캡처 단계에서 이벤트를 중단하여 외부 모듈의 전역 단축키(L 등) 방지
+      e.stopPropagation(); // 캡처 단계에서 이벤트를 중단하여 외부 모듈의 전역 단축키(L 등) 방지
       return;
     }
     const key = e.key.toLowerCase();
@@ -165,7 +165,7 @@ if (!(window as any)._toolbarHotkeyRegistered) {
     if (key === 'h') hideBtn?.click();
     if (key === 'i') isolateBtn?.click();
     if (key === 'e') explodeBtn?.click();
-    }, { capture: true }); // 다른 전역 리스너보다 먼저 이벤트를 가로채도록 캡처링 옵션 사용
+  }, { capture: true }); // 다른 전역 리스너보다 먼저 이벤트를 가로채도록 캡처링 옵션 사용
 }
 
 export const showAllItems = async (components: OBC.Components) => {
@@ -248,13 +248,13 @@ export const isolateSelection = async (components: OBC.Components) => {
 };
 
 export const viewerToolbarTemplate: BUI.StatefullComponent<
-ViewerToolbarState
+  ViewerToolbarState
 > = (state) => {
   const { components, world } = state;
-  
+
   const highlighter = components.get(Highlighter);
   const hider = components.get(OBC.Hider);
-  
+
   if (!floorExploder) {
     floorExploder = new FloorExploder(components);
   }
@@ -387,8 +387,8 @@ ViewerToolbarState
     if ((btn as any)._flyModeListener) {
       customCameraControl.flyMode.onToggle.remove((btn as any)._flyModeListener);
     }
-    (btn as any)._flyModeListener = (isFlyMode: boolean) => { 
-      btn.active = isFlyMode; 
+    (btn as any)._flyModeListener = (isFlyMode: boolean) => {
+      btn.active = isFlyMode;
       isFlyModeActive = isFlyMode; // Fly Mode 상태 동기화
       if (cockpitOverlay) cockpitOverlay.style.display = isFlyMode ? "block" : "none";
       if (isFlyMode) updateCoords();
@@ -439,29 +439,29 @@ ViewerToolbarState
     <bim-toolbar style="overflow: visible; z-index: 100;">
       <bim-toolbar-section style="overflow: visible;">
         <bim-button ${BUI.ref((e) => { showAllBtn = e as BUI.Button; })} tooltip-title=${tooltips.SHOW_ALL.TITLE} tooltip-text=${tooltips.SHOW_ALL.TEXT} icon=${appIcons.SHOW} @click=${onShowAll}></bim-button> 
-        <bim-button ${BUI.ref((e) => { ghostBtn = e as BUI.Button; if(ghostBtn) ghostBtn.active = isGhostModeActive; })} tooltip-title=${tooltips.GHOST.TITLE} tooltip-text=${tooltips.GHOST.TEXT} icon=${appIcons.TRANSPARENT} @click=${onToggleGhost}></bim-button>
+        <bim-button ${BUI.ref((e) => { ghostBtn = e as BUI.Button; if (ghostBtn) ghostBtn.active = isGhostModeActive; })} tooltip-title=${tooltips.GHOST.TITLE} tooltip-text=${tooltips.GHOST.TEXT} icon=${appIcons.TRANSPARENT} @click=${onToggleGhost}></bim-button>
         <bim-button ${BUI.ref((e) => { hiddenItemsBtn = e as BUI.Button; })} tooltip-title=${tooltips.TOGGLE_HIDDEN.TITLE} tooltip-text=${tooltips.TOGGLE_HIDDEN.TEXT} icon=${appIcons.MODEL} @click=${onToggleHidden}></bim-button>
       </bim-toolbar-section> 
       <bim-toolbar-section style="overflow: visible;">
         ${focusBtn}
-        <bim-button ${BUI.ref((e) => { hideBtn = e as BUI.Button; if(hideBtn) hideBtn.active = isCurrentlyHidden; })} tooltip-title=${tooltips.HIDE.TITLE} tooltip-text=${tooltips.HIDE.TEXT} icon=${appIcons.HIDE} @click=${onHide}></bim-button> 
+        <bim-button ${BUI.ref((e) => { hideBtn = e as BUI.Button; if (hideBtn) hideBtn.active = isCurrentlyHidden; })} tooltip-title=${tooltips.HIDE.TITLE} tooltip-text=${tooltips.HIDE.TEXT} icon=${appIcons.HIDE} @click=${onHide}></bim-button> 
         <bim-button ${BUI.ref((e) => { isolateBtn = e as BUI.Button; })} tooltip-title=${tooltips.ISOLATE.TITLE} tooltip-text=${tooltips.ISOLATE.TEXT} icon=${appIcons.ISOLATE} @click=${onIsolate}></bim-button>
         ${Colorize(components)}
       </bim-toolbar-section> 
       <bim-toolbar-section style="overflow: visible;">
         <bim-button ${BUI.ref(setupFlyModeBtn)} tooltip-title=${tooltips.FLY.TITLE} tooltip-text=${tooltips.FLY.TEXT} icon=${appIcons.FLY} @click=${onToggleFlyMode}></bim-button>
         <div style="position: relative;">
-          <bim-button ${BUI.ref((e) => { explodeBtn = e as BUI.Button; if(explodeBtn && floorExploder) explodeBtn.active = floorExploder.isExploded; })} tooltip-title=${tooltips.FLOOR_EXPLODE.TITLE} tooltip-text=${tooltips.FLOOR_EXPLODE.TEXT} icon=${appIcons.LAYERS} @click=${onToggleExplode}></bim-button>
-          <div ${BUI.ref(e => { scaleContainer = e as HTMLDivElement; if(scaleContainer && floorExploder) scaleContainer.style.display = floorExploder.isExploded ? "flex" : "none"; })} style="display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); z-index: 100; background: var(--bim-ui_bg-base); border: 1px solid var(--bim-ui_bg-contrast-20); padding: 0.5rem; border-radius: 0.25rem; margin-bottom: 0.25rem; flex-direction: column; gap: 0.5rem; min-width: 120px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+          <bim-button ${BUI.ref((e) => { explodeBtn = e as BUI.Button; if (explodeBtn && floorExploder) explodeBtn.active = floorExploder.isExploded; })} tooltip-title=${tooltips.FLOOR_EXPLODE.TITLE} tooltip-text=${tooltips.FLOOR_EXPLODE.TEXT} icon=${appIcons.LAYERS} @click=${onToggleExplode}></bim-button>
+          <div ${BUI.ref(e => { scaleContainer = e as HTMLDivElement; if (scaleContainer && floorExploder) scaleContainer.style.display = floorExploder.isExploded ? "flex" : "none"; })} style="display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); z-index: 100; background: var(--bim-ui_bg-base); border: 1px solid var(--bim-ui_bg-contrast-20); padding: 0.5rem; border-radius: 0.25rem; margin-bottom: 0.25rem; flex-direction: column; gap: 0.5rem; min-width: 120px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
             <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--bim-ui_gray-10);">
               <span>Y Scale</span>
-              <span ${BUI.ref(e => { if(e) e.textContent = floorExploder?.yScale.toFixed(1) || "5.0"; })}>5.0</span>
+              <span ${BUI.ref(e => { if (e) e.textContent = floorExploder?.yScale.toFixed(1) || "5.0"; })}>5.0</span>
             </div>
             <input ${BUI.ref(e => { yScaleInput = e as HTMLInputElement; })} type="range" min="2" max="20" step="0.5" value="5" @input=${(e: Event) => {
-              const val = (e.target as HTMLInputElement).value;
-              (e.target as HTMLElement).previousElementSibling!.children[1].textContent = Number(val).toFixed(1);
-              onScaleChange();
-            }} style="width: 100%; cursor: pointer;">
+      const val = (e.target as HTMLInputElement).value;
+      (e.target as HTMLElement).previousElementSibling!.children[1].textContent = Number(val).toFixed(1);
+      onScaleChange();
+    }} style="width: 100%; cursor: pointer;">
           </div>
         </div>
       </bim-toolbar-section>

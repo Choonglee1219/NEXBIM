@@ -16,9 +16,10 @@ export class SharedFRAG {
 
   constructor() {}
 
-  async loadFRAGFiles() {
+  async loadFRAGFiles(projectId?: number) {
     try {
-      const fragResponse = await fetch('/api/frags/name', {
+      const url = projectId ? `/api/frags/name?projectId=${projectId}` : '/api/frags/name';
+      const fragResponse = await fetch(url, {
         credentials: "include",
         method: "GET",
       });
@@ -80,12 +81,15 @@ export class SharedFRAG {
     }
   }
 
-  async saveFRAG(file: File) {
+  async saveFRAG(file: File, projectId?: number) {
     try {
       const newName = file.name.replace(/\.frag$/i, "");
       const newFile = new File([file], newName, { type: file.type });
       const formData = new FormData();
       formData.append("file", newFile);
+      if (projectId !== undefined) {
+        formData.append("projectId", String(projectId));
+      }
 
       const fragResponse = await fetch("/api/frag", {
         credentials: "include",
