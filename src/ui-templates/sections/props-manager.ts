@@ -344,7 +344,14 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
       await new Promise(resolve => setTimeout(resolve, 300));
 
       // 새 IFC 로드 (IFC -> FRAG 변환 및 로딩)
-      const reloadedModel = await ifcLoader.load(modifiedBuffer, false, modelName);
+      const reloadedModel = await ifcLoader.load(modifiedBuffer, false, modelName, {
+        instanceCallback: (importer) => {
+          importer.includeUniqueAttributes = true;
+          importer.includeRelationNames = true;
+          importer.addAllAttributes();
+          importer.addAllRelations();
+        },
+      });
       (reloadedModel as any).name = modelName;
       (reloadedModel as any).dbId = dbId; // DB ID 유지
       

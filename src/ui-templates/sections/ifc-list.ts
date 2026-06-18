@@ -235,7 +235,14 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
-    const model = await ifcLoader.load(bytes, false, newModelName); // 좌표 원점 조정 해제
+    const model = await ifcLoader.load(bytes, false, newModelName, {
+      instanceCallback: (importer) => {
+        importer.includeUniqueAttributes = true;
+        importer.includeRelationNames = true;
+        importer.addAllAttributes();
+        importer.addAllRelations();
+      },
+    }); // 좌표 원점 조정 해제
     (model as any).name = newModelName;
     updateLoadedModelsList();
     let modelId = (model as any).uuid;
@@ -325,7 +332,14 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
     const ifc = await sharedIFC.loadIFC(ifcid);
     if (ifc && ifc.content) {
-      const model = await ifcLoader.load(ifc.content, false, ifc.name);
+      const model = await ifcLoader.load(ifc.content, false, ifc.name, {
+        instanceCallback: (importer) => {
+          importer.includeUniqueAttributes = true;
+          importer.includeRelationNames = true;
+          importer.addAllAttributes();
+          importer.addAllRelations();
+        },
+      });
       (model as any).name = ifc.name;
       updateLoadedModelsList();
       (model as any).dbId = ifcid;

@@ -12,6 +12,13 @@ const attrMappings: Record<string, string> = {
   _guid: "Guid",
 };
 
+const extractValue = (attr: any): any => {
+  if (attr === null || attr === undefined) return null;
+  if (Array.isArray(attr)) return attr.length > 0 ? extractValue(attr[0]) : null;
+  if (typeof attr === "object" && "value" in attr) return attr.value;
+  return attr;
+};
+
 const addDataToRow = (
   row: BUI.TableGroupData<ItemsDataTableData>,
   key: string,
@@ -26,7 +33,7 @@ const addDataToRow = (
       modelId,
       localId,
       Name: key in attrMappings ? attrMappings[key] : key,
-      Value: value,
+      Value: extractValue(value),
       dataType
     },
   };
@@ -39,115 +46,166 @@ const getItemRow = (
   propertyData: FRAGS.ItemData,
   state: Required<ItemsDataState>,
   parentRelation?: string,
+  visited: Set<number> = new Set(),
 ) => {
-  if (!(modelId in itemsRowsCache)) itemsRowsCache[modelId] = new Map();
-  const modelProcessings = itemsRowsCache[modelId];
+  try {
+    if (!(modelId in itemsRowsCache)) itemsRowsCache[modelId] = new Map();
+    const modelProcessings = itemsRowsCache[modelId];
+  
+    const localId = propertyData && propertyData._localId && (propertyData._localId as any).value !== undefined
+      ? (propertyData._localId as any).value
+      : Math.floor(Math.random() * 1000000);
 
-  const localId = (propertyData._localId as FRAGS.ItemAttribute).value;
-
-  const isRestricted = !!parentRelation && !["HasProperties", "Quantities"].includes(parentRelation);
-
-  const name = (propertyData[state.defaultItemNameKey] as FRAGS.ItemAttribute)
-    ?.value;
-  const category = (propertyData._category as FRAGS.ItemAttribute).value;
-
-  if (!isRestricted && modelProcessings.has(localId)) {
-    const cachedRow = modelProcessings.get(localId)!;
-    const newRow = { ...cachedRow, data: { ...cachedRow.data } };
-    newRow.data.Name = name?.toString().length > 0
-      ? (category && !parentRelation ? `${category} || ${name}` : name.toString())
-      : category ?? String(localId);
-    return newRow;
-  }
-
-  const row: BUI.TableGroupData<ItemsDataTableData> = {
-    data: {
-      modelId,
-      localId,
-      type: "item",
-      Name:
-        name?.toString().length > 0
-          ? (category && !parentRelation ? `${category} || ${name}` : name.toString())
-          : category ?? String(localId),
-    },
-  };
-
-  if (parentRelation === "ContainedInStructure") {
-    row.data.Name = String(category ?? "Unknown");
-    row.data.Value = name?.toString();
-  }
-
-  if (typeof category === "string") {
-    if (category === "IFCPROPERTYSINGLEVALUE") {
-      const val = propertyData.NominalValue as FRAGS.ItemAttribute;
-      if (val) {
-        row.data.Value = val.value;
-        row.data.dataType = val.type;
+    if (propertyData && propertyData._localId && (propertyData._localId as any).value !== undefined) {
+      const localIdVal = (propertyData._localId as any).value;
+      if (visited.has(localIdVal)) {
+        const categoryVal = propertyData._category && "value" in propertyData._category
+          ? (propertyData._category as any).value
+          : "Element";
+        return {
+          data: {
+            modelId,
+            localId: localIdVal,
+            type: "item",
+            Name: `[Cycle: ${categoryVal} ${localIdVal}]`,
+          }
+        } as BUI.TableGroupData<ItemsDataTableData>;
       }
-      if (!isRestricted) modelProcessings.set(localId, row);
-      return row;
     }
-    if (category.startsWith("IFCQUANTITY")) {
-      for (const key in propertyData) {
-        if (key.endsWith("Value") && key !== "NominalValue") {
-          const val = propertyData[key] as FRAGS.ItemAttribute;
-          if (val && !Array.isArray(val)) {
-            row.data.Value = val.value;
-            row.data.dataType = val.type;
-            break;
+
+    const nextVisited = new Set(visited);
+    if (propertyData && propertyData._localId && (propertyData._localId as any).value !== undefined) {
+      nextVisited.add((propertyData._localId as any).value);
+    }
+  
+    const isRestricted = !!parentRelation && !["HasProperties", "Quantities"].includes(parentRelation);
+  
+    const name = propertyData && propertyData[state.defaultItemNameKey] && (propertyData[state.defaultItemNameKey] as any).value !== undefined
+      ? (propertyData[state.defaultItemNameKey] as any).value
+      : undefined;
+  
+    const category = propertyData && propertyData._category && (propertyData._category as any).value !== undefined
+      ? (propertyData._category as any).value
+      : "Unknown";
+  
+    if (!isRestricted && modelProcessings.has(localId)) {
+      const cachedRow = modelProcessings.get(localId)!;
+      const newRow = { ...cachedRow, data: { ...cachedRow.data } };
+      newRow.data.Name = name?.toString().length > 0
+        ? (category && !parentRelation ? `${category} || ${name}` : name.toString())
+        : category ?? String(localId);
+      return newRow;
+    }
+  
+    const row: BUI.TableGroupData<ItemsDataTableData> = {
+      data: {
+        modelId,
+        localId,
+        type: "item",
+        Name:
+          name?.toString().length > 0
+            ? (category && !parentRelation ? `${category} || ${name}` : name.toString())
+            : category ?? String(localId),
+      },
+    };
+  
+    if (parentRelation === "ContainedInStructure") {
+      row.data.Name = String(category ?? "Unknown");
+      row.data.Value = name?.toString();
+    }
+  
+    if (typeof category === "string") {
+      if (category === "IFCPROPERTYSINGLEVALUE") {
+        const val = propertyData.NominalValue as FRAGS.ItemAttribute;
+        if (val) {
+          row.data.Value = extractValue(val.value);
+          row.data.dataType = val.type;
+        }
+        if (!isRestricted) modelProcessings.set(localId, row);
+        return row;
+      }
+      if (category.startsWith("IFCQUANTITY")) {
+        for (const key in propertyData) {
+          if (key.endsWith("Value") && key !== "NominalValue") {
+            const val = propertyData[key] as FRAGS.ItemAttribute;
+            if (val && !Array.isArray(val)) {
+              row.data.Value = extractValue(val.value);
+              row.data.dataType = val.type;
+              break;
+            }
+          }
+        }
+        if (!isRestricted) modelProcessings.set(localId, row);
+        return row;
+      }
+    }
+  
+    if (!isRestricted) {
+      modelProcessings.set(localId, row);
+    }
+  
+    const flattenRelations = ["IsDefinedBy", "HasProperties", "Quantities", "RelatingPropertyDefinition"];
+    const allowedRelations = [
+      "IsDefinedBy",
+      "ContainedInStructure",
+      "RelatingPropertyDefinition",
+      "HasProperties",
+      "Quantities",
+      "HasAssociations",
+      "HasPropertySets"
+    ];
+
+    for (const key in propertyData) {
+      const data = propertyData[key];
+      if (data === null || data === undefined) continue;
+  
+      const isRelation = Array.isArray(data) || (typeof data === "object" && !("value" in data));
+  
+      if (!isRelation) {
+        const mappedKey = attrMappings[key] || key;
+        if (isRestricted) {
+          if (parentRelation === "ContainedInStructure") continue;
+          if (mappedKey !== "Category" && mappedKey !== "Name") continue;
+          if (parentRelation === "IsDefinedBy") continue;
+        } else if (parentRelation && ["HasProperties", "Quantities"].includes(parentRelation)) {
+          if (["Category", "LocalId", "Guid"].includes(mappedKey)) continue;
+        }
+        addDataToRow(row, key, (data as any).value, modelId, localId, (data as any).type);
+      } else {
+        if (!allowedRelations.includes(key)) continue;
+        if (parentRelation === "ContainedInStructure" && key !== "IsDefinedBy") continue;
+        const items = Array.isArray(data) ? data : [data];
+  
+        if (flattenRelations.includes(key)) {
+          if (!row.children) row.children = [];
+          for (const item of items) {
+            const relItemRow = getItemRow(modelId, item as any, state, key, nextVisited);
+            row.children.push(relItemRow);
+          }
+        } else {
+          const relRow: BUI.TableGroupData<ItemsDataTableData> = {
+            data: {
+              Name: key === "ContainedInStructure" ? "ContainedIn" : key,
+              type: "relation"
+            },
+          };
+          if (!row.children) row.children = [];
+          row.children.push(relRow);
+    
+          for (const item of items) {
+            const relItemRow = getItemRow(modelId, item as any, state, key, nextVisited);
+            if (!relRow.children) relRow.children = [];
+            relRow.children.push(relItemRow);
           }
         }
       }
-      if (!isRestricted) modelProcessings.set(localId, row);
-      return row;
     }
-  }
-
-  if (!isRestricted) {
-    modelProcessings.set(localId, row);
-  }
-
-  for (const key in propertyData) {
-    const data = propertyData[key];
-    if (!Array.isArray(data)) {
-      const mappedKey = attrMappings[key] || key;
-      if (isRestricted) {
-        if (parentRelation === "ContainedInStructure") continue;
-        if (mappedKey !== "Category" && mappedKey !== "Name") continue;
-        if (parentRelation === "IsDefinedBy") continue;
-      } else if (parentRelation && ["HasProperties", "Quantities"].includes(parentRelation)) {
-        if (["Category", "LocalId", "Guid"].includes(mappedKey)) continue;
-      }
-      addDataToRow(row, key, data.value, modelId, localId, data.type);
-    } else {
-      if (parentRelation === "ContainedInStructure" && key !== "IsDefinedBy") continue;
-      const flattenRelations = ["IsDefinedBy", "HasProperties", "Quantities"];
-      if (flattenRelations.includes(key)) {
-        if (!row.children) row.children = [];
-        for (const item of data) {
-          const relItemRow = getItemRow(modelId, item, state, key);
-          row.children.push(relItemRow);
-        }
-      } else {
-        const relRow: BUI.TableGroupData<ItemsDataTableData> = {
-          data: {
-            Name: key === "ContainedInStructure" ? "ContainedIn" : key,
-            type: "relation"
-          },
-        };
-        if (!row.children) row.children = [];
-        row.children.push(relRow);
   
-        for (const item of data) {
-          const relItemRow = getItemRow(modelId, item, state, key);
-          if (!relRow.children) relRow.children = [];
-          relRow.children.push(relItemRow);
-        }
-      }
-    }
+    return row;
+  } catch (err) {
+    console.error("Error in getItemRow:", err);
+    throw err;
   }
-
-  return row;
 };
 
 const computeTableData = async (
@@ -197,6 +255,9 @@ export const itemsDataTemplate = (_state: ItemsDataState) => {
         ContainedInStructure: { attributes: true, relations: true },
         ContainsElements: { attributes: false, relations: false },
         Decomposes: { attributes: false, relations: false },
+        RelatingPropertyDefinition: { attributes: true, relations: true },
+        HasProperties: { attributes: true, relations: true },
+        Quantities: { attributes: true, relations: true },
       },
     },
     ..._state,
@@ -218,11 +279,21 @@ export const itemsDataTemplate = (_state: ItemsDataState) => {
     table.defaultContentTemplate = tableDefaultContentTemplate;
 
     table.loadFunction = async () => {
-      return computeTableData(components, filteredModelIdMap, state);
+      try {
+        const data = await computeTableData(components, filteredModelIdMap, state);
+        return data;
+      } catch (err) {
+        console.error("Error in loadFunction:", err);
+        throw err;
+      }
     };
 
-    const loaded = await table.loadData(true);
-    if (loaded) table.dispatchEvent(new Event("datacomputed"));
+    try {
+      const loaded = await table.loadData(true);
+      if (loaded) table.dispatchEvent(new Event("datacomputed"));
+    } catch (err) {
+      console.error("Error in loadData:", err);
+    }
   };
 
   const onCellCreated = ({
