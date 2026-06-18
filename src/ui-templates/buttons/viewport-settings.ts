@@ -33,10 +33,49 @@ export const viewportSettingsTemplate: BUI.StatefullComponent<
     `;
   }
 
+  let cameraNearInput: HTMLInputElement | undefined;
+  let cameraNearLabel: HTMLElement | undefined;
+  let cameraFarInput: HTMLInputElement | undefined;
+  let cameraFarLabel: HTMLElement | undefined;
+
   const onProjectionChange = ({ target }: { target: BUI.Dropdown }) => {
     const [projection] = target.value;
     if (!projection) return;
     world.camera.projection.set(projection);
+
+    setTimeout(() => {
+      const activeCam = world.camera.three as any;
+      if (activeCam) {
+        if (cameraNearInput) cameraNearInput.value = String(activeCam.near);
+        if (cameraNearLabel) cameraNearLabel.textContent = activeCam.near.toFixed(2);
+        if (cameraFarInput) cameraFarInput.value = String(activeCam.far);
+        if (cameraFarLabel) cameraFarLabel.textContent = Math.round(activeCam.far).toString();
+      }
+    }, 50);
+  };
+
+  const onNearChange = (e: Event) => {
+    const val = parseFloat((e.target as HTMLInputElement).value);
+    if (cameraNearLabel) {
+      cameraNearLabel.textContent = val.toFixed(2);
+    }
+    const activeCam = world.camera.three as any;
+    if (activeCam && ("near" in activeCam)) {
+      activeCam.near = val;
+      activeCam.updateProjectionMatrix();
+    }
+  };
+
+  const onFarChange = (e: Event) => {
+    const val = parseFloat((e.target as HTMLInputElement).value);
+    if (cameraFarLabel) {
+      cameraFarLabel.textContent = Math.round(val).toString();
+    }
+    const activeCam = world.camera.three as any;
+    if (activeCam && ("far" in activeCam)) {
+      activeCam.far = val;
+      activeCam.updateProjectionMatrix();
+    }
   };
 
   const html = document.querySelector("html")!;
@@ -53,6 +92,10 @@ export const viewportSettingsTemplate: BUI.StatefullComponent<
     }
   };
 
+  const activeCam = world.camera.three as any;
+  const currentNear = activeCam ? activeCam.near : 0.5;
+  const currentFar = activeCam ? activeCam.far : 1000;
+
   return BUI.html`
     <bim-button style="position: absolute; top: 0.5rem; right: 0.5rem; background-color: transparent;" icon=${appIcons.SETTINGS}>
       <bim-context-menu style="width: 15rem; gap: 0.25rem">
@@ -61,6 +104,23 @@ export const viewportSettingsTemplate: BUI.StatefullComponent<
           <bim-option label="Perspective" ?checked=${world.camera.projection.current === "Perspective"}></bim-option> 
           <bim-option label="Orthographic" ?checked=${world.camera.projection.current === "Orthographic"}></bim-option> 
         </bim-dropdown>
+
+        <div style="display: flex; flex-direction: column; gap: 0.375rem; padding: 0.25rem;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--bim-ui_gray-10);">
+            <span>Near Plane</span>
+            <span ${BUI.ref(e => { cameraNearLabel = e as HTMLElement; })}>${currentNear.toFixed(2)}</span>
+          </div>
+          <input ${BUI.ref(e => { cameraNearInput = e as HTMLInputElement; })} type="range" min="0.05" max="20.0" step="0.05" value=${currentNear} @input=${onNearChange} style="width: 100%; cursor: pointer;">
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 0.375rem; padding: 0.25rem;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--bim-ui_gray-10);">
+            <span>Far Plane</span>
+            <span ${BUI.ref(e => { cameraFarLabel = e as HTMLElement; })}>${Math.round(currentFar)}</span>
+          </div>
+          <input ${BUI.ref(e => { cameraFarInput = e as HTMLInputElement; })} type="range" min="30" max="2000" step="0.5" value=${currentFar} @input=${onFarChange} style="width: 100%; cursor: pointer;">
+        </div>
+
         <bim-dropdown label="Color Mode" @change=${onThemeChange}>
           <bim-option value="1" label="Dark" .checked=${html.classList.contains("bim-ui-dark")}></bim-option>
           <bim-option value="2" label="Light" .checked=${html.classList.contains("bim-ui-light")}></bim-option>

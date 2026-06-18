@@ -1,7 +1,7 @@
 import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import * as THREE from "three";
-import { setModelTransparent, restoreModelMaterials } from "../../../ui-templates/toolbars/viewer-toolbar";
+import { restoreModelMaterials } from "../../../ui-templates/toolbars/viewer-toolbar";
 import { Highlighter } from "../../Highlighter";
 import { Topic as EngineTopic } from "./engine";
 
@@ -169,9 +169,8 @@ export class TopicViewpointManager {
             }
           }
           
-          // 일치하는 객체가 있을 때만 전체 모델을 투명화하고 선택 객체를 하이라이트
+          // 일치하는 객체가 있을 때만 선택 객체를 하이라이트
           if (hasValidItems) {
-            setModelTransparent(this.components);
             await highlighter.highlightByID("select", modelIdMap);
           }
         }

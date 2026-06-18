@@ -70,6 +70,7 @@ const viewport = BUI.Component.create<BUI.Viewport>(() => {
 
 world.renderer = new OBF.PostproductionRenderer(components, viewport);
 world.renderer.showLogo = false;
+world.renderer.enabled = false;
 world.camera = new OBC.OrthoPerspectiveCamera(components);
 world.camera.threePersp.near = 0.5;
 world.camera.threePersp.far = 100000;
@@ -86,12 +87,23 @@ worldGrid.material.uniforms.uSize2.value = 10;
 worldGrid.visible = false;
 worldGrid.three.position.y = -20;
 
-const resizeWorld = () => {
-  world.renderer?.resize();
-  world.camera.updateAspect();
-};
-
-viewport.addEventListener("resize", resizeWorld);
+const resizeObserver = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    const { width, height } = entry.contentRect;
+    if (width > 0 && height > 0) {
+      if (world.renderer) {
+        world.renderer.enabled = true;
+        world.renderer.resize();
+      }
+      world.camera?.updateAspect();
+    } else {
+      if (world.renderer) {
+        world.renderer.enabled = false;
+      }
+    }
+  }
+});
+resizeObserver.observe(viewport);
 
 world.dynamicAnchor = false;
 
