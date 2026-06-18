@@ -60,7 +60,8 @@ export class ClipperBox extends OBC.Component implements OBC.Disposable {
     }
 
     if (typeof (boxer as any).addFromModels === "function") {
-      const modelRegexes = modelIds.map((id) => new RegExp(`^${id}$`));
+      const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const modelRegexes = modelIds.map((id) => new RegExp(`^${escapeRegExp(id)}$`));
       (boxer as any).addFromModels(modelRegexes);
     } else {
       // 3.3.x fallback: add models individually

@@ -215,6 +215,22 @@ highlighter.styles.set("transparentCyan", {
 
 // ✂️Clipper Setup
 const clipper = components.get(OBC.Clipper);
+clipper.onAfterCreate.add((plane: any) => {
+  const mat = clipper.material.clone();
+  mat.transparent = true;
+  mat.opacity = 0.01;
+  
+  if ("planeMaterial" in plane) {
+    plane.planeMaterial = mat;
+  } else if ("material" in plane) {
+    plane.material = mat;
+  }
+
+  if (plane.controls) {
+    plane.controls.size = 0.7;
+  }
+});
+
 viewport.ondblclick = () => {
   if (clipper.enabled && !components.get(ClipperBox).enabled) clipper.create(world);
 };

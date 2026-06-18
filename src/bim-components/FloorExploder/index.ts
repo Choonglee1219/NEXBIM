@@ -529,7 +529,8 @@ export class FloorExploder {
       const fragments = this.components.get(OBC.FragmentsManager);
       const boxer = this.components.get(OBC.BoundingBoxer);
       boxer.list.clear();
-      boxer.addFromModels(Array.from(fragments.list.keys()).map(id => new RegExp(`^${id}$`)));
+      const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      boxer.addFromModels(Array.from(fragments.list.keys()).map(id => new RegExp(`^${escapeRegExp(id)}$`)));
       const box = boxer.get();
       boxer.list.clear();
       if (!box.isEmpty()) {
