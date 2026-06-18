@@ -47,7 +47,9 @@ export const viewportGridTemplate: BUI.StatefullComponent<ViewportGridState> = (
 
     const disableAll = (exceptions?: ("clipper" | "length" | "area")[]) => {
       BUI.ContextMenu.removeMenus();
-      highlighter.clear("select");
+      if (!exceptions?.includes("clipper")) {
+        highlighter.clear("select");
+      }
       highlighter.enabled = false;
       if (!exceptions?.includes("length")) lengthMeasurer.enabled = false;
       if (!exceptions?.includes("area")) areaMeasurer.enabled = false;

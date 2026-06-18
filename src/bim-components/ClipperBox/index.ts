@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import * as OBC from "@thatopen/components";
+import { Highlighter } from "../Highlighter";
 
 export class ClipperBox extends OBC.Component implements OBC.Disposable {
   static readonly uuid = "8bc7e5c9-95e3-4d64-9dfc-2c8c4de9bf56" as const;
@@ -28,11 +29,11 @@ export class ClipperBox extends OBC.Component implements OBC.Disposable {
     this.onDisposed.trigger(ClipperBox.uuid);
   }
 
-  toggle() {
+  async toggle() {
     if (this.enabled) {
       this.disable();
     } else {
-      this.enable();
+      await this.enable();
     }
   }
 
@@ -43,35 +44,64 @@ export class ClipperBox extends OBC.Component implements OBC.Disposable {
     return typeof list.get === "function" ? list.get(id) : list[id];
   }
 
-  enable() {
+  async enable(explicitSelection?: OBC.ModelIdMap) {
     if (this.enabled || !this.world) return;
     this.enabled = true;
 
     const clipper = this.components.get(OBC.Clipper);
     const fragments = this.components.get(OBC.FragmentsManager);
-
-    // Calculate bounding box of all loaded models
-    const boxer = this.components.get(OBC.BoundingBoxer);
-    boxer.list.clear();
-    const modelIds = Array.from(fragments.list.keys());
-    if (modelIds.length === 0) {
-      this.enabled = false;
-      return;
-    }
-
-    if (typeof (boxer as any).addFromModels === "function") {
-      const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const modelRegexes = modelIds.map((id) => new RegExp(`^${escapeRegExp(id)}$`));
-      (boxer as any).addFromModels(modelRegexes);
+    
+    let selection = explicitSelection;
+    let hasSelection = false;
+    
+    if (selection) {
+      for (const modelID in selection) {
+        if (selection[modelID] && selection[modelID].size > 0) {
+          hasSelection = true;
+          break;
+        }
+      }
     } else {
-      // 3.3.x fallback: add models individually
-      for (const id of modelIds) {
-        const model = fragments.list.get(id);
-        if (model) {
-          (boxer as any).add(model);
+      const highlighter = this.components.get(Highlighter);
+      selection = highlighter ? highlighter.selection.select : undefined;
+      if (selection) {
+        for (const modelID in selection) {
+          if (selection[modelID] && selection[modelID].size > 0) {
+            hasSelection = true;
+            break;
+          }
         }
       }
     }
+
+    // Calculate bounding box
+    const boxer = this.components.get(OBC.BoundingBoxer);
+    boxer.list.clear();
+
+    if (hasSelection && selection) {
+      await boxer.addFromModelIdMap(selection);
+    } else {
+      const modelIds = Array.from(fragments.list.keys());
+      if (modelIds.length === 0) {
+        this.enabled = false;
+        return;
+      }
+
+      if (typeof (boxer as any).addFromModels === "function") {
+        const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const modelRegexes = modelIds.map((id) => new RegExp(`^${escapeRegExp(id)}$`));
+        (boxer as any).addFromModels(modelRegexes);
+      } else {
+        // 3.3.x fallback: add models individually
+        for (const id of modelIds) {
+          const model = fragments.list.get(id);
+          if (model) {
+            (boxer as any).add(model);
+          }
+        }
+      }
+    }
+
     const box = boxer.get();
     boxer.list.clear();
 
@@ -151,7 +181,10 @@ export class ClipperBox extends OBC.Component implements OBC.Disposable {
     }
 
     // Create Box Helper
-    this.boxHelper = new THREE.Box3Helper(this.box, new THREE.Color(0x00ffff));
+    const edgeColor = (clipper.material as any).color 
+      ? (clipper.material as any).color.clone() 
+      : new THREE.Color(0xf5222d);
+    this.boxHelper = new THREE.Box3Helper(this.box, edgeColor);
     this.world.scene.three.add(this.boxHelper);
 
     // Register frame update to sync the wireframe helper

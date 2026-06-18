@@ -37,5 +37,11 @@ export const predefinedSpecs: IDSSpecDefinition[] = [
     description: "All Beams must have Length specified in Qto_BeamBaseQuantities.",
     applicability: { entity: "IFCBEAM" },
     requirement: { type: "quantity", propertySet: "Qto_BeamBaseQuantities", name: "Length", condition: "exists" }
+  },
+  {
+    name: "Duplicate GUIDs",
+    description: "Check for duplicate GUIDs across all loaded models.",
+    applicability: { entity: "ALL" },
+    requirement: { type: "attribute", name: "GlobalId", condition: "exists" }
   }
 ];

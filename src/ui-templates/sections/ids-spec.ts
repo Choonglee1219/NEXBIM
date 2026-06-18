@@ -272,6 +272,115 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
     restoreModelMaterials(components);
     await fragments.resetHighlight();
 
+    if (specDef.name === "Duplicate GUIDs") {
+      if (fragments.list.size === 0) {
+        alert("로드된 모델이 없습니다.");
+        return;
+      }
+
+      // 1. Map to find duplicates
+      const guidMap = new Map<string, { modelId: string; expressId: number; name: string; modelName: string }[]>();
+
+      for (const [modelId, model] of fragments.list) {
+        const modelName = (model as any).name || model.modelId;
+        const localIds = await model.getLocalIds();
+
+        const itemsData = await model.getItemsData(localIds, {
+          attributesDefault: true,
+          relationsDefault: { attributes: false, relations: false },
+        });
+
+        for (const item of itemsData) {
+          const itemAny = item as any;
+          const expressId = (itemAny.expressID ?? itemAny.id ?? itemAny._localId?.value ?? itemAny._localId) as number;
+          if (expressId === undefined) continue;
+
+          let guid = itemAny._guid ?? itemAny.GlobalId;
+          if (guid && typeof guid === "object" && guid.value !== undefined) {
+            guid = guid.value;
+          }
+          guid = String(guid || "").trim();
+
+          if (!guid || guid === "Unknown" || guid === "Null" || guid === "undefined") continue;
+
+          let name = itemAny.Name;
+          if (name && typeof name === "object" && name.value !== undefined) {
+            name = name.value;
+          }
+          name = String(name || "Unnamed").trim();
+
+          if (!guidMap.has(guid)) {
+            guidMap.set(guid, []);
+          }
+          guidMap.get(guid)!.push({ modelId, expressId, name, modelName });
+        }
+      }
+
+      // 2. Separate pass/fail and collect table rows
+      const fail: OBC.ModelIdMap = {};
+      const tableData: { data: IDSTableData }[] = [];
+
+      let duplicateCount = 0;
+      for (const [guid, elements] of guidMap.entries()) {
+        if (elements.length > 1) {
+          duplicateCount++;
+          for (const el of elements) {
+            if (!fail[el.modelId]) fail[el.modelId] = new Set();
+            fail[el.modelId].add(el.expressId);
+
+            tableData.push({
+              data: {
+                id: `${el.modelId}-${el.expressId}`,
+                ModelID: el.modelId,
+                ExpressID: el.expressId,
+                Name: el.name,
+                GUID: guid,
+                Value: `Model: ${el.modelName}`,
+                Status: "Fail",
+              },
+            });
+          }
+        }
+      }
+
+      // 3. Highlight duplicates in red
+      if (Object.keys(fail).length > 0) {
+        await Promise.all([
+          fragments.highlight({
+            customId: "red",
+            color: new THREE.Color("red"),
+            renderedFaces: FRAGS.RenderedFaces.ONE,
+            opacity: 1,
+            transparent: false,
+          }, fail),
+          fragments.core.update(true),
+        ]);
+        
+        // 투명화(Ghost) 적용
+        setModelTransparent(components);
+        
+        // 카메라 초점 맞추기
+        const worlds = components.get(OBC.Worlds);
+        const world = worlds.list.values().next().value;
+        if (world && world.camera instanceof OBC.SimpleCamera) {
+          await world.camera.fitToItems(fail);
+        }
+      }
+
+      resultsTable.data = tableData;
+      resultsTable.selection.clear();
+      selectedRowId = null;
+
+      latestResultsMap = fail;
+
+      if (duplicateCount > 0) {
+        alert(`중복되는 GUID가 ${duplicateCount}개 발견되었습니다! (총 ${tableData.length}개 객체)`);
+      } else {
+        alert("중복되는 GUID가 없습니다.");
+      }
+      return;
+    }
+
     // 기존 사양 지우기 및 새 사양 동적 생성
     ids.list.delete("Custom Spec");
     const spec = ids.create("Custom Spec", ["IFC2X3", "IFC4", "IFC4X3_ADD2"]);
