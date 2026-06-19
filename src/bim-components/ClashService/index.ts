@@ -50,6 +50,9 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
     fragments.list.onItemDeleted.add((modelId: string) => {
       this.removeIfcBuffer(modelId);
     });
+
+    // 워커를 미리 초기화하여, 첫 Run Clash 클릭 시 Vite 빌드/컴파일로 인한 페이지 새로고침 방지
+    this._initWorkers();
   }
 
   public addIfcBuffer(modelId: string, buffer: Uint8Array) {
@@ -290,7 +293,7 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       world.scene.three.add(this._clashMarkersGroup);
     }
 
-    const geometry = new THREE.SphereGeometry(0.2, 16, 16);
+    const geometry = new THREE.SphereGeometry(0.4, 16, 16);
     // 마커의 개별 색상(InstanceColor)을 정상적으로 렌더링하기 위해 기본 Material 색상을 흰색(0xffffff)으로 설정합니다.
     const material = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.85 });
 
