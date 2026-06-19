@@ -105,20 +105,20 @@ export const viewportSettingsTemplate: BUI.StatefullComponent<
           <bim-option label="Orthographic" ?checked=${world.camera.projection.current === "Orthographic"}></bim-option> 
         </bim-dropdown>
 
-        <div style="display: flex; flex-direction: column; gap: 0.375rem; padding: 0.25rem;">
-          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--bim-ui_gray-10);">
+        <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--bim-ui_gray-10); width: 7rem; flex-shrink: 0;">
             <span>Near Plane</span>
             <span ${BUI.ref(e => { cameraNearLabel = e as HTMLElement; })}>${currentNear.toFixed(2)}</span>
           </div>
-          <input ${BUI.ref(e => { cameraNearInput = e as HTMLInputElement; })} type="range" min="0.05" max="20.0" step="0.05" value=${currentNear} @input=${onNearChange} style="width: 100%; cursor: pointer;">
+          <input ${BUI.ref(e => { cameraNearInput = e as HTMLInputElement; })} type="range" min="0.1" max="20.0" step="0.1" value=${currentNear} @input=${onNearChange} style="flex: 1; cursor: pointer; min-width: 0;">
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 0.375rem; padding: 0.25rem;">
-          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--bim-ui_gray-10);">
+        <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--bim-ui_gray-10); width: 7rem; flex-shrink: 0;">
             <span>Far Plane</span>
             <span ${BUI.ref(e => { cameraFarLabel = e as HTMLElement; })}>${Math.round(currentFar)}</span>
           </div>
-          <input ${BUI.ref(e => { cameraFarInput = e as HTMLInputElement; })} type="range" min="30" max="2000" step="0.5" value=${currentFar} @input=${onFarChange} style="width: 100%; cursor: pointer;">
+          <input ${BUI.ref(e => { cameraFarInput = e as HTMLInputElement; })} type="range" min="30" max="2000" step="0.5" value=${currentFar} @input=${onFarChange} style="flex: 1; cursor: pointer; min-width: 0;">
         </div>
 
         <bim-dropdown label="Color Mode" @change=${onThemeChange}>

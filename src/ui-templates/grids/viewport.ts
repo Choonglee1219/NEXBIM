@@ -83,21 +83,6 @@ export const viewportGridTemplate: BUI.StatefullComponent<ViewportGridState> = (
       update();
     };
 
-    const onClipperBox = () => {
-      disableAll(["clipper"]);
-      if (clipperBox.enabled) {
-        clipperBox.disable();
-        if (clipper.list.size === 0) {
-          clipper.enabled = false;
-        }
-      } else {
-        clipper.enabled = true;
-        clipperBox.enable();
-      }
-      highlighter.enabled = true;
-      update();
-    };
-
     const onClipperClearAll = () => {
       if (clipper.deleteAll) clipper.deleteAll();
       else if ((clipper as any).clear) (clipper as any).clear();
@@ -142,11 +127,10 @@ export const viewportGridTemplate: BUI.StatefullComponent<ViewportGridState> = (
               </div>
             </bim-context-menu>
           </bim-button>
-          <bim-button ?active=${clipper.enabled || clipperBox.enabled} label="Section" title="Model Section" icon=${appIcons.CLIPPING}>
+          <bim-button ?active=${clipper.enabled} label="Section" title="Model Section" icon=${appIcons.CLIPPING}>
             <bim-context-menu>
               <div style="display: flex; gap: 0.25rem; overflow: hidden; width: max-content;">
                 <bim-button ?active=${clipper.enabled} title="Clipper Face" icon=${appIcons.CLIPPER_FACE} @click=${onModelSection}></bim-button>
-                <bim-button ?active=${clipperBox.enabled} title="Clipper Box" icon=${appIcons.CLIPPER_BOX} @click=${onClipperBox}></bim-button>
                 <bim-button icon=${appIcons.CLEAR} title=" All Clear" @click=${onClipperClearAll}></bim-button>
               </div>
             </bim-context-menu>

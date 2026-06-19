@@ -7,6 +7,7 @@ import { Colorize } from "../../ui-components/Colorize";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { CustomCameraControl } from "../../bim-components/CustomCameraControl";
 import { FloorExploder } from "../../bim-components/FloorExploder";
+import { ClipperBox } from "../../bim-components/ClipperBox";
 
 export interface ViewerToolbarState {
   components: OBC.Components;
@@ -126,6 +127,7 @@ let hiddenItemsBtn: BUI.Button | undefined;
 let focusBtnRef: BUI.Button | undefined;
 let hideBtn: BUI.Button | undefined;
 let isolateBtn: BUI.Button | undefined;
+let clipperBoxBtn: BUI.Button | undefined;
 let isFlyModeActive = false; // Fly Mode 상태를 추적하기 위한 변수
 let floorExploder: FloorExploder | null = null;
 let explodeBtn: BUI.Button | undefined;
@@ -165,6 +167,7 @@ if (!(window as any)._toolbarHotkeyRegistered) {
     if (key === 'h') hideBtn?.click();
     if (key === 'i') isolateBtn?.click();
     if (key === 'e') explodeBtn?.click();
+    if (key === 'c') clipperBoxBtn?.click();
   }, { capture: true }); // 다른 전역 리스너보다 먼저 이벤트를 가로채도록 캡처링 옵션 사용
 }
 
@@ -247,13 +250,42 @@ export const isolateSelection = async (components: OBC.Components) => {
   }
 };
 
+export const toggleClipperBox = (components: OBC.Components) => {
+  const clipperBox = components.get(ClipperBox);
+  const clipper = components.get(OBC.Clipper);
+  const lengthMeasurer = components.get(OBF.LengthMeasurement);
+  const areaMeasurer = components.get(OBF.AreaMeasurement);
+  const highlighter = components.get(Highlighter);
+
+  lengthMeasurer.enabled = false;
+  areaMeasurer.enabled = false;
+
+  if (clipperBox.enabled) {
+    clipperBox.disable();
+    if (clipper.list.size === 0) {
+      clipper.enabled = false;
+    }
+  } else {
+    clipper.enabled = true;
+    clipperBox.enable();
+  }
+  highlighter.enabled = true;
+  window.dispatchEvent(new CustomEvent("clipper-box-changed"));
+};
+
 export const viewerToolbarTemplate: BUI.StatefullComponent<
   ViewerToolbarState
-> = (state) => {
+> = (state, update) => {
   const { components, world } = state;
 
   const highlighter = components.get(Highlighter);
   const hider = components.get(OBC.Hider);
+  const clipperBox = components.get(ClipperBox);
+
+  const onClipperBoxChanged = () => {
+    update();
+  };
+  window.addEventListener("clipper-box-changed", onClipperBoxChanged);
 
   if (!floorExploder) {
     floorExploder = new FloorExploder(components);
@@ -330,6 +362,11 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
 
   const onToggleFlyMode = () => {
     customCameraControl.flyMode.toggle();
+  };
+
+  const onClipperBox = () => {
+    BUI.ContextMenu.removeMenus();
+    toggleClipperBox(components);
   };
 
   const setupFlyModeBtn = (e?: Element) => {
@@ -446,6 +483,7 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
         ${focusBtn}
         <bim-button ${BUI.ref((e) => { hideBtn = e as BUI.Button; if (hideBtn) hideBtn.active = isCurrentlyHidden; })} tooltip-title=${tooltips.HIDE.TITLE} tooltip-text=${tooltips.HIDE.TEXT} icon=${appIcons.HIDE} @click=${onHide}></bim-button> 
         <bim-button ${BUI.ref((e) => { isolateBtn = e as BUI.Button; })} tooltip-title=${tooltips.ISOLATE.TITLE} tooltip-text=${tooltips.ISOLATE.TEXT} icon=${appIcons.ISOLATE} @click=${onIsolate}></bim-button>
+        <bim-button ${BUI.ref((e) => { clipperBoxBtn = e as BUI.Button; })} ?active=${clipperBox.enabled} tooltip-title="Clipper Box (C)" tooltip-text="Toggle clipping box around the selection or whole model." icon=${appIcons.CLIPPER_BOX} @click=${onClipperBox}></bim-button>
         ${Colorize(components)}
       </bim-toolbar-section> 
       <bim-toolbar-section style="overflow: visible;">
