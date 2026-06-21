@@ -140,6 +140,7 @@ export const appIcons = {
   REPEAT: "/icons/mdi--repeat.svg",
   CLIPPER_FACE: "/icons/at-icons--face.svg",
   CLIPPER_BOX: "/icons/at-icons--box.svg",
+  CHATBOT: "/icons/hugeicons--chat-bot.svg",
 };
 
 // 테이블 내 아이콘 버튼들의 공통 컴팩트 스타일

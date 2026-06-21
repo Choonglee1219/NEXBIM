@@ -3,3 +3,5 @@ export * from "./TopicsList";
 export * from "./ViewTemplatesList";
 export * from "./QuantityChart";
 export * from "./ContextMenu";
+export * from "./GeminiChat";
+

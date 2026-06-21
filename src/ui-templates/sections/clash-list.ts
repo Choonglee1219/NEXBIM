@@ -30,12 +30,30 @@ let badgeFilter = "All";
 let badgeFilterDropdown: BUI.Dropdown;
 let matrixCellFilterSet: Set<any> | null = null;
 
+export const clashUIState = {
+  get rawValidResults() { return rawValidResults; },
+  set rawValidResults(val) { rawValidResults = val; },
+  get cachedFlatData() { return cachedFlatData; },
+  set searchQuery(val: string) {
+    searchQuery = val;
+    currentPage = 0;
+    if (clashUIState.applyFilters) clashUIState.applyFilters();
+  },
+  get searchQuery() { return searchQuery; },
+  runClash: null as ((e?: Event) => Promise<void>) | null,
+  applyFilters: null as (() => void) | null,
+};
+
 export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState> = (state) => {
   const { components } = state;
   const clashService = components.get(ClashService);
   const fragmentsManager = components.get(OBC.FragmentsManager);
   const highlighter = components.get(Highlighter);
   const classifier = components.get(OBC.Classifier);
+
+  clashUIState.applyFilters = () => applyFilters();
+  clashUIState.runClash = (e?: Event) => runClash(e);
+
 
   const clashTable = document.createElement("bim-table") as BUI.Table<any>;
   clashTable.headersHidden = false;

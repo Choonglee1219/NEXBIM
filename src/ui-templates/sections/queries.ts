@@ -9,6 +9,20 @@ export interface QueriesPanelState {
   isAdmin: boolean;
 }
 
+export const queriesUIState = {
+  nameInput: null as BUI.TextInput | null,
+  entityInput: null as BUI.TextInput | null,
+  attrNameInput: null as BUI.TextInput | null,
+  attrValInput: null as BUI.TextInput | null,
+  psetNameInput: null as BUI.TextInput | null,
+  propNameInput: null as BUI.TextInput | null,
+  propValInput: null as BUI.TextInput | null,
+  containedInInput: null as BUI.TextInput | null,
+  structureNameInput: null as BUI.TextInput | null,
+  onCreateQuery: null as (() => Promise<void>) | null,
+  onClear: null as (() => void) | null,
+};
+
 export const queriesPanelTemplate: BUI.StatefullComponent<QueriesPanelState> = (
   state,
 ) => {
@@ -190,25 +204,28 @@ export const queriesPanelTemplate: BUI.StatefullComponent<QueriesPanelState> = (
     if (structureNameInput) structureNameInput.value = "";
   };
 
+  queriesUIState.onCreateQuery = onQueryCreate;
+  queriesUIState.onClear = onClear;
+
   return BUI.html`
     <bim-panel-section fixed label="Queries" icon=${appIcons.SEARCH}>
       ${customBtn}
       <div style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 0.5rem;">
         <bim-label>Query Builder</bim-label>
-        <bim-text-input ${BUI.ref((e) => { nameInput = e as BUI.TextInput; })} placeholder="Query Name" vertical></bim-text-input>
-        <bim-text-input ${BUI.ref((e) => { entityInput = e as BUI.TextInput; })} placeholder="Entity (e.g. WALL)" vertical></bim-text-input>
+        <bim-text-input ${BUI.ref((e) => { nameInput = e as BUI.TextInput; queriesUIState.nameInput = nameInput; })} placeholder="Query Name" vertical></bim-text-input>
+        <bim-text-input ${BUI.ref((e) => { entityInput = e as BUI.TextInput; queriesUIState.entityInput = entityInput; })} placeholder="Entity (e.g. WALL)" vertical></bim-text-input>
         <div style="display: flex; gap: 0.5rem;">
-          <bim-text-input ${BUI.ref((e) => { attrNameInput = e as BUI.TextInput; })} placeholder="Attribute Name" vertical></bim-text-input>
-          <bim-text-input ${BUI.ref((e) => { attrValInput = e as BUI.TextInput; })} placeholder="Attribute Value" vertical></bim-text-input>
+          <bim-text-input ${BUI.ref((e) => { attrNameInput = e as BUI.TextInput; queriesUIState.attrNameInput = attrNameInput; })} placeholder="Attribute Name" vertical></bim-text-input>
+          <bim-text-input ${BUI.ref((e) => { attrValInput = e as BUI.TextInput; queriesUIState.attrValInput = attrValInput; })} placeholder="Attribute Value" vertical></bim-text-input>
         </div>
-        <bim-text-input ${BUI.ref((e) => { psetNameInput = e as BUI.TextInput; })} placeholder="PropertySet Name" vertical></bim-text-input>
+        <bim-text-input ${BUI.ref((e) => { psetNameInput = e as BUI.TextInput; queriesUIState.psetNameInput = psetNameInput; })} placeholder="PropertySet Name" vertical></bim-text-input>
         <div style="display: flex; gap: 0.5rem;">
-          <bim-text-input ${BUI.ref((e) => { propNameInput = e as BUI.TextInput; })} placeholder="Property Name" vertical></bim-text-input>
-          <bim-text-input ${BUI.ref((e) => { propValInput = e as BUI.TextInput; })} placeholder="Property Value" vertical></bim-text-input>
+          <bim-text-input ${BUI.ref((e) => { propNameInput = e as BUI.TextInput; queriesUIState.propNameInput = propNameInput; })} placeholder="Property Name" vertical></bim-text-input>
+          <bim-text-input ${BUI.ref((e) => { propValInput = e as BUI.TextInput; queriesUIState.propValInput = propValInput; })} placeholder="Property Value" vertical></bim-text-input>
         </div>
         <div style="display: flex; gap: 0.5rem;">
-          <bim-text-input ${BUI.ref((e) => { containedInInput = e as BUI.TextInput; })} placeholder="Container Entity (e.g. STOREY)" vertical></bim-text-input>
-          <bim-text-input ${BUI.ref((e) => { structureNameInput = e as BUI.TextInput; })} placeholder="Container Name" vertical></bim-text-input>
+          <bim-text-input ${BUI.ref((e) => { containedInInput = e as BUI.TextInput; queriesUIState.containedInInput = containedInInput; })} placeholder="Container Entity (e.g. STOREY)" vertical></bim-text-input>
+          <bim-text-input ${BUI.ref((e) => { structureNameInput = e as BUI.TextInput; queriesUIState.structureNameInput = structureNameInput; })} placeholder="Container Name" vertical></bim-text-input>
         </div>
         <div style="display: flex; gap: 0.5rem;">
           <bim-button style="flex: 1;" @click=${onQueryCreate} label="Create Query" icon=${appIcons.ADD}></bim-button>

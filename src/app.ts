@@ -2,7 +2,10 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import OracleDB from "oracledb";
 import multer from "multer";
+import dotenv from "dotenv";
 import { users } from "./setup/users.js";
+
+dotenv.config();
 
 const app = express();
 const PORT: number = 3001;
@@ -249,23 +252,23 @@ async function verifySchema() {
       }
     }
 
-      // 기존 DB 내에 업로드되어 있던 IFC/FRAG 모델이 있다면 첫 번째 시드 프로젝트에 매핑하여 유지
-      const firstProjectResult = await connection.execute(
-        `SELECT "id" FROM "project" ORDER BY "id" ASC`,
-        [],
-        { outFormat: OracleDB.OUT_FORMAT_OBJECT }
-      );
-      if (firstProjectResult.rows && firstProjectResult.rows.length > 0) {
-        const firstId = (firstProjectResult.rows[0] as any).id ?? (firstProjectResult.rows[0] as any).ID;
-        if (firstId) {
-          await connection.execute(`UPDATE "ifc" SET "project_id" = :projId WHERE "project_id" IS NULL`, { projId: firstId });
-          await connection.execute(`UPDATE "frag" SET "project_id" = :projId WHERE "project_id" IS NULL`, { projId: firstId });
-          console.log(`🔗 기존 고아 모델들을 첫 번째 프로젝트(ID: ${firstId})에 연결했습니다.`);
-        }
+    // 기존 DB 내에 업로드되어 있던 IFC/FRAG 모델이 있다면 첫 번째 시드 프로젝트에 매핑하여 유지
+    const firstProjectResult = await connection.execute(
+      `SELECT "id" FROM "project" ORDER BY "id" ASC`,
+      [],
+      { outFormat: OracleDB.OUT_FORMAT_OBJECT }
+    );
+    if (firstProjectResult.rows && firstProjectResult.rows.length > 0) {
+      const firstId = (firstProjectResult.rows[0] as any).id ?? (firstProjectResult.rows[0] as any).ID;
+      if (firstId) {
+        await connection.execute(`UPDATE "ifc" SET "project_id" = :projId WHERE "project_id" IS NULL`, { projId: firstId });
+        await connection.execute(`UPDATE "frag" SET "project_id" = :projId WHERE "project_id" IS NULL`, { projId: firstId });
+        console.log(`🔗 기존 고아 모델들을 첫 번째 프로젝트(ID: ${firstId})에 연결했습니다.`);
       }
+    }
 
-      await connection.commit();
-      console.log("✅ 기본 프로젝트 및 매핑 검증 완료.");
+    await connection.commit();
+    console.log("✅ 기본 프로젝트 및 매핑 검증 완료.");
   } catch (err) {
     if (connection) {
       await connection.rollback();
@@ -1954,6 +1957,99 @@ app.post("/api/clash-manager/delete-pairs", async (req: Request, res: Response):
     if (connection) {
       try { await connection.close(); } catch (err) { console.error(err); }
     }
+  }
+});
+
+// Gemini Chat API Proxy
+app.post("/api/chat/gemini", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { message, history, context } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY" || apiKey.trim() === "") {
+      res.status(400).json({ error: "Gemini API key is not configured. Please set GEMINI_API_KEY in your .env file." });
+      return;
+    }
+
+    // System instruction to guide model responses & viewer actions
+    const systemInstruction = {
+      parts: [{
+        text: "You are a professional BIM Assistant, an AI assistant integrated into a 3D BIM viewer (NEXBIM). " +
+          "Your role is to help the user query, analyze, and control the 3D model, as well as inspect/run clash detections. " +
+          "You have access to the currently loaded model names, element counts by category, currently selected element properties, and clash count statistics. " +
+          "Always respond politely and concisely. " +
+          "IMPORTANT: If the user asks you to perform a visual action, clash function, switch layout tabs, or query/count specific elements with attributes/properties (e.g. 'highlight columns', 'run clash detection', 'switch to BCF topics tab', 'Slab 중 PredefinedType이 BASESLAB인 객체 수 알려줘'), you MUST output a JSON action payload at the very end of your response, wrapped inside a ```json ``` block. " +
+          "The JSON block must match this structure EXACTLY (do not describe it, just output it):\n" +
+          "{\n" +
+          "  \"viewerAction\": {\n" +
+          "    \"type\": \"highlight\" | \"isolate\" | \"hide\" | \"focus\" | \"showAll\" | \"ghostMode\" | \"clipperBox\" | \"runClash\" | \"filterClash\" | \"switchTab\" | \"queryModel\",\n" +
+          "    \"target\": \"selection\" | \"category\" | \"id\" | \"search\" | \"layout\" | \"query\",\n" +
+          "    \"value\": \"IfcColumn\" | 12345 | [12345, 67890] | \"search_query_string\" | \"Viewer\" | \"BCFManager\" | \"Queries\" | \"Properties\" | \"ViewPoints\" | \"IDSCheck\" | \"QuantityTable\" | \"ClashDetection\" | \"DrawingEditor\" | \"Timeline\" | {\"entity\": \"Slab\", \"attributeName\": \"PredefinedType\", \"attributeValue\": \"BASESLAB\"}\n" +
+          "  }\n" +
+          "}\n" +
+          "- For highlighting/isolating/hiding a category, set target='category' and value=IfcClass (e.g. 'IfcColumn', 'IfcWall', 'IfcSlab').\n" +
+          "- For focusing on selected items or resetting view, value is not required. Just set type='focus' or type='showAll'.\n" +
+          "- For running clash detection, set type='runClash'.\n" +
+          "- For filtering the clash list, set type='filterClash', target='search', and value='keyword' (e.g. 'IfcPipeSegment' or '기둥').\n" +
+          "- For switching layout tabs (Viewer, BCFManager, Queries, Properties, ViewPoints, IDSCheck, QuantityTable, ClashDetection, DrawingEditor, Timeline), set type='switchTab', target='layout', and value=layoutName.\n" +
+          "- For querying/filtering elements by category, attributes, or properties (like Query Builder), set type='queryModel', target='query', and value as an object:\n" +
+          "  {\n" +
+          "    \"entity\": \"Slab\" | \"Wall\" | \"Column\" | etc (optional),\n" +
+          "    \"attributeName\": \"PredefinedType\" | \"Name\" | etc (optional),\n" +
+          "    \"attributeValue\": \"BASESLAB\" | etc (optional),\n" +
+          "    \"propertySetName\": \"Pset_WallCommon\" | etc (optional),\n" +
+          "    \"propertyName\": \"IsExternal\" | etc (optional),\n" +
+          "    \"propertyValue\": \"True\" | \"False\" | 123 | etc (optional)\n" +
+          "  }\n" +
+          "- Only output the action payload if the user explicitly asks for visual controls, highlighting, camera adjustments, clash operations, tab switches, or element queries."
+      }]
+    };
+
+    // Combine history, current message, and context
+    const contents = [...(history || [])];
+
+    let userText = "";
+    if (context) {
+      userText += `[Viewer Context: ${context}]\n\n`;
+    }
+    userText += message;
+
+    contents.push({
+      role: "user",
+      parts: [{ text: userText }]
+    });
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents,
+          systemInstruction,
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 1024,
+          }
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("Gemini API error:", errText);
+      res.status(response.status).json({ error: `Gemini API returned error: ${errText}` });
+      return;
+    }
+
+    const data = await response.json();
+    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || "No reply from Gemini.";
+    res.json({ reply: replyText });
+  } catch (err) {
+    console.error("Error in Gemini chat route:", err);
+    res.status(500).json({ error: "Internal server error in Gemini chat proxy." });
   }
 });
 
