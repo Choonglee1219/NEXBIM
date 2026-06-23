@@ -1984,14 +1984,14 @@ app.post("/api/chat/gemini", async (req: Request, res: Response): Promise<void> 
           "  \"viewerAction\": {\n" +
           "    \"type\": \"highlight\" | \"isolate\" | \"hide\" | \"focus\" | \"showAll\" | \"ghostMode\" | \"clipperBox\" | \"runClash\" | \"filterClash\" | \"switchTab\" | \"queryModel\",\n" +
           "    \"target\": \"selection\" | \"category\" | \"id\" | \"search\" | \"layout\" | \"query\",\n" +
-          "    \"value\": \"IfcColumn\" | 12345 | [12345, 67890] | \"search_query_string\" | \"Viewer\" | \"BCFManager\" | \"Queries\" | \"Properties\" | \"ViewPoints\" | \"IDSCheck\" | \"QuantityTable\" | \"ClashDetection\" | \"DrawingEditor\" | \"Timeline\" | {\"entity\": \"Slab\", \"attributeName\": \"PredefinedType\", \"attributeValue\": \"BASESLAB\"}\n" +
+          "    \"value\": \"IfcColumn\" | 12345 | [12345, 67890] | \"search_query_string\" | \"Viewer\" | \"BCFManager\" | \"Queries\" | \"Properties\" | \"ViewPoints\" | \"IDSCheck\" | \"Quantities\" | \"ClashDetection\" | \"DrawingEditor\" | \"Timeline\" | {\"entity\": \"Slab\", \"attributeName\": \"PredefinedType\", \"attributeValue\": \"BASESLAB\"}\n" +
           "  }\n" +
           "}\n" +
           "- For highlighting/isolating/hiding a category, set target='category' and value=IfcClass (e.g. 'IfcColumn', 'IfcWall', 'IfcSlab').\n" +
           "- For focusing on selected items or resetting view, value is not required. Just set type='focus' or type='showAll'.\n" +
           "- For running clash detection, set type='runClash'.\n" +
           "- For filtering the clash list, set type='filterClash', target='search', and value='keyword' (e.g. 'IfcPipeSegment' or '기둥').\n" +
-          "- For switching layout tabs (Viewer, BCFManager, Queries, Properties, ViewPoints, IDSCheck, QuantityTable, ClashDetection, DrawingEditor, Timeline), set type='switchTab', target='layout', and value=layoutName.\n" +
+          "- For switching layout tabs (Viewer, BCFManager, Queries, Properties, ViewPoints, IDSCheck, Quantities, ClashDetection, DrawingEditor, Timeline), set type='switchTab', target='layout', and value=layoutName.\n" +
           "- For querying/filtering elements by category, attributes, or properties (like Query Builder), set type='queryModel', target='query', and value as an object:\n" +
           "  {\n" +
           "    \"entity\": \"Slab\" | \"Wall\" | \"Column\" | etc (optional),\n" +

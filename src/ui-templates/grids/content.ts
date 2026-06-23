@@ -65,9 +65,9 @@ type Dashboard = {
   state: TEMPLATES.DashboardPanelState;
 };
 
-type QuantityTable = {
-  name: "quantityTable";
-  state: TEMPLATES.QuantityTablePanelState;
+type Quantities = {
+  name: "quantities";
+  state: TEMPLATES.QuantitiesPanelState;
 };
 
 type ClashList = {
@@ -103,14 +103,14 @@ export type ContentGridElements = [
   Dashboard,
   ViewPoints,
   IDSSpecs,
-  QuantityTable,
+  Quantities,
   ClashList,
   DrawingEditor,
   Timeline,
   PhaseManager,
 ];
 
-export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "IDSCheck", "FullScreen", "QuantityTable", "DrawingEditor", "Timeline"];
+export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "IDSCheck", "FullScreen", "Quantities", "DrawingEditor", "Timeline"];
 
 export interface ContentGridState {
   components: OBC.Components;
@@ -178,8 +178,8 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         template: TEMPLATES.dashboardPanelTemplate,
         initialState: { components },
       },
-      quantityTable: {
-        template: TEMPLATES.quantityTablePanelTemplate,
+      quantities: {
+        template: TEMPLATES.quantitiesPanelTemplate,
         initialState: { components },
       },
       clashList: {
@@ -244,6 +244,14 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         / var(--half-col-width, 1fr) 1fr
         `,
       },
+      Quantities: {
+        template: `
+        "viewer quantities quantities" var(--top-row-height, 1fr)
+        "elementData quantities quantities" 1fr
+        "elementData quantities quantities" var(--bottom-row-height, auto)
+        / var(--left-col-width) 1fr var(--right-col-width)
+        `,
+      },
       ViewPoints: {
         template: `
         "viewPoints viewer" 1fr
@@ -255,14 +263,6 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         "ifcList drawing drawing" 1fr
         "viewer drawing drawing" 1fr
           / var(--left-col-width) 1fr var(--right-col-width)
-        `,
-      },
-      QuantityTable: {
-        template: `
-        "viewer quantityTable quantityTable" var(--top-row-height, 1fr)
-        "elementData quantityTable quantityTable" 1fr
-        "elementData quantityTable quantityTable" var(--bottom-row-height, auto)
-        / var(--left-col-width) 1fr var(--right-col-width)
         `,
       },
       Timeline: {
@@ -401,7 +401,7 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         const computed = getComputedStyle(grid);
         const cols = computed.gridTemplateColumns.split(" ").map(parseFloat);
         const rows = computed.gridTemplateRows.split(" ").map(parseFloat);
-        
+
         const rect = grid.getBoundingClientRect();
         const paddingLeft = parseFloat(computed.paddingLeft) || 0;
         const paddingRight = parseFloat(computed.paddingRight) || 0;
@@ -419,11 +419,11 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         if (rows.length >= 3) bottomGapCenter = rect.bottom - paddingBottom - rows[rows.length - 1] - rowGap / 2;
 
         if ((leftGapCenter !== -1 && Math.abs(e.clientX - leftGapCenter) <= colGap) ||
-            (rightGapCenter !== -1 && Math.abs(e.clientX - rightGapCenter) <= colGap)) {
+          (rightGapCenter !== -1 && Math.abs(e.clientX - rightGapCenter) <= colGap)) {
           grid.style.cursor = "col-resize";
           return;
         } else if ((topGapCenter !== -1 && Math.abs(e.clientY - topGapCenter) <= rowGap) ||
-                   (bottomGapCenter !== -1 && Math.abs(e.clientY - bottomGapCenter) <= rowGap)) {
+          (bottomGapCenter !== -1 && Math.abs(e.clientY - bottomGapCenter) <= rowGap)) {
           grid.style.cursor = "row-resize";
           return;
         }

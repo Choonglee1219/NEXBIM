@@ -5,7 +5,7 @@ import { Highlighter } from "../../bim-components/Highlighter";
 import { quantityChart } from "../../ui-components/QuantityChart";
 import { setupBIMTable, tableDefaultContentTemplate, onTableCellCreated, onTableRowCreated, createPaginationTemplate, PaginationRefs } from "../../globals";
 
-export interface QuantityTablePanelState {
+export interface QuantitiesPanelState {
   components: OBC.Components;
 }
 
@@ -40,8 +40,8 @@ const extractValue = (attr: any): any => {
   if (attr === null || attr === undefined) return null;
   if (Array.isArray(attr)) return attr.length > 0 ? extractValue(attr[0]) : null;
   if (typeof attr === "object" && "value" in attr) {
-      if (attr.type === 5) return null; // 참조(Handle ID)는 값으로 취급하지 않음
-      return attr.value;
+    if (attr.type === 5) return null; // 참조(Handle ID)는 값으로 취급하지 않음
+    return attr.value;
   }
   return attr;
 };
@@ -89,12 +89,12 @@ const extractSelectionData = async (components: OBC.Components, modelIdMap: OBC.
     if (idsArray.length === 0) continue; // 빈 배열 시 전체 데이터를 가져오는 버그 방어
 
     const itemsData = await model.getItemsData(idsArray, {
-        attributesDefault: true,
-        relationsDefault: { attributes: false, relations: false },
-        relations: {
-            IsDefinedBy: { attributes: true, relations: true },
-            IsTypedBy: { attributes: true, relations: false }
-        },
+      attributesDefault: true,
+      relationsDefault: { attributes: false, relations: false },
+      relations: {
+        IsDefinedBy: { attributes: true, relations: true },
+        IsTypedBy: { attributes: true, relations: false }
+      },
     });
 
     for (let i = 0; i < itemsData.length; i++) {
@@ -102,7 +102,7 @@ const extractSelectionData = async (components: OBC.Components, modelIdMap: OBC.
       // ID 매핑 안정성 복원 및 fallback으로 배열 인덱스 활용
       const expressId = itemAny.expressID ?? itemAny.id ?? itemAny._localId?.value ?? itemAny._localId ?? idsArray[i];
       const category = catMap.get(Number(expressId)) || "Unknown";
-      
+
 
       const name = extractValue(itemAny.Name) || "Unknown";
       let pType = extractValue(itemAny.PredefinedType);
@@ -110,8 +110,8 @@ const extractSelectionData = async (components: OBC.Components, modelIdMap: OBC.
         for (const t of (itemAny.IsTypedBy || [])) {
           let typeObj = t.RelatingType || t;
           if (typeObj && typeObj.type === 5 && typeObj.value !== undefined) {
-             const exp = await model.getItemsData([typeObj.value], { attributesDefault: true });
-             typeObj = exp[0] || typeObj;
+            const exp = await model.getItemsData([typeObj.value], { attributesDefault: true });
+            typeObj = exp[0] || typeObj;
           }
           if (typeObj.PredefinedType) { pType = extractValue(typeObj.PredefinedType); break; }
         }
@@ -128,57 +128,57 @@ const extractSelectionData = async (components: OBC.Components, modelIdMap: OBC.
       // 수량(Quantity) 정보만 파싱하여 추출
       for (let rel of (itemAny.IsDefinedBy || [])) {
         if (rel && rel.type === 5 && rel.value !== undefined) {
-           const expRels = await model.getItemsData([rel.value], { attributesDefault: true });
-           rel = expRels[0] || rel;
+          const expRels = await model.getItemsData([rel.value], { attributesDefault: true });
+          rel = expRels[0] || rel;
         }
         let pset = rel.RelatingPropertyDefinition || rel;
         if (pset && pset.type === 5 && pset.value !== undefined) {
-           const expPsets = await model.getItemsData([pset.value], { attributesDefault: true });
-           pset = expPsets[0] || pset;
+          const expPsets = await model.getItemsData([pset.value], { attributesDefault: true });
+          pset = expPsets[0] || pset;
         }
 
         const psetName = extractValue(pset.Name);
         if (psetName && (psetName.includes("Quantities") || psetName.startsWith("Qto_"))) {
-           let props = pset.Quantities || pset.HasProperties || [];
-           
-           // Handle 확장 (Reference ID일 경우 실제 데이터를 한 번 더 Fetch)
-           const propIds = [];
-           for (const p of props) {
-             if (p && typeof p === "object" && p.type === 5 && p.value !== undefined) {
-               propIds.push(p.value);
-             }
-           }
-           if (propIds.length > 0) {
-             props = await model.getItemsData(propIds, { attributesDefault: true });
-           }
+          let props = pset.Quantities || pset.HasProperties || [];
 
-           for (const prop of props) {
-             const propName = extractValue(prop.Name);
-             if (propName) {
-               const val = extractValue(
-                 prop.LengthValue ?? 
-                 prop.AreaValue ?? 
-                 prop.VolumeValue ?? 
-                 prop.WeightValue ?? 
-                 prop.CountValue ?? 
-                 prop.TimeValue ?? 
-                 prop.NominalValue
-               );
-               
-               const numVal = Number(val);
-               if (!isNaN(numVal) && val !== null && val !== "") {
-                 // 문자열 .toFixed() 변환 대신 수학적 반올림으로 성능 최적화
-                 rowData[propName] = Math.round(numVal * 100) / 100;
-                 numericKeys.add(propName);
-               }
-             }
-           }
+          // Handle 확장 (Reference ID일 경우 실제 데이터를 한 번 더 Fetch)
+          const propIds = [];
+          for (const p of props) {
+            if (p && typeof p === "object" && p.type === 5 && p.value !== undefined) {
+              propIds.push(p.value);
+            }
+          }
+          if (propIds.length > 0) {
+            props = await model.getItemsData(propIds, { attributesDefault: true });
+          }
+
+          for (const prop of props) {
+            const propName = extractValue(prop.Name);
+            if (propName) {
+              const val = extractValue(
+                prop.LengthValue ??
+                prop.AreaValue ??
+                prop.VolumeValue ??
+                prop.WeightValue ??
+                prop.CountValue ??
+                prop.TimeValue ??
+                prop.NominalValue
+              );
+
+              const numVal = Number(val);
+              if (!isNaN(numVal) && val !== null && val !== "") {
+                // 문자열 .toFixed() 변환 대신 수학적 반올림으로 성능 최적화
+                rowData[propName] = Math.round(numVal * 100) / 100;
+                numericKeys.add(propName);
+              }
+            }
+          }
         }
       }
       allData.push(rowData);
     }
   }
-  
+
   // 모든 행의 컬럼이 일치하도록 (테이블 오류 방지) 없는 컬럼에는 "-" 부여
   const numKeysArray = Array.from(numericKeys);
   for (let i = 0; i < allData.length; i++) {
@@ -189,7 +189,7 @@ const extractSelectionData = async (components: OBC.Components, modelIdMap: OBC.
   }
 };
 
-export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePanelState> = (state) => {
+export const quantitiesPanelTemplate: BUI.StatefullComponent<QuantitiesPanelState> = (state) => {
   const { components } = state;
   const highlighter = components.get(Highlighter);
 
@@ -216,15 +216,15 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
 
       const lastDashIndex = rowId.lastIndexOf("-");
       if (lastDashIndex === -1) return;
-      
+
       const modelId = rowId.substring(0, lastDashIndex);
       const localId = parseInt(rowId.substring(lastDashIndex + 1), 10);
-      
+
       if (!modelId || isNaN(localId)) return;
 
       const worlds = components.get(OBC.Worlds);
       const world = worlds.list.values().next().value;
-      
+
       if (world && world.camera && "fitToItems" in world.camera) {
         const modelIdMap = { [modelId]: new Set([localId]) };
         await (world.camera as any).fitToItems(modelIdMap);
@@ -282,13 +282,13 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
     numericKey: selectedNumKey,
     onBarClick: (numericKey: string, min: number, max: number) => {
       selectedNumKey = numericKey;
-      
+
       if (!currentFilters.range[selectedNumKey]) {
         currentFilters.range[selectedNumKey] = { min: null, max: null };
       }
       currentFilters.range[selectedNumKey].min = Number(min.toFixed(2));
       currentFilters.range[selectedNumKey].max = Number(max.toFixed(2));
-      
+
       currentPage = 0;
       if (activeUpdateFilters) activeUpdateFilters();
       if (activeApplyFilters) activeApplyFilters();
@@ -308,7 +308,7 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
     const wrapper = header.parentElement as HTMLElement;
     const content = header.nextElementSibling as HTMLElement;
     const icon = header.querySelector(".toggle-icon") as any;
-    
+
     if (content.style.display === "none") {
       content.style.display = "flex";
       icon.icon = appIcons.MINOR;
@@ -360,7 +360,7 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
     // 라이브러리의 자동 컬럼 생성(캐싱) 로직을 우회하고, 
     // 원본 데이터(allData)의 구조에 맞춰 매번 컬럼을 강제로 명시해 줍니다.
     if (allData.length > 0) {
-      (quantityTable as any).columns = Object.keys(allData[0]).map(k => ({ 
+      (quantityTable as any).columns = Object.keys(allData[0]).map(k => ({
         name: k,
         width: k === "Name" ? "minmax(200px, 2fr)" : (categoricalKeys.includes(k) ? "minmax(120px, 1fr)" : "minmax(100px, 1fr)")
       }));
@@ -418,39 +418,39 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
     return BUI.html`
       <bim-dropdown multiple 
         ${BUI.ref(e => {
-          const dropdown = e as BUI.Dropdown;
-          if (!dropdown) return;
-          
-          // 내부 옵션 캐시 및 DOM 완전 초기화
-          if ((dropdown as any).elements) (dropdown as any).elements.clear();
-          dropdown.replaceChildren();
+      const dropdown = e as BUI.Dropdown;
+      if (!dropdown) return;
 
-          if (numKeysArr.length === 0) {
-            const opt = document.createElement("bim-option") as BUI.Option;
-            opt.label = "No Data";
-            opt.value = "";
-            opt.checked = true;
-            dropdown.append(opt);
-          } else {
-            numKeysArr.forEach(key => {
-              const opt = document.createElement("bim-option") as BUI.Option;
-              opt.label = key;
-              opt.value = key;
-              opt.checked = selectedSummaryKeys.has(key);
-              dropdown.append(opt);
-            });
-          }
-        })}
+      // 내부 옵션 캐시 및 DOM 완전 초기화
+      if ((dropdown as any).elements) (dropdown as any).elements.clear();
+      dropdown.replaceChildren();
+
+      if (numKeysArr.length === 0) {
+        const opt = document.createElement("bim-option") as BUI.Option;
+        opt.label = "No Data";
+        opt.value = "";
+        opt.checked = true;
+        dropdown.append(opt);
+      } else {
+        numKeysArr.forEach(key => {
+          const opt = document.createElement("bim-option") as BUI.Option;
+          opt.label = key;
+          opt.value = key;
+          opt.checked = selectedSummaryKeys.has(key);
+          dropdown.append(opt);
+        });
+      }
+    })}
         @change=${(e: Event) => {
-          const target = e.target as BUI.Dropdown;
-          selectedSummaryKeys.clear();
-          if (Array.isArray(target.value)) {
-            target.value.forEach((v: any) => {
-              if (typeof v === "string" && v !== "") selectedSummaryKeys.add(v);
-            });
-          }
-          if (activeApplyFilters) activeApplyFilters();
-        }}>
+        const target = e.target as BUI.Dropdown;
+        selectedSummaryKeys.clear();
+        if (Array.isArray(target.value)) {
+          target.value.forEach((v: any) => {
+            if (typeof v === "string" && v !== "") selectedSummaryKeys.add(v);
+          });
+        }
+        if (activeApplyFilters) activeApplyFilters();
+      }}>
       </bim-dropdown>
     `;
   }, { updateKey: 0 });
@@ -471,13 +471,13 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
           <bim-label style="font-weight: bold; pointer-events: none;">Data Filters</bim-label>
           <div style="display: flex; align-items: center; gap: 0.5rem;">
             <bim-button @click=${(e: Event) => {
-              e.stopPropagation();
-              currentFilters.text = {};
-              currentFilters.range = {};
-              currentPage = 0;
-              applyFilters();
-              if (activeUpdateFilters) activeUpdateFilters();
-            }} icon=${appIcons.CLEAR} tooltip-title="Clear All Filters" style="flex: 0; margin: 0; padding: 0.25rem;"></bim-button>
+        e.stopPropagation();
+        currentFilters.text = {};
+        currentFilters.range = {};
+        currentPage = 0;
+        applyFilters();
+        if (activeUpdateFilters) activeUpdateFilters();
+      }} icon=${appIcons.CLEAR} tooltip-title="Clear All Filters" style="flex: 0; margin: 0; padding: 0.25rem;"></bim-button>
             <bim-label class="toggle-icon" icon=${appIcons.MINOR} style="pointer-events: none; --bim-icon--fz: 1.25rem;"></bim-label>
           </div>
         </div>
@@ -487,13 +487,13 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
           <div style="display: flex; gap: 0.5rem; align-items: center;">
             <bim-dropdown style="flex: 1;" required
               @change=${(e: Event) => {
-                const dropdown = e.target as BUI.Dropdown;
-                dropdown.visible = false;
-                const val = dropdown.value[0];
-                if (typeof val === "string") selectedCatKey = val;
-                currentPage = 0;
-                if (activeUpdateFilters) activeUpdateFilters();
-            }}>
+        const dropdown = e.target as BUI.Dropdown;
+        dropdown.visible = false;
+        const val = dropdown.value[0];
+        if (typeof val === "string") selectedCatKey = val;
+        currentPage = 0;
+        if (activeUpdateFilters) activeUpdateFilters();
+      }}>
               ${categoricalKeys.map(key => BUI.html`<bim-option label=${key} value=${key} ?checked=${selectedCatKey === key}></bim-option>`)}
             </bim-dropdown>
             <bim-text-input 
@@ -502,10 +502,10 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
               .value=${currentFilters.text[selectedCatKey] || ""}
               debounce="200"
               @input=${(e: Event) => {
-                currentFilters.text[selectedCatKey] = (e.target as BUI.TextInput).value;
-                currentPage = 0;
-                applyFilters();
-              }}
+        currentFilters.text[selectedCatKey] = (e.target as BUI.TextInput).value;
+        currentPage = 0;
+        applyFilters();
+      }}
             ></bim-text-input>
           </div>
         </div>
@@ -515,39 +515,39 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
           <div style="display: flex; gap: 0.5rem; align-items: center;">
             <bim-dropdown style="flex: 1;" required 
               ${BUI.ref(e => {
-                const dropdown = e as BUI.Dropdown;
-                if (!dropdown) return;
-                
-                // 내부 옵션 캐시 및 DOM 완전 초기화
-                if ((dropdown as any).elements) (dropdown as any).elements.clear();
-                dropdown.replaceChildren();
+        const dropdown = e as BUI.Dropdown;
+        if (!dropdown) return;
 
-                if (numKeysArr.length === 0) {
-                  const opt = document.createElement("bim-option") as BUI.Option;
-                  opt.label = "No Data";
-                  opt.value = "";
-                  opt.checked = true;
-                  dropdown.append(opt);
-                } else {
-                  numKeysArr.forEach(key => {
-                    const opt = document.createElement("bim-option") as BUI.Option;
-                    opt.label = key;
-                    opt.value = key;
-                    opt.checked = selectedNumKey === key;
-                    dropdown.append(opt);
-                  });
-                }
-              })}
+        // 내부 옵션 캐시 및 DOM 완전 초기화
+        if ((dropdown as any).elements) (dropdown as any).elements.clear();
+        dropdown.replaceChildren();
+
+        if (numKeysArr.length === 0) {
+          const opt = document.createElement("bim-option") as BUI.Option;
+          opt.label = "No Data";
+          opt.value = "";
+          opt.checked = true;
+          dropdown.append(opt);
+        } else {
+          numKeysArr.forEach(key => {
+            const opt = document.createElement("bim-option") as BUI.Option;
+            opt.label = key;
+            opt.value = key;
+            opt.checked = selectedNumKey === key;
+            dropdown.append(opt);
+          });
+        }
+      })}
               @change=${(e: Event) => {
-                const dropdown = e.target as BUI.Dropdown;
-                dropdown.visible = false;
-                const val = dropdown.value[0];
-                if (typeof val === "string" && val !== "") selectedNumKey = val;
-                else selectedNumKey = "";
-                currentPage = 0;
-                if (activeUpdateFilters) activeUpdateFilters();
-                if (activeApplyFilters) activeApplyFilters();
-            }}>
+        const dropdown = e.target as BUI.Dropdown;
+        dropdown.visible = false;
+        const val = dropdown.value[0];
+        if (typeof val === "string" && val !== "") selectedNumKey = val;
+        else selectedNumKey = "";
+        currentPage = 0;
+        if (activeUpdateFilters) activeUpdateFilters();
+        if (activeApplyFilters) activeApplyFilters();
+      }}>
             </bim-dropdown>
             <div style="flex: 1; display: flex; align-items: center; gap: 0.25rem;">
               <bim-text-input 
@@ -558,13 +558,13 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
                 style="flex: 1;"
                 ?disabled=${numKeysArr.length === 0}
                 @input=${(e: Event) => {
-                  if (!selectedNumKey) return;
-                  const val = (e.target as BUI.TextInput).value;
-                  if (!currentFilters.range[selectedNumKey]) currentFilters.range[selectedNumKey] = { min: null, max: null };
-                  currentFilters.range[selectedNumKey].min = val !== "" ? Number(val) : null;
-                  currentPage = 0;
-                  applyFilters();
-                }}
+        if (!selectedNumKey) return;
+        const val = (e.target as BUI.TextInput).value;
+        if (!currentFilters.range[selectedNumKey]) currentFilters.range[selectedNumKey] = { min: null, max: null };
+        currentFilters.range[selectedNumKey].min = val !== "" ? Number(val) : null;
+        currentPage = 0;
+        applyFilters();
+      }}
               ></bim-text-input>
               <bim-label>-</bim-label>
               <bim-text-input 
@@ -575,13 +575,13 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
                 style="flex: 1;"
                 ?disabled=${numKeysArr.length === 0}
                 @input=${(e: Event) => {
-                  if (!selectedNumKey) return;
-                  const val = (e.target as BUI.TextInput).value;
-                  if (!currentFilters.range[selectedNumKey]) currentFilters.range[selectedNumKey] = { min: null, max: null };
-                  currentFilters.range[selectedNumKey].max = val !== "" ? Number(val) : null;
-                  currentPage = 0;
-                  applyFilters();
-                }}
+        if (!selectedNumKey) return;
+        const val = (e.target as BUI.TextInput).value;
+        if (!currentFilters.range[selectedNumKey]) currentFilters.range[selectedNumKey] = { min: null, max: null };
+        currentFilters.range[selectedNumKey].max = val !== "" ? Number(val) : null;
+        currentPage = 0;
+        applyFilters();
+      }}
               ></bim-text-input>
             </div>
           </div>
@@ -605,24 +605,24 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
       (summaryTable as any).columns = [];
 
       await extractSelectionData(components, modelIdMap);
-      
+
       selectedSummaryKeys.clear();
       currentPage = 0;
 
       currentItemCount = 0;
       for (const ids of Object.values(modelIdMap)) currentItemCount += ids.size;
-      
+
       if (activeUpdateFilters) activeUpdateFilters();
       if (activeUpdateSummary) activeUpdateSummary();
       if (activeApplyFilters) activeApplyFilters();
-      
+
       if (activeSection) activeSection.label = `Quantity Table (${currentItemCount})`;
     });
 
     highlighter.events.select.onClear.add(async () => {
       const currentSelection = highlighter.selection.select;
       const hasSelection = !OBC.ModelIdMapUtils.isEmpty(currentSelection);
-      
+
       if (hasSelection) {
         if (activeSection) activeSection.label = "Quantity Table (Loading...)";
 
@@ -632,17 +632,17 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
         (summaryTable as any).columns = [];
 
         await extractSelectionData(components, currentSelection);
-        
+
         selectedSummaryKeys.clear();
         currentPage = 0;
 
         currentItemCount = 0;
         for (const ids of Object.values(currentSelection)) currentItemCount += ids.size;
-        
+
         if (activeUpdateFilters) activeUpdateFilters();
         if (activeUpdateSummary) activeUpdateSummary();
         if (activeApplyFilters) activeApplyFilters();
-        
+
         if (activeSection) activeSection.label = `Quantity Table (${currentItemCount})`;
         return;
       }
@@ -664,11 +664,11 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
       currentItemCount = 0;
       selectedNumKey = "";
       selectedSummaryKeys.clear();
-      
+
       if (activeUpdateFilters) activeUpdateFilters();
       if (activeUpdateSummary) activeUpdateSummary();
       if (activeApplyFilters) activeApplyFilters();
-      
+
       if (activeSection) activeSection.label = "Quantity Table (0)";
     });
   }
@@ -677,35 +677,35 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
   setTimeout(() => applyFilters(), 0);
 
   return BUI.html`
-    <bim-panel-section ${BUI.ref((e) => { 
-        if (!e) return;
-        activeSection = e as BUI.PanelSection; 
-        
-        // 1. 패널 최초 렌더링 시점에 이미 선택된 객체가 있다면 데이터 강제 추출 (초기 빈 화면 방지)
-        const currentSelection = highlighter.selection.select;
-        if (allData.length === 0 && !OBC.ModelIdMapUtils.isEmpty(currentSelection)) {
-          activeSection.label = "Quantity Table (Loading...)";
-          extractSelectionData(components, currentSelection).then(() => {
-            currentItemCount = 0;
-            for (const ids of Object.values(currentSelection)) currentItemCount += ids.size;
-            if (activeUpdateFilters) activeUpdateFilters();
-            if (activeUpdateSummary) activeUpdateSummary();
-            if (activeApplyFilters) activeApplyFilters();
-            if (activeSection) activeSection.label = `Quantity Table (${currentItemCount})`;
-          });
-        }
+    <bim-panel-section ${BUI.ref((e) => {
+    if (!e) return;
+    activeSection = e as BUI.PanelSection;
 
-        // 2. QuantityTable 레이아웃으로 진입하여 화면에 나타날 때 UI 렌더링 강제 새로고침
-        const observer = new IntersectionObserver((entries) => {
-          if (entries[0].isIntersecting) {
-            setTimeout(() => {
-              if (activeApplyFilters) activeApplyFilters();
-            }, 50);
-          }
-        });
-        observer.observe(e);
-        
-    })} fixed icon=${appIcons.TASK} label=${`Quantity Table (${currentItemCount})`}>
+    // 1. 패널 최초 렌더링 시점에 이미 선택된 객체가 있다면 데이터 강제 추출 (초기 빈 화면 방지)
+    const currentSelection = highlighter.selection.select;
+    if (allData.length === 0 && !OBC.ModelIdMapUtils.isEmpty(currentSelection)) {
+      activeSection.label = "Quantity Table (Loading...)";
+      extractSelectionData(components, currentSelection).then(() => {
+        currentItemCount = 0;
+        for (const ids of Object.values(currentSelection)) currentItemCount += ids.size;
+        if (activeUpdateFilters) activeUpdateFilters();
+        if (activeUpdateSummary) activeUpdateSummary();
+        if (activeApplyFilters) activeApplyFilters();
+        if (activeSection) activeSection.label = `Quantity Table (${currentItemCount})`;
+      });
+    }
+
+    // 2. Quantities 레이아웃으로 진입하여 화면에 나타날 때 UI 렌더링 강제 새로고침
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setTimeout(() => {
+          if (activeApplyFilters) activeApplyFilters();
+        }, 50);
+      }
+    });
+    observer.observe(e);
+
+  })} fixed icon=${appIcons.TASK} label=${`Quantity Table (${currentItemCount})`}>
       <div style="display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 0.5rem;">
         ${filtersContainer}
         <div style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; flex-shrink: 0; max-height: 15rem; overflow-y: auto;">
@@ -729,9 +729,9 @@ export const quantityTablePanelTemplate: BUI.StatefullComponent<QuantityTablePan
             <div style="display: flex; align-items: center; gap: 0.5rem;">
               <bim-button 
                 @click=${(e: Event) => {
-                  e.stopPropagation();
-                  quantityTable.downloadData("Quantity_Data", "csv");
-                }} 
+      e.stopPropagation();
+      quantityTable.downloadData("Quantity_Data", "csv");
+    }} 
                 icon=${appIcons.EXPORT} 
                 tooltip-title="Export to CSV" 
                 style="flex: 0; margin: 0; padding: 0.25rem;"

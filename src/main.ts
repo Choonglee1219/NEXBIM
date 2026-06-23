@@ -219,7 +219,7 @@ clipper.onAfterCreate.add((plane: any) => {
   const mat = clipper.material.clone();
   mat.transparent = true;
   mat.opacity = 0.01;
-  
+
   if ("planeMaterial" in plane) {
     plane.planeMaterial = mat;
   } else if ("material" in plane) {
@@ -374,10 +374,10 @@ const contentGridIcons: Record<TEMPLATES.ContentGridLayouts[number], string> = {
   BCFManager: appIcons.REF,
   Queries: appIcons.SEARCH,
   Properties: appIcons.EDIT,
+  Quantities: appIcons.TABLE,
   FullScreen: appIcons.FULL_SCREEN,
   ViewPoints: appIcons.CAMERA,
   IDSCheck: appIcons.IDS_CHECK,
-  QuantityTable: appIcons.TABLE,
   ClashDetection: appIcons.CLASH,
   DrawingEditor: appIcons.DRAWING,
   Timeline: appIcons.GANTT,
