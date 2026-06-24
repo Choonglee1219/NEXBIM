@@ -5,6 +5,7 @@ import { SharedIFC } from '../../bim-components/SharedIFC';
 import { SharedFRAG } from '../../bim-components/SharedFRAG';
 import { BCFTopics } from "../../bim-components/BCFTopics";
 import { ClashService } from "../../bim-components/ClashService";
+import { Highlighter } from "../../bim-components/Highlighter";
 
 export interface IFCListPanelState {
   components: OBC.Components;
@@ -769,21 +770,125 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     }
   };
 
+  // 🌟 외부 연동 시 프로젝트 정보 조회 완료를 보장하는 공통 대기 함수
+  const waitForProjectInit = async () => {
+    if (appState.hasExternalLink && !appState.currentProject) {
+      console.log("[Automation] Waiting for project initialization...");
+      for (let i = 0; i < 30; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        if (appState.currentProject) break;
+      }
+    }
+  };
+
   const refreshSharedIFCList = async () => {
     sharedIFC.list = [];
+    await waitForProjectInit();
     await sharedIFC.loadIFCFiles(appState.currentProject?.id);
     sharedIFC.list.sort((a, b) => a.name.localeCompare(b.name));
     updateIFCTableData();
   };
 
+  // 🔗 외부 시스템 연동 자동화 대리 수행
+  let automationTriggered = false;
+  const runExternalAutomation = async () => {
+    if (automationTriggered) return;
+    const params = new URLSearchParams(window.location.search);
+    const paramModel = params.get("model");
+    const paramGuid = params.get("guid");
+
+    if (!paramModel) return;
+    automationTriggered = true;
+
+    const clearAutomationParams = () => {
+      const cleanUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, document.title, cleanUrl);
+    };
+
+    try {
+      console.log(`[Automation] Searching for model: ${paramModel}`);
+      const targetFrag = sharedFRAG.list.find(
+        (f) => f.name.replace(/\.frag$/i, "") === paramModel.replace(/\.frag$/i, "")
+      );
+
+      if (!targetFrag) {
+        console.warn(`[Automation] Model "${paramModel}" not found in DB list.`);
+        clearAutomationParams();
+        return;
+      }
+
+      // 이미 로드된 모델인지 더블 체크 (중복 적재 방지)
+      let loadedModel = Array.from(fragments.list.values()).find(
+        (m: any) => (m as any).dbId === targetFrag.id || (m as any).name === targetFrag.name
+      );
+
+      if (!loadedModel) {
+        console.log(`[Automation] Automatically loading model ID: ${targetFrag.id}`);
+        // 🌟 기존 뷰어의 로컬 로드 함수를 그대로 대리 호출하여 정합성 보장!
+        await loadFRAGModel(targetFrag.id);
+      } else {
+        console.log(`[Automation] Model is already loaded. Skipping load.`);
+      }
+
+      if (!paramGuid) {
+        clearAutomationParams();
+        return;
+      }
+
+      const checkAndZoom = async () => {
+        try {
+          console.log(`[Automation] Finding object GUID: ${paramGuid}`);
+          const modelIdMap = await fragments.guidsToModelIdMap([paramGuid]);
+          let hasValidItems = false;
+          for (const key in modelIdMap) {
+            if (modelIdMap[key].size > 0) {
+              hasValidItems = true;
+              break;
+            }
+          }
+
+          if (hasValidItems) {
+            console.log(`[Automation] Focusing on object: ${paramGuid}`);
+            const highlighter = components.get(Highlighter);
+            await highlighter.highlightByID("select", modelIdMap);
+            
+            const worlds = components.get(OBC.Worlds);
+            const world = worlds.list.values().next().value;
+            const cam = world?.camera as any;
+            if (cam && typeof cam.fitToItems === "function") {
+              await cam.fitToItems(modelIdMap);
+            }
+          } else {
+            console.warn(`[Automation] GUID "${paramGuid}" not found in loaded models.`);
+          }
+        } catch (zoomErr) {
+          console.error("[Automation] Focus operation failed:", zoomErr);
+        } finally {
+          clearAutomationParams();
+        }
+      };
+
+      // 로딩 및 씬 구성을 고려해 약간의 지연 처리 후 줌인 구동
+      setTimeout(checkAndZoom, 1200);
+
+    } catch (err) {
+      console.error("[Automation] Failed:", err);
+      clearAutomationParams();
+    }
+  };
+
   const refreshSharedFRAGList = async () => {
     sharedFRAG.list = [];
+    await waitForProjectInit();
     await sharedFRAG.loadFRAGFiles(appState.currentProject?.id);
     if (sharedModelLabel) {
       sharedModelLabel.textContent = `Shared Model (${sharedFRAG.list.length})`;
     }
     if (refreshBadges) refreshBadges();
     updateFRAGTableData();
+    
+    // 외부 연동 자동화 수행
+    runExternalAutomation();
   };
 
   refreshSharedIFCList();

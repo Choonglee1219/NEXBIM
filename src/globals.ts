@@ -34,6 +34,7 @@ const getSavedIsAdmin = () => {
 };
 
 export const appState = {
+  hasExternalLink: false,
   get isAdmin() {
     return getSavedIsAdmin();
   },

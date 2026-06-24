@@ -455,9 +455,60 @@ app.layouts = {
   },
 };
 
+const params = new URLSearchParams(window.location.search);
+appState.hasExternalLink = params.has("project");
+
+// 🔗 외부 시스템 연동 (URL Parameter 처리 - 프로젝트 진입 및 레이아웃 설정 전담)
+const handleExternalLink = async () => {
+  const paramProject = params.get("project");
+  if (!paramProject) return;
+
+  // 동기적으로 레이아웃과 뷰어 해시를 먼저 선점하여 화면 튕김 현상 방지
+  app.layout = "App";
+  window.location.hash = "Viewer";
+
+  // 1. 현재 사용자 확인 및 기본 데모 계정 할당
+  if (!appState.currentUser) {
+    appState.currentUser = "choonglee1219@kepco-enc.com";
+    appState.isAdmin = true;
+  }
+
+  try {
+    console.log(`[ExternalLink] Searching for project: ${paramProject}`);
+    // 2. 프로젝트 리스트를 조회하여 이름이 일치하는 프로젝트 검색
+    const res = await fetch(`/api/projects?email=${appState.currentUser}`);
+    if (!res.ok) throw new Error("Failed to fetch projects");
+    const projects = await res.json();
+    const targetProject = projects.find((p: any) => p.name === paramProject);
+
+    if (!targetProject) {
+      console.warn(`[ExternalLink] Project "${paramProject}" not found.`);
+      appState.hasExternalLink = false;
+      return;
+    }
+
+    console.log(`[ExternalLink] Entering project: ${targetProject.name} (ID: ${targetProject.id})`);
+    // 3. 프로젝트 진입 상태 설정
+    appState.currentProject = {
+      id: targetProject.id,
+      name: targetProject.name,
+      description: targetProject.description,
+      security: targetProject.security,
+    };
+    appState.isAdmin = targetProject.security === "free";
+
+  } catch (err) {
+    console.error("[ExternalLink] Automation failed:", err);
+    appState.hasExternalLink = false;
+  }
+};
+
 const handleMainRouting = () => {
   const hash = window.location.hash;
-  if (hash === "" || hash === "#projects" || !appState.currentProject) {
+  if (appState.hasExternalLink) {
+    app.layout = "App";
+    window.location.hash = "Viewer";
+  } else if (hash === "" || hash === "#projects" || !appState.currentProject) {
     appState.currentProject = null;
     window.location.hash = "projects";
     app.layout = "ProjectSelection";
@@ -472,5 +523,10 @@ window.addEventListener("hashchange", () => {
     app.layout = "ProjectSelection";
   }
 });
+
+// 외부 연동 파라미터가 있을 경우 핸들러 비동기 구동
+if (appState.hasExternalLink) {
+  await handleExternalLink();
+}
 
 handleMainRouting();
