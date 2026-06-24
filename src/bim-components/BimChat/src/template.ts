@@ -191,6 +191,13 @@ const executeViewerAction = async (components: OBC.Components, world: OBC.World,
           }
         }
       }
+
+      // Switch layout tab if layout is specified in the query value (e.g., "Quantities")
+      if (value.layout && contentGrid && contentGrid.layout !== value.layout) {
+        contentGrid.layout = value.layout;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+
       return String(count);
     }
 

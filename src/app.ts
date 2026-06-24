@@ -1979,7 +1979,7 @@ app.post("/api/chat/assistant", async (req: Request, res: Response): Promise<voi
       "  \"viewerAction\": {\n" +
       "    \"type\": \"highlight\" | \"isolate\" | \"hide\" | \"focus\" | \"showAll\" | \"ghostMode\" | \"clipperBox\" | \"runClash\" | \"filterClash\" | \"switchTab\" | \"queryModel\",\n" +
       "    \"target\": \"selection\" | \"category\" | \"id\" | \"search\" | \"layout\" | \"query\",\n" +
-      "    \"value\": \"IfcColumn\" | 12345 | [12345, 67890] | \"search_query_string\" | \"Viewer\" | \"BCFManager\" | \"Queries\" | \"Properties\" | \"ViewPoints\" | \"IDSCheck\" | \"Quantities\" | \"ClashDetection\" | \"DrawingEditor\" | \"Timeline\" | {\"entity\": \"Slab\", \"attributeName\": \"PredefinedType\", \"attributeValue\": \"BASESLAB\"}\n" +
+      "    \"value\": \"IfcColumn\" | 12345 | [12345, 67890] | \"search_query_string\" | \"Viewer\" | \"BCFManager\" | \"Queries\" | \"Properties\" | \"ViewPoints\" | \"IDSCheck\" | \"Quantities\" | \"ClashDetection\" | \"DrawingEditor\" | \"Timeline\" | {\"entity\": \"Slab\", \"attributeName\": \"PredefinedType\", \"attributeValue\": \"BASESLAB\", \"layout\": \"Quantities\"}\n" +
       "  }\n" +
       "}\n" +
       "- For highlighting/isolating/hiding a category, set target='category' and value=IfcClass (e.g. 'IfcColumn', 'IfcWall', 'IfcSlab').\n" +
@@ -1994,7 +1994,8 @@ app.post("/api/chat/assistant", async (req: Request, res: Response): Promise<voi
       "    \"attributeValue\": \"BASESLAB\" | etc (optional),\n" +
       "    \"propertySetName\": \"Pset_WallCommon\" | etc (optional),\n" +
       "    \"propertyName\": \"IsExternal\" | etc (optional),\n" +
-      "    \"propertyValue\": \"True\" | \"False\" | 123 | etc (optional)\n" +
+      "    \"propertyValue\": \"True\" | \"False\" | 123 | etc (optional),\n" +
+      "    \"layout\": \"Quantities\" | \"Queries\" | etc (optional - set layout='Quantities' if user asks to see quantities/volume/water/cost/takeoff tables for the queried objects)\n" +
       "  }\n" +
       "- Only output the action payload if the user explicitly asks for visual controls, highlighting, camera adjustments, clash operations, tab switches, or element queries.";
 
