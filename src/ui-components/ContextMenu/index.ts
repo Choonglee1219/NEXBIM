@@ -77,16 +77,19 @@ const openItemsDataDialog = (components: OBC.Components, selection: OBC.ModelIdM
   toolbarDiv.appendChild(searchInput);
 
   const expandBtn = document.createElement("bim-button");
+  expandBtn.style.flex = "0";
   (expandBtn as any).icon = appIcons.EXPAND;
-  (expandBtn as any).title = "Toggle Expanded";
+  expandBtn.setAttribute("tooltip-title", "Toggle Expanded");
   expandBtn.addEventListener("click", () => {
     propsTable.expanded = !propsTable.expanded;
   });
   toolbarDiv.appendChild(expandBtn);
 
   const exportBtn = document.createElement("bim-button");
+  exportBtn.style.flex = "0";
   (exportBtn as any).icon = appIcons.EXPORT;
-  (exportBtn as any).title = "Export Data";
+  exportBtn.setAttribute("tooltip-title", "Export Data");
+  exportBtn.setAttribute("tooltip-text", "Export the shown properties.");
   exportBtn.addEventListener("click", () => {
     propsTable.downloadData("ElementData", "json");
   });
@@ -96,8 +99,9 @@ const openItemsDataDialog = (components: OBC.Components, selection: OBC.ModelIdM
 
   // Close Button
   const closeBtn = document.createElement("bim-button");
+  closeBtn.style.flex = "0";
   (closeBtn as any).label = "Close";
-  (closeBtn as any).title = "Close";
+  closeBtn.setAttribute("tooltip-title", "Close Dialog");
   closeBtn.addEventListener("click", () => dialog.close());
   headerDiv.appendChild(closeBtn);
 

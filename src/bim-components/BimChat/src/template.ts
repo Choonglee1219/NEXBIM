@@ -1,7 +1,7 @@
 import MarkdownIt from "markdown-it";
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
-import { GeminiChatState, ChatMessage } from "./types";
+import { BimChatState, ChatMessage } from "./types";
 import { appIcons } from "../../../globals";
 import { Highlighter } from "../../../bim-components/Highlighter";
 import { clashUIState } from "../../../ui-templates/sections/clash-list";
@@ -19,7 +19,7 @@ const md = new MarkdownIt({
 const chatHistory: ChatMessage[] = [
   {
     role: "model",
-    parts: [{ text: "안녕하세요! 저는 Gemini BIM Assistant입니다. 무엇을 도와드릴까요? 로드되어 있는 모델에 대해서만 질의할 수 있습니다.\n\n* 이 모델의 Wall 요소는 몇 개야?\n* 이 객체의 모든 속성을 알려줘.\n* 이 객체를 숨겨줘. " }]
+    parts: [{ text: "안녕하세요! 저는 BIM AI Assistant입니다. 무엇을 도와드릴까요? 로드되어 있는 모델에 대해서만 질의할 수 있습니다.\n\n* 이 모델의 Wall 요소는 몇 개야?\n* 이 객체의 모든 속성을 알려줘.\n* 이 객체를 숨겨줘. " }]
   }
 ];
 
@@ -247,7 +247,7 @@ const renderMessages = () => {
 
     // strip the JSON block from text when rendering
     let displayText = text;
-    const jsonBlockRegex = /```json[\s\S]*?```/g;
+    const jsonBlockRegex = /```json([\s\S]*?)```/g;
     displayText = text.replace(jsonBlockRegex, "").trim();
 
     if (!displayText) {
@@ -275,14 +275,14 @@ const renderMessages = () => {
           <div ${BUI.ref(el => { if (el) el.innerHTML = renderedHtml; })} class="markdown-body" style="word-break: break-word;"></div>
         </div>
         <span style="font-size: 0.65rem; color: var(--bim-ui_gray-8); align-self: ${isUser ? "flex-end" : "flex-start"}; margin-top: 0.15rem; margin-right: 0.25rem;">
-          ${isUser ? "You" : "Gemini"}
+          ${isUser ? "You" : "AI Assistant"}
         </span>
       </div>
     `;
   });
 };
 
-export const geminiChatTemplate: BUI.StatefullComponent<GeminiChatState> = (
+export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
   state,
   update,
 ) => {
@@ -307,7 +307,7 @@ export const geminiChatTemplate: BUI.StatefullComponent<GeminiChatState> = (
     try {
       const context = await getModelContext(components);
 
-      const response = await fetch("/api/chat/gemini", {
+      const response = await fetch("/api/chat/assistant", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -321,7 +321,7 @@ export const geminiChatTemplate: BUI.StatefullComponent<GeminiChatState> = (
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to call Gemini API");
+        throw new Error(errorData.error || "Failed to call Chat Assistant API");
       }
 
       const data = await response.json();
@@ -422,16 +422,16 @@ export const geminiChatTemplate: BUI.StatefullComponent<GeminiChatState> = (
       ">
         <div style="display: flex; align-items: center; gap: 0.5rem;">
           <div style="width: 8px; height: 8px; background: #00ffaa; border-radius: 50%; box-shadow: 0 0 8px #00ffaa;"></div>
-          <span style="font-weight: bold; font-size: 0.9rem; color: var(--bim-ui_bg-contrast-100);">Gemini AI Assistant</span>
+          <span style="font-weight: bold; font-size: 0.9rem; color: var(--bim-ui_bg-contrast-100);">AI Assistant</span>
         </div>
         <bim-button @click=${() => {
-      const chatPanel = document.getElementById("gemini-chat-panel");
+      const chatPanel = document.getElementById("bim-chat-panel");
       if (chatPanel) {
         chatPanel.style.display = "none";
-        const chatBtn = document.getElementById("gemini-chat-toggle-btn") as any;
+        const chatBtn = document.getElementById("bim-chat-toggle-btn") as any;
         if (chatBtn) chatBtn.active = false;
       }
-    }} icon=${appIcons.CLEAR} style="--bim-button--bgc: transparent; margin: 0; padding: 0;"></bim-button>
+    }} icon=${appIcons.CLEAR} style="flex: 0; --bim-button--bgc: transparent;"></bim-button>
       </div>
 
       <!-- Message Area -->
@@ -497,7 +497,7 @@ export const geminiChatTemplate: BUI.StatefullComponent<GeminiChatState> = (
           onfocus="this.style.borderColor='var(--bim-ui_accent-base)'"
           onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'"
         ></textarea>
-        <bim-button @click=${onSend} icon=${appIcons.CHATBOT} style="--bim-button--bgc: var(--bim-ui_main-base); margin: 0;" title="Send"></bim-button>
+        <bim-button @click=${onSend} icon=${appIcons.CHATBOT} style="flex: 0; --bim-button--bgc: var(--bim-ui_main-base);" title="Send"></bim-button>
       </div>
     </div>
   `;

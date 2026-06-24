@@ -4,7 +4,7 @@ import * as OBF from "@thatopen/components-front";
 import * as FRAGS from "@thatopen/fragments";
 import { appIcons, tooltips } from "../../globals";
 import { Colorize } from "../../ui-components/Colorize";
-import { geminiChatPanel } from "../../ui-components";
+import { bimChatPanel } from "../../bim-components";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { CustomCameraControl } from "../../bim-components/CustomCameraControl";
 import { FloorExploder } from "../../bim-components/FloorExploder";
@@ -477,12 +477,12 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
   };
 
   const onToggleChat = () => {
-    let chatPanel = document.getElementById("gemini-chat-panel");
-    const toggleBtn = document.getElementById("gemini-chat-toggle-btn") as any;
+    let chatPanel = document.getElementById("bim-chat-panel");
+    const toggleBtn = document.getElementById("bim-chat-toggle-btn") as any;
 
     if (!chatPanel) {
-      const [panelElement] = geminiChatPanel({ components, world });
-      panelElement.id = "gemini-chat-panel";
+      const [panelElement] = bimChatPanel({ components, world });
+      panelElement.id = "bim-chat-panel";
       panelElement.style.position = "absolute";
       panelElement.style.bottom = "80px";
       panelElement.style.right = "20px";
@@ -541,7 +541,7 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
     }} style="width: 100%; cursor: pointer;">
           </div>
         </div>
-        <bim-button id="gemini-chat-toggle-btn" tooltip-title="Gemini AI Assistant" tooltip-text="Ask Gemini about the model and control the viewer." icon=${appIcons.CHATBOT} @click=${onToggleChat}></bim-button>
+        <bim-button id="bim-chat-toggle-btn" tooltip-title="AI Assistant" tooltip-text="Ask AI about the model and control the viewer." icon=${appIcons.CHATBOT} @click=${onToggleChat}></bim-button>
       </bim-toolbar-section>
     </bim-toolbar>
   `;

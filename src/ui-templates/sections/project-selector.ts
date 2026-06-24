@@ -279,7 +279,7 @@ export const projectSelectorTemplate: BUI.StatefullComponent<ProjectSelectorStat
                   
                   <!-- Settings Icon (Only for Admin) -->
                   ${isAdmin ? BUI.html`
-                    <bim-button @click=${() => openProjectSettings(proj.id, proj.name)} icon=${appIcons.SETTINGS} style="--bim-button--p: 0.125rem 0.25rem; --bim-icon--fz: 1.1rem; background-color: transparent;" title="Project Settings"></bim-button>
+                    <bim-button @click=${() => openProjectSettings(proj.id, proj.name)} icon=${appIcons.SETTINGS} style="flex: 0; --bim-button--p: 0.125rem 0.25rem; --bim-icon--fz: 1.1rem; background-color: transparent;" title="Project Settings"></bim-button>
                   ` : ""}
                 </div>
 
@@ -302,7 +302,7 @@ export const projectSelectorTemplate: BUI.StatefullComponent<ProjectSelectorStat
                   </div>
 
                   <!-- Enter Project Button -->
-                  <bim-button @click=${() => onProjectSelect({ id: proj.id, name: proj.name, description: proj.description, security: proj.security })} icon=${appIcons.OPEN} label="Enter" style="--bim-button--bgc: var(--bim-ui_bg-contrast-20); --bim-button--p: 0.25rem 0.6rem; font-size: 0.85rem;"></bim-button>
+                  <bim-button @click=${() => onProjectSelect({ id: proj.id, name: proj.name, description: proj.description, security: proj.security })} icon=${appIcons.OPEN} label="Enter" style="flex: 0; --bim-button--bgc: var(--bim-ui_bg-contrast-20); --bim-button--p: 0.25rem 0.6rem; font-size: 0.85rem;"></bim-button>
                 </div>
               </div>
             `;
@@ -335,7 +335,7 @@ export const projectSelectorTemplate: BUI.StatefullComponent<ProjectSelectorStat
           <div style="background-color: var(--bim-ui_bg-base); border: 1px solid var(--bim-ui_bg-contrast-40); border-radius: 8px; width: 450px; max-width: 90vw; padding: 1.5rem; box-sizing: border-box; display: flex; flex-direction: column; gap: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.4);">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--bim-label--c); margin: 0;">Create New Project</h3>
-              <bim-button @click=${() => { showCreateModal = false; update({}); }} icon=${appIcons.CLEAR} style="background-color: transparent; --bim-button--p: 0.25rem;"></bim-button>
+              <bim-button @click=${() => { showCreateModal = false; update({}); }} icon=${appIcons.CLEAR} style="flex: 0; background-color: transparent; --bim-button--p: 0.25rem;"></bim-button>
             </div>
             
             <div style="display: flex; flex-direction: column; gap: 0.75rem;">
@@ -401,7 +401,7 @@ export const projectSelectorTemplate: BUI.StatefullComponent<ProjectSelectorStat
                 <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--bim-label--c); margin: 0;">Project Settings</h3>
                 <span style="font-size: 0.8rem; color: var(--bim-ui_accent-base); font-weight: bold;">${currentProjectNameForSettings}</span>
               </div>
-              <bim-button @click=${() => { showSettingsModal = false; update({}); }} icon=${appIcons.CLEAR} style="background-color: transparent; --bim-button--p: 0.25rem;"></bim-button>
+              <bim-button @click=${() => { showSettingsModal = false; update({}); }} icon=${appIcons.CLEAR} style="flex: 0; background-color: transparent; --bim-button--p: 0.25rem;"></bim-button>
             </div>
 
             <!-- Members List & Management -->
@@ -428,7 +428,7 @@ export const projectSelectorTemplate: BUI.StatefullComponent<ProjectSelectorStat
                           <option value="free" ?selected=${pu.security === "free"}>Admin</option>
                         </select>
                         
-                        <bim-button @click=${() => handleRemoveProjectUser(pu.email)} ?disabled=${isSelf} icon=${appIcons.DELETE} style="--bim-button--p: 0.15rem 0.3rem; --bim-icon--fz: 0.95rem; background-color: transparent;" title="Remove Access"></bim-button>
+                        <bim-button @click=${() => handleRemoveProjectUser(pu.email)} ?disabled=${isSelf} icon=${appIcons.DELETE} style="flex: 0; --bim-button--p: 0.15rem 0.3rem; --bim-icon--fz: 0.95rem; background-color: transparent;" title="Remove Access"></bim-button>
                       </div>
                     </div>
                   `;
@@ -453,7 +453,7 @@ export const projectSelectorTemplate: BUI.StatefullComponent<ProjectSelectorStat
                   <option value="free">Admin</option>
                 </select>
 
-                <bim-button @click=${handleAddProjectUser} icon=${appIcons.ADD} label="Add" style="--bim-button--bgc: var(--bim-ui_main-base); --bim-button--c: #ffffff; height: 2.25rem;"></bim-button>
+                <bim-button @click=${handleAddProjectUser} icon=${appIcons.ADD} label="Add" style="flex: 0; --bim-button--bgc: var(--bim-ui_main-base); --bim-button--c: #ffffff; height: 2.25rem;"></bim-button>
               </div>
             </div>
 

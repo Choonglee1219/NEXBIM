@@ -5,3 +5,4 @@ export * from "./SharedIFC";
 export * from "./SharedFRAG";
 export * from "./Timeline";
 export * from "./ClipperBox";
+export * from "./BimChat";

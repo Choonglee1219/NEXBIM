@@ -5,7 +5,7 @@ export interface ChatMessage {
   parts: { text: string }[];
 }
 
-export interface GeminiChatState {
+export interface BimChatState {
   components: OBC.Components;
   world: OBC.World;
 }
