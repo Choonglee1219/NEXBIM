@@ -1,4 +1,3 @@
-import MarkdownIt from "markdown-it";
 import * as OBC from "@thatopen/components";
 import * as BUI from "@thatopen/ui";
 import { QueriesListState } from "./types";
@@ -6,22 +5,78 @@ import { appIcons, tableButtonStyle } from "../../../globals";
 import { Highlighter } from "../../../bim-components/Highlighter";
 import { tableDefaultContentTemplate, onTableCellCreated, onTableRowCreated } from "../../../globals";
 
-const markdownFiles = import.meta.glob("../../../markdown/*.md", {
-  query: "raw",
-  import: "default",
-  eager: true,
-});
+const getQueryBuilderFields = (q: any) => {
+  const fields = {
+    name: q.name || "",
+    entity: "",
+    attrName: "",
+    attrVal: "",
+    psetName: "",
+    propName: "",
+    propVal: "",
+    containedIn: "",
+    structureName: ""
+  };
 
-const styles = import.meta.glob("../../../style.css", {
-  query: "raw",
-  import: "default",
-  eager: true,
-});
+  const firstQuery = q.queries?.[0];
+  if (firstQuery) {
+    fields.entity = firstQuery.categories?.[0] ? String(firstQuery.categories[0]) : "";
+    fields.attrName = firstQuery.attributes?.queries?.[0]?.name ? String(firstQuery.attributes.queries[0].name) : "";
+    fields.attrVal = firstQuery.attributes?.queries?.[0]?.value ? String(firstQuery.attributes.queries[0].value) : "";
+
+    const rel = firstQuery.relation;
+    if (rel) {
+      if (rel.name === "IsDefinedBy") {
+        const psetQueries = rel.query?.attributes?.queries;
+        const nameQuery = psetQueries?.find((x: any) => x.name.toString().includes("Name"));
+        fields.psetName = nameQuery ? String(nameQuery.value) : "";
+
+        const subRel = rel.query?.relation;
+        if (subRel && subRel.name === "HasProperties") {
+          const propQueries = subRel.query?.attributes?.queries;
+          const propNameQ = propQueries?.find((x: any) => x.name.toString().includes("Name"));
+          const propValQ = propQueries?.find((x: any) => x.name.toString().includes("NominalValue"));
+          fields.propName = propNameQ ? String(propNameQ.value) : "";
+          fields.propVal = propValQ !== undefined && propValQ !== null && propValQ.value !== undefined ? String(propValQ.value) : "";
+        }
+      } else if (rel.name === "ContainedInStructure") {
+        fields.containedIn = rel.query?.categories?.[0] ? String(rel.query.categories[0]) : "";
+        const structQueries = rel.query?.attributes?.queries;
+        const structNameQ = structQueries?.find((x: any) => x.name.toString().includes("Name"));
+        fields.structureName = structNameQ ? String(structNameQ.value) : "";
+      }
+    }
+  }
+
+  const cleanRegex = (str: string) => {
+    if (!str) return "";
+    let cleaned = str;
+    if (cleaned.startsWith("/") && cleaned.endsWith("/i")) {
+      cleaned = cleaned.substring(1, cleaned.length - 2);
+    } else if (cleaned.startsWith("/") && cleaned.endsWith("/")) {
+      cleaned = cleaned.substring(1, cleaned.length - 1);
+    }
+    if (cleaned.startsWith("^")) cleaned = cleaned.substring(1);
+    if (cleaned.endsWith("$")) cleaned = cleaned.substring(0, cleaned.length - 1);
+    return cleaned;
+  };
+
+  fields.entity = cleanRegex(fields.entity);
+  fields.attrName = cleanRegex(fields.attrName);
+  fields.attrVal = cleanRegex(fields.attrVal);
+  fields.psetName = cleanRegex(fields.psetName);
+  fields.propName = cleanRegex(fields.propName);
+  fields.propVal = cleanRegex(fields.propVal);
+  fields.containedIn = cleanRegex(fields.containedIn);
+  fields.structureName = cleanRegex(fields.structureName);
+
+  return fields;
+};
 
 export const queriesListTemplate: BUI.StatefullComponent<QueriesListState> = (
   state,
 ) => {
-  const { components, queryString } = state;
+  const { components, queryString, onLoadQuery } = state;
   const finder = components.get(OBC.ItemsFinder);
   const highlighter = components.get(Highlighter);
 
@@ -64,44 +119,17 @@ export const queriesListTemplate: BUI.StatefullComponent<QueriesListState> = (
           await highlighter.highlightByID("select", items);
         };
 
-        const onOpenMarkdown = () => {
-          const md = new MarkdownIt({
-            html: true,
-            linkify: true,
-            typographer: true,
-            breaks: true,
-          });
+        const onViewDetails = () => {
           const { Name } = rowData;
-          if (!Name) return;
-          const markdownContent = markdownFiles[
-            `../../../markdown/${Name}.md`
-          ] as string;
-          const renderedHtml = md.render(markdownContent ?? "");
-          const newWindow = window.open("", "_blank");
-          const styleContent = styles["../../../style.css"] as string;
-          if (newWindow) {
-            const fullHtml = `
-              <!DOCTYPE html>
-              <html lang="en" class="bim-ui-dark">
-                <head>
-                  <meta charset="UTF-8">
-                  <title>Help</title>
-                  <link rel="stylesheet" href="/src/style.css">
-                  <style>${styleContent}</style>
-                  <style>
-                    body {
-                      padding: 5rem;
-                      background-color: var(--bim-ui_bg-base);
-                      color: var(--bim-ui_bg-contrast-100);
-                    }
-                  </style>
-                </head>
-                <body>
-                  ${renderedHtml}
-                </body>
-              </html>
-            `;
-            newWindow.document.body.innerHTML = fullHtml;
+          if (!Name || typeof Name !== "string") return;
+
+          const allQueries = finder.export();
+          const specificQuery = allQueries.data.find((q) => q.name === Name);
+          if (!specificQuery) return alert("Query configuration not found");
+
+          const fields = getQueryBuilderFields(specificQuery);
+          if (onLoadQuery) {
+            onLoadQuery(fields);
           }
         };
 
@@ -109,11 +137,13 @@ export const queriesListTemplate: BUI.StatefullComponent<QueriesListState> = (
           <div style="display: flex; gap: 0.25rem; align-items: center; justify-content: center;">
             <bim-button
               @click=${onClick}
+              title="Select items"
               style=${tableButtonStyle}
               icon=${appIcons.SELECT}>
             </bim-button>
             <bim-button
-              @click=${onOpenMarkdown}
+              @click=${onViewDetails}
+              title="Load to Query Builder"
               style=${tableButtonStyle}
               icon=${appIcons.REF} >
             </bim-button>

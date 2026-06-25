@@ -26,61 +26,29 @@ export const queriesUIState = {
 export const queriesPanelTemplate: BUI.StatefullComponent<QueriesPanelState> = (
   state,
 ) => {
-  const { components, isAdmin } = state;
+  const { components } = state;
   const finder = components.get(OBC.ItemsFinder);
   const highlighter = components.get(Highlighter);
 
-  const [queriesTable, updateList] = queriesList({ components });
+  const [queriesTable, updateList] = queriesList({
+    components,
+    onLoadQuery: (fields: any) => {
+      if (nameInput) nameInput.value = fields.name;
+      if (entityInput) entityInput.value = fields.entity;
+      if (attrNameInput) attrNameInput.value = fields.attrName;
+      if (attrValInput) attrValInput.value = fields.attrVal;
+      if (psetNameInput) psetNameInput.value = fields.psetName;
+      if (propNameInput) propNameInput.value = fields.propName;
+      if (propValInput) propValInput.value = fields.propVal;
+      if (containedInInput) containedInInput.value = fields.containedIn;
+      if (structureNameInput) structureNameInput.value = fields.structureName;
+    }
+  });
 
   const onSearch = (e: Event) => {
     const input = e.target as BUI.TextInput;
     updateList({ components, queryString: input.value });
   };
-
-  let customBtn: BUI.TemplateResult | undefined;
-  if (isAdmin) {
-    const onExport = () => {
-      const data = finder.export();
-      const json = JSON.stringify(data);
-      const blob = new Blob([json], { type: "application/json" });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = "queries.json";
-      link.click();
-      URL.revokeObjectURL(link.href);
-    };
-
-    const onOpenObsidian = () => {
-      window.open("obsidian://open", "_self");
-    };
-
-    const onOpenLink = () => {
-      window.open("https://docs.thatopen.com/intro", "_blank");
-    };
-
-    customBtn = BUI.html`
-      <div style="display: flex; gap: 0.5rem">
-        <bim-button
-          @click=${onExport}
-          style="flex: auto"
-          label="Export"
-          icon=${appIcons.EXPORT} >
-        </bim-button>
-        <bim-button
-          @click=${onOpenObsidian}
-          style="flex: auto"
-          label="Obsidian"
-          icon=${appIcons.OBSIDIAN} >
-        </bim-button>
-        <bim-button
-          @click=${onOpenLink}
-          style="flex: auto"
-          label="Link"
-          icon=${appIcons.LINK} >
-        </bim-button>
-      </div>
-    `;
-  }
 
   let nameInput: BUI.TextInput;
   let entityInput: BUI.TextInput;
@@ -209,7 +177,6 @@ export const queriesPanelTemplate: BUI.StatefullComponent<QueriesPanelState> = (
 
   return BUI.html`
     <bim-panel-section fixed label="Queries" icon=${appIcons.SEARCH}>
-      ${customBtn}
       <div style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 0.5rem;">
         <bim-label>Query Builder</bim-label>
         <bim-text-input ${BUI.ref((e) => { nameInput = e as BUI.TextInput; queriesUIState.nameInput = nameInput; })} placeholder="Query Name" vertical></bim-text-input>
