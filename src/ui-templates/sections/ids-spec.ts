@@ -41,7 +41,6 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
   const fragments = components.get(OBC.FragmentsManager);
   const ids = components.get(OBC.IDSSpecifications);
   const highlighter = components.get(Highlighter);
-  const classifier = components.get(OBC.Classifier);
 
   let latestResultsMap: OBC.ModelIdMap | null = null;
   let allResultsData: any[] = [];
@@ -291,7 +290,7 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
 
   // 데이터 추출 헬퍼 함수 (Property 및 Attribute 모두 지원)
   const extractData = async (allIds: OBC.ModelIdMap, specDef: IDSSpecDefinition) => {
-    const itemPropsMap: Record<string, Record<number, { name: string; value: string; guid: string }>> = {};
+    const itemPropsMap: Record<string, Record<number, { name: string; value: string; guid: string; entity: string }>> = {};
 
     const attrRegex = new RegExp(specDef.requirement.name || "", "i");
     const psetRegex = new RegExp(specDef.requirement.propertySet || "", "i");
@@ -327,6 +326,12 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
           guid = typeof itemAny.GlobalId === "object" && itemAny.GlobalId.value !== undefined ? String(itemAny.GlobalId.value) : String(itemAny.GlobalId);
         }
 
+        let rawCategory = itemAny._category;
+        if (rawCategory && typeof rawCategory === "object" && rawCategory.value !== undefined) {
+          rawCategory = rawCategory.value;
+        }
+        const entity = String(rawCategory || "").replace(/^IFC/i, "") || "Unknown";
+
         let val: any = "Null";
 
         if (specDef.requirement.type === "attribute") {
@@ -360,7 +365,7 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
 
         if (expressId !== undefined) {
           const displayVal = val === "Null" || val === null ? "Null" : String(val);
-          itemPropsMap[modelId][expressId as number] = { name: String(name), value: displayVal, guid: String(guid) };
+          itemPropsMap[modelId][expressId as number] = { name: String(name), value: displayVal, guid: String(guid), entity };
         }
       }
     }
@@ -371,13 +376,12 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
   const generateTableData = (
     resultMap: OBC.ModelIdMap,
     status: "Pass" | "Fail",
-    itemPropsMap: Record<string, Record<number, { name: string; value: string; guid: string }>>,
-    getCategory: (modelId: string, expressID: number) => string
+    itemPropsMap: Record<string, Record<number, { name: string; value: string; guid: string; entity: string }>>
   ) => {
     const data: { data: IDSTableData }[] = [];
     for (const [modelId, expressIds] of Object.entries(resultMap)) {
       for (const expressId of expressIds) {
-        const props = itemPropsMap[modelId]?.[expressId] || { name: "Unknown", value: "Null", guid: "Unknown" };
+        const props = itemPropsMap[modelId]?.[expressId] || { name: "Unknown", value: "Null", guid: "Unknown", entity: "Unknown" };
         data.push({
           data: {
             id: `${modelId}-${expressId}`,
@@ -385,7 +389,7 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
             ExpressID: expressId,
             Name: props.name,
             GUID: props.guid,
-            Entity: getCategory(modelId, expressId),
+            Entity: props.entity,
             Value: props.value,
             Status: status
           },
@@ -400,35 +404,6 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
     restoreModelMaterials(components);
     await fragments.resetHighlight();
 
-    // 0. Classifier를 이용한 카테고리 정보 추출 및 캐싱
-    try {
-      await classifier.byCategory({ classificationName: "entities" });
-    } catch (err) {
-      console.warn("Classifier grouping error:", err);
-    }
-    const entitiesClass = classifier.list.get("entities");
-    const preFetchedCategories = new Map<string, OBC.ModelIdMap>();
-    if (entitiesClass) {
-      for (const [catName, group] of entitiesClass.entries()) {
-        try {
-          const mapData = await (group as any).get();
-          if (mapData) {
-            const cleanCatName = catName.replace(/^IFC/i, "");
-            preFetchedCategories.set(cleanCatName, mapData);
-          }
-        } catch (e) { }
-      }
-    }
-
-    const getCategory = (modelId: string, expressID: number) => {
-      for (const [catName, mapData] of preFetchedCategories.entries()) {
-        if (mapData[modelId] && mapData[modelId].has(expressID)) {
-          return catName;
-        }
-      }
-      return "Unknown";
-    };
-
     if (specDef.name === "Duplicate GUIDs") {
       if (fragments.list.size === 0) {
         alert("로드된 모델이 없습니다.");
@@ -436,7 +411,7 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
       }
 
       // 1. Map to find duplicates
-      const guidMap = new Map<string, { modelId: string; expressId: number; name: string; modelName: string }[]>();
+      const guidMap = new Map<string, { modelId: string; expressId: number; name: string; modelName: string; entity: string }[]>();
 
       for (const [modelId, model] of fragments.list) {
         const modelName = (model as any).name || model.modelId;
@@ -466,10 +441,16 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
           }
           name = String(name || "Unnamed").trim();
 
+          let rawCategory = itemAny._category;
+          if (rawCategory && typeof rawCategory === "object" && rawCategory.value !== undefined) {
+            rawCategory = rawCategory.value;
+          }
+          const entity = String(rawCategory || "").replace(/^IFC/i, "") || "Unknown";
+
           if (!guidMap.has(guid)) {
             guidMap.set(guid, []);
           }
-          guidMap.get(guid)!.push({ modelId, expressId, name, modelName });
+          guidMap.get(guid)!.push({ modelId, expressId, name, modelName, entity });
         }
       }
 
@@ -492,7 +473,7 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
                 ExpressID: el.expressId,
                 Name: el.name,
                 GUID: guid,
-                Entity: getCategory(el.modelId, el.expressId),
+                Entity: el.entity,
                 Value: `Model: ${el.modelName}`,
                 Status: "Fail",
               },
@@ -609,8 +590,8 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
     const itemPropsMap = await extractData(allIds, specDef);
 
     // 테이블 데이터 생성
-    const passData = generateTableData(pass, "Pass", itemPropsMap, getCategory);
-    const failData = generateTableData(fail, "Fail", itemPropsMap, getCategory);
+    const passData = generateTableData(pass, "Pass", itemPropsMap);
+    const failData = generateTableData(fail, "Fail", itemPropsMap);
 
     const combinedData = [...passData, ...failData];
     allResultsData = groupByGUID(combinedData);

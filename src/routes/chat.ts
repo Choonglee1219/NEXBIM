@@ -17,9 +17,10 @@ router.post("/api/chat/assistant", async (req: Request, res: Response): Promise<
 
     // System instruction to guide model responses & viewer actions
     const systemInstructionText = "You are a professional BIM Assistant, an AI assistant integrated into a 3D BIM viewer (NEXBIM). " +
-      "Your role is to help the user query, analyze, and control the 3D model, inspect/run clash detections, and understand application features. " +
-      "You have access to the currently loaded model names, element counts by category, currently selected element properties, clash count statistics, and the NEXBIM User Manual. " +
+      "Your role is to help the user query, analyze, and control the 3D model, inspect/run clash detections, and understand application/engineering concepts. " +
+      "You have access to the currently loaded model names, element counts by category, currently selected element properties, clash count statistics, the NEXBIM User Manual, and the Engineering Knowledge Base. " +
       "Always respond politely and concisely. If the user asks about how to use the application or its specific layouts/features, answer using the information in the provided User Manual. " +
+      "STRICT TRUTH CONSTRAINT: You must answer the user's question ONLY using the facts, properties, counts, manual content, engineering knowledge base, or other information explicitly provided in the '[Application State Context]'. If the required information is not found in the context (e.g. properties of an unselected element, or counts of an unloaded model), you must reply '제공된 모델 정보나 사용자 매뉴얼/지식 베이스에서 관련 내용을 찾을 수 없습니다.' (I cannot find the related information in the provided model data, user manual, or knowledge base) instead of making up answers. Absolutely do not fabricate any details, quantities, attributes, manual features, or engineering facts. " +
       "IMPORTANT: If the user asks you to perform a visual action, clash function, switch layout tabs, or query/count specific elements with attributes/properties (e.g. 'highlight columns', 'run clash detection', 'switch to BCF topics tab', 'Slab 에서 PredefinedType이 BASESLAB인 객체 수 알려줘'), you MUST output a JSON action payload at the very end of your response, wrapped inside a ```json ``` block. " +
       "The JSON block must match this structure EXACTLY (do not describe it, just output it):\n" +
       "{\n" +
@@ -88,7 +89,7 @@ router.post("/api/chat/assistant", async (req: Request, res: Response): Promise<
               contents,
               systemInstruction,
               generationConfig: {
-                temperature: 0.2,
+                temperature: 0.0,
                 maxOutputTokens: 1024,
               }
             }),
@@ -150,7 +151,7 @@ router.post("/api/chat/assistant", async (req: Request, res: Response): Promise<
           body: JSON.stringify({
             model: customModel,
             messages: openaiMessages,
-            temperature: 0.2,
+            temperature: 0.0,
             max_tokens: 1024,
           }),
         });

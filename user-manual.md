@@ -364,7 +364,7 @@
   * 저장된 쿼리 테이블 행을 마우스로 클릭하면, 해당 쿼리 탐색 조건이 모델에 실시간 적용되어 매칭 부재들이 뷰포트 공간에 바로 하이라이트 투영됨.
   * **행별 액션 버튼**:
     * **Select items (지정 아이콘)**: 해당 쿼리의 검색 조건에 만족하는 객체들을 3D 뷰포트 상에 즉각 강조 하이라이트(선택) 처리함.
-    * **Load to Query Builder (가져오기 아이콘)**: 저장된 쿼리의 상세 검색 조건 데이터를 Query Builder 입력 필드로 자동 주입하여, 기존 쿼리를 손쉽게 재편집하거나 재조정할 수 있도록 지원함.
+    * **Load to Query Builder (가져오기 아이콘)**: 저장된 쿼리의 상세 검색 조건 데이터를 Query Builder 입력 필드로 자동 주입하여, 기존 쿼리를 손쉽게 재편집하거나 재조정할 수 있도록 지원함. (정규식 기반 쿼리 조건의 경우, 입력 편의성을 위해 감싸고 있는 구분 기호인 `/.../i` 및 시작/끝 표식인 `^`, `$` 기호를 자동으로 제거하여 정제 주입함).
 
 ### 7.3. Dashboard 섹션 - 차트 설명, 차트 조각 클릭시 뷰어 객체 선택 연동 기능 설명
 * **Dashboard 통계 분석 기능**
@@ -598,3 +598,130 @@
   * 복잡한 속성 테이블이나 공정 차트 등의 UI 요소를 화면에서 완전히 제거하여, 의사결정 회의나 프로젝트 시연(프레젠테이션) 시 대형 화면에 모델만 투사하여 검토하는 데 최적화되어 있음.
   * **3D 뷰포트 조작**: 마우스 왼쪽 버튼 드래그로 회전(Orbit), 오른쪽 버튼 드래그로 이동(Pan), 휠 스크롤로 줌인/아웃(Zoom)을 수행하는 표준 뷰어 조작계를 동일하게 지원함.
   * **뷰포트 선택 상태 유지**: 이전 레이아웃에서 객체를 선택하거나 하이라이트한 상태(Selection)가 전체화면 모드로 변경되더라도 그대로 유지되어, 특정 객체를 집중 조명한 상태에서 대화형 모니터링이 가능함.
+
+---
+
+## 13. 기술 사양 및 시스템 연동 아키텍처 (Technical Appendix)
+* 본 플랫폼의 안정적인 구동과 무결한 데이터 통신을 위하여, 데이터베이스(Oracle DB), 백엔드 API 라우팅, 외부 시스템(TDVS) 및 파이썬 마이크로서비스와의 연동 스펙을 명세함.
+
+### 13.1. 데이터베이스 테이블 스키마 상세 명세
+* **IFC 관리 및 BIM 협업 관련 테이블 (ifcAdmin 스키마)**
+  * **user (사용자 테이블)**
+    * `email` (VARCHAR2(255), PRIMARY KEY): 사용자 이메일 (고유 식별자).
+    * `name` (VARCHAR2(255), NOT NULL): 사용자 이름.
+    * `picture` (VARCHAR2(255)): 프로필 이미지 URL 또는 경로.
+    * `security` (VARCHAR2(50), NOT NULL): 시스템 전체 권한 등급 (`free` = 관리자, `general` = 일반 사용자).
+  * **project (프로젝트 테이블)**
+    * `id` (NUMBER, IDENTITY PRIMARY KEY): 프로젝트 일련번호 (자동 증분).
+    * `name` (VARCHAR2(255), NOT NULL): 프로젝트 이름.
+    * `description` (VARCHAR2(1000)): 프로젝트 상세 설명.
+  * **project_user (프로젝트-사용자 매핑 및 프로젝트 내 권한 테이블)**
+    * `project_id` (NUMBER, PRIMARY KEY, FK -> project.id): 프로젝트 ID (삭제 시 CASCADE).
+    * `user_email` (VARCHAR2(255), PRIMARY KEY, FK -> user.email): 사용자 이메일 (삭제 시 CASCADE).
+    * `security` (VARCHAR2(50), NOT NULL): 해당 프로젝트 내 멤버 권한 등급 (`free` = Admin, `general` = Viewer).
+  * **ifc (IFC 원본 파일 테이블)**
+    * `id` (NUMBER, IDENTITY PRIMARY KEY): IFC ID.
+    * `name` (VARCHAR2(255), NOT NULL): IFC 파일명.
+    * `content` (BLOB): IFC 파일 바이너리 데이터.
+    * `project_id` (NUMBER, FK -> project.id): 소속 프로젝트 ID (삭제 시 SET NULL).
+  * **frag (Fragment 기하학 파일 테이블)**
+    * `id` (NUMBER, IDENTITY PRIMARY KEY): Frag ID.
+    * `name` (VARCHAR2(255), NOT NULL): Frag 파일명.
+    * `content` (BLOB): 3D 렌더링 최적화용 Frag 파일 바이너리 데이터.
+    * `project_id` (NUMBER, FK -> project.id): 소속 프로젝트 ID (삭제 시 SET NULL).
+  * **bcf (BCF 협업 패키지 테이블)**
+    * `id` (NUMBER, IDENTITY PRIMARY KEY): BCF ID.
+    * `name` (VARCHAR2(255), NOT NULL): BCF 파일명.
+    * `content` (BLOB): BCF 파일 패키지 바이너리 데이터.
+    * `clash_data` (CLOB): BCF와 매핑된 간섭 설정 또는 부가 메타데이터 (JSON 텍스트).
+  * **ifc_bcf (IFC-BCF 연계 매핑 테이블)**
+    * `ifc_id` (NUMBER, PRIMARY KEY, FK -> ifc.id): 연계된 IFC 파일 ID.
+    * `bcf_id` (NUMBER, PRIMARY KEY, FK -> bcf.id): 연계된 BCF 파일 ID.
+  * **clash_manager (간섭 검토 상태 영구 보존 테이블)**
+    * `guid1` (VARCHAR2(255), PRIMARY KEY): 간섭 객체 A의 GUID.
+    * `guid2` (VARCHAR2(255), PRIMARY KEY): 간섭 객체 B의 GUID.
+    * `badge` (VARCHAR2(50), NOT NULL): 사용자가 지정한 간섭 상태 검토 뱃지 (`New`, `Hold`, `Exclude`).
+    * `entity1` / `entity2` (VARCHAR2(255)): 간섭 부재 A/B의 IFC 클래스 유형명.
+    * `object1` / `object2` (VARCHAR2(255)): 간섭 부재 A/B의 고유 객체명.
+    * `x_coord` / `y_coord` / `z_coord` (NUMBER): 3D 공간 상 간섭 검출 지점의 X, Y, Z 절대 좌표.
+
+* **외부 TDVS 연동 관련 테이블 (mrims 스키마)**
+  * **SI_BCF_TOPIC (TDVS BCF 토픽 테이블)**
+    * `TOPIC_NO` (NUMBER(10), IDENTITY PRIMARY KEY): 모델검토사항 고유 번호 (자동 증분).
+    * `MRIMS_TYPE` (VARCHAR2(50)): 모델검토사항 타입.
+    * `PRI_DISP` (VARCHAR2(100)): 주관분야 명칭.
+    * `SEC_DISP` (VARCHAR2(100)): 협조분야 명칭.
+    * `PRI_FILE` (VARCHAR2(100)): 주관분야 IFC 모델 파일명 (연계 검색의 주 키값으로 활용).
+    * `SEC_FILE` (VARCHAR2(100)): 협조분야 IFC 모델 파일명.
+    * `REVIEW_COMMENT` (CLOB): 검토 의견 본문 (구분자 `;;`를 이용하여 `Title;;Description` 형식으로 병합 보관).
+    * `SOLVE_COMMENT` (CLOB): 조치 및 해결방안 의견 텍스트.
+    * `COORDX` / `COORDY` / `COORDZ` (NUMBER(20, 6)): Z-up 좌표계 기준의 간섭 지점 X, Y, Z 물리 좌표.
+    * `INSERT_DATE` (DATE): 검토항목 생성일자 (기본값 SYSDATE).
+    * `ISSUE_PREPARE_NAME` (VARCHAR2(100)): 이슈 발행 담당자명.
+    * `ISSUE_PREPARE_DATE` (DATE): 이슈 발행 일자.
+    * `RESOL_PREPARE_NAME` (VARCHAR2(100)): 해결방안 제출 및 조치 담당자명.
+    * `RESOL_PREPARE_DATE` (DATE): 해결방안 제출 일자.
+    * `DUE_DATE` (DATE): 검토 완료 요구 기한.
+    * `ACK_COMMENT_NO` (NUMBER(10), NOT NULL, 기본값 0): 최종 동기화(Acknowledge) 처리된 완료 시점의 코멘트 번호.
+  * **SI_BCF_COMMENT (TDVS BCF 코멘트 테이블)**
+    * `COMMENT_NO` (NUMBER(10), IDENTITY PRIMARY KEY): 코멘트 ID (자동 증분).
+    * `TOPIC_NO` (NUMBER(10), NOT NULL, FK -> SI_BCF_TOPIC.TOPIC_NO): 부모 토픽 일련번호 (삭제 시 CASCADE).
+    * `REVIEW_COMMENT` / `SOLVE_COMMENT` (CLOB): 검토 및 해결 의견 코멘트 본문.
+    * `COORDX` / `COORDY` / `COORDZ` (NUMBER(20, 6)): 코멘트 작성 시점의 Z-up 기준 3D 카메라/간섭 X, Y, Z 좌표.
+    * `INSERT_DATE` (DATE): 코멘트 등록일자.
+    * `ISSUE_PREPARE_NAME` / `RESOL_PREPARE_NAME` (VARCHAR2(100)): 의견 등록자 이름.
+
+### 13.2. 백엔드 주요 API 라우팅 명세 (Node.js Express)
+* **프로젝트 및 권한 관리 관련 API**
+  * `GET /api/users`: 시스템 전체 사용자 리스트를 알파벳 순으로 조회함.
+  * `GET /api/projects?email=:email`: 특정 사용자가 참여하고 있어 조회 가능한 프로젝트 리스트 및 프로젝트별 업로드 모델 수(`ifcCount`, `fragCount`)를 반환함.
+  * `POST /api/projects`: 신규 프로젝트를 생성하고 생성자를 Admin(`free`)으로 지정하며, 시스템 전체 Admin 사용자를 해당 프로젝트에 자동 맵핑함.
+  * `GET /api/projects/:id/users`: 특정 프로젝트에 참여 중인 사용자 목록과 프로젝트 내 권한 등급을 조회함.
+  * `POST /api/projects/:id/users`: 특정 사용자를 프로젝트 멤버로 초대하거나 프로젝트 내 권한 등급(`free`/`general`)을 업데이트 및 저장함. (최소 1명의 프로젝트 내 Admin 유지 제약 조건 적용).
+  * `DELETE /api/projects/:id/users/:email`: 프로젝트 멤버의 참여 권한을 삭제 및 회수함.
+* **BIM 모델 바이너리 관리 API**
+  * `GET /api/ifcs/name?projectId=:projectId`: 프로젝트별로 오라클 DB에 저장된 IFC 파일 목록 및 ID를 조회함.
+  * `GET /api/ifc/:id`: 오라클 DB에서 특정 ID의 IFC 이진 파일 데이터를 바이너리 그대로 읽어와 Base64 인코딩 스트링으로 프론트엔드에 송신함.
+  * `POST /api/ifc`: 멀티파트 폼(`file`)으로 전송된 `.ifc` 바이너리를 데이터베이스 `ifc` 테이블 내 BLOB 컬럼에 저장함.
+  * `DELETE /api/ifc/:id`: 특정 ID의 IFC 모델을 DB에서 영구 삭제함.
+  * `GET /api/frags/name?projectId=:projectId` / `GET /api/frag/:id` / `POST /api/frag` / `DELETE /api/frag/:id`: Frag 데이터 목록 조회, 다운로드/로드, 신규 등록 및 삭제를 수행함.
+* **TDVS BCF 연동 및 동기화 API**
+  * `GET /api/bcf/sync?priFiles=:commaSeparatedFileNames`: 로드된 IFC 파일명 목록을 기반으로 TDVS `SI_BCF_TOPIC` 및 `SI_BCF_COMMENT` 테이블을 검색해 연계된 최신 BCF 토픽 및 하위 댓글 데이터를 동기화하여 가져옴.
+  * `GET /api/bcf/comments?mrimsNo=:mrimsNo`: 특정 TDVS 토픽 번호(`mrimsNo`) 하위에 등록된 모든 외부 코멘트 이력을 시간순으로 정밀 조회함.
+* **간섭 데이터 보존 API**
+  * `GET /api/clash-manager`: 데이터베이스에 기록된 모든 간섭 상태 뱃지 목록을 일괄 조회함.
+  * `POST /api/clash-manager/filter`: 검증 결과 화면에 로드된 객체 쌍(GUID A - GUID B) 목록을 전달하여 DB 내 이미 저장된 간섭 뱃지 상태 정보를 효율적으로 조회함 (오라클 DB의 바인드 변수 1000개 한계 극복을 위해 500개씩 청크 분할 쿼리 처리).
+  * `POST /api/clash-manager/upsert`: 새로 검출된 간섭 결과 또는 변경된 뱃지 상태값(`New`, `Hold`, `Exclude`)과 기하 중심 좌표 정보를 데이터베이스 `clash_manager` 테이블에 `MERGE INTO` 쿼리로 영구 동기화함.
+  * `POST /api/clash-manager/delete-pairs`: "New" 상태(검사 리셋 등)로 복원된 간섭 데이터 쌍을 DB 테이블에서 영구 삭제함.
+
+### 13.3. 좌표계 변환 규칙 (Z-up ↔ Y-up)
+* **배경**:
+  * 외부 시스템인 TDVS(Oracle DB 스키마)는 건설 공간 기준을 채택하여 **Z축이 하늘을 향하는 Z-up 좌표계**를 기본으로 사용함.
+  * 본 뷰어 시스템의 핵심 시각화 엔진인 WebGL/Three.js 기반 OpenBIM Components는 **Y축이 하늘을 향하는 Y-up 좌표계**를 기본으로 조작 및 렌더링을 처리함.
+* **좌표 변환 공식**:
+  * **뷰어 3D 좌표 ➔ TDVS 전송 좌표 변환 공식 (Z-up 변환)**:
+    $$X_{mrims} = X_{viewer}$$
+    $$Y_{mrims} = -Z_{viewer}$$
+    $$Z_{mrims} = Y_{viewer}$$
+    * 뷰어상의 카메라 중심점이나 간섭 위치를 TDVS API `/api/bcf/send-to-tdvs`로 내보낼 때 위 매핑 관계가 백엔드에서 강제 적용됨.
+  * **TDVS DB 좌표 ➔ 뷰어 투영 좌표 변환 공식 (Y-up 변환)**:
+    $$X_{viewer} = X_{mrims}$$
+    $$Y_{viewer} = Z_{mrims}$$
+    $$Z_{viewer} = -Y_{mrims}$$
+    * BCF 동기화(`Sync TDVS`) 시, 외부 DB에서 조회한 3D 마커 위치나 카메라 카메라 뷰포인트 좌표(`COORDX, COORDY, COORDZ`)를 위 변환 공식을 거쳐 뷰어 3D 공간 상에 일치하게 오버레이 및 배치함.
+
+### 13.4. 속성 저작 파이썬 마이크로서비스 연동 원리
+* **연동 구조**:
+  * Node.js 백엔드 서버의 `/api/process-properties` 호출 시, 백엔드는 업로드된 IFC 바이너리와 처리할 객체 Express ID 배열, 주입/삭제할 속성 세트(JSON)를 취합하여 내부 로컬의 **Python 마이크로서비스 (포트 `8000`)**로 포워딩함.
+* **Python 핵심 동작 스택 (`ifcopenshell`)**:
+  * **속성 주입 및 생성 (Action: Apply)**:
+    1. Python 스택은 전달받은 IFC 모델 파일을 메모리에 로드하고 스키마 구조를 파싱함.
+    2. 사용자 지정 Express ID에 해당하는 타겟 객체 인스턴스를 추적함.
+    3. `IfcPropertySet`을 동적으로 신규 생성하거나 기존 세트를 참조하여, 내부에 기입한 Property Name과 Value 데이터를 바탕으로 새로운 `IfcPropertySingleValue` 인스턴스들을 생성 및 적층함.
+    4. 새로 정의한 속성 세트와 대상 부재들을 관계 정의 엔티티인 `IfcRelDefinesByProperties` 객체를 매개로 상호 엄격하게 매핑 링크함.
+  * **속성 제거 (Action: Delete)**:
+    1. 타겟 객체(Express ID)에 기 정의된 `IfcRelDefinesByProperties` 관계들을 전수 추적함.
+    2. 사용자가 기입한 삭제 타겟 PropertySet Name 또는 Property Name을 만족하는 IFC 메타데이터 요소 및 정의 링크들을 안전하게 단선 및 소거 처리함.
+  * **바이너리 반환 및 뷰어 리로드**:
+    * 데이터 가공 처리가 끝난 IFC 파일 바이너리는 API 응답 형태로 Node.js 백엔드로 재반환되며, 프론트엔드에서는 즉시 이 새로운 IFC 버전을 기준으로 메모리 상에 재로딩하고 화면을 실시간 업데이트하여 일관된 모델 품질을 보장함.
+
