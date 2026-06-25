@@ -16,6 +16,7 @@ import { CustomCameraControl } from "./bim-components/CustomCameraControl";
 import { setupBoxSelection } from "./ui-components/BoxSelection";
 import { Measurer } from "./bim-components/Measurer";
 import { ClipperBox } from "./bim-components/ClipperBox";
+import { bimChatPanel } from "./bim-components";
 
 // 🎨Override the bim-label template to use a local SVG icon and apply custom colors
 // @ts-ignore
@@ -403,7 +404,12 @@ type ProjectSelector = {
   state: TEMPLATES.ProjectSelectorState;
 };
 
-type AppGridElements = [Sidebar, ContentGrid, ProjectSelector];
+type RightSidebar = {
+  name: "rightSidebar";
+  state: any;
+};
+
+type AppGridElements = [Sidebar, ContentGrid, ProjectSelector, RightSidebar];
 
 const app = document.getElementById("app") as BUI.Grid<
   AppLayouts,
@@ -415,6 +421,35 @@ const app = document.getElementById("app") as BUI.Grid<
 // ---------------------------------------------------------
 await initDrawingEditor(components, world);
 
+// 🤖 BimChat Panel setup as Right Sidebar
+const [chatPanel] = bimChatPanel({ components, world });
+chatPanel.id = "bim-chat-panel";
+chatPanel.style.display = "none";
+chatPanel.style.width = "0px";
+chatPanel.style.height = "100%";
+
+// Define toggle function globally
+(window as any).toggleBimChat = (force?: boolean) => {
+  const panel = document.getElementById("bim-chat-panel") as HTMLElement;
+  const toggleBtn = document.getElementById("bim-chat-toggle-btn") as any;
+  if (!panel) return;
+
+  const show = force !== undefined ? force : (panel.style.display === "none");
+  if (show) {
+    panel.style.display = "flex";
+    panel.style.width = "360px";
+    if (toggleBtn) toggleBtn.active = true;
+    setTimeout(() => {
+      const textarea = panel.querySelector("textarea") as HTMLTextAreaElement;
+      if (textarea) textarea.focus();
+    }, 100);
+  } else {
+    panel.style.display = "none";
+    panel.style.width = "0px";
+    if (toggleBtn) toggleBtn.active = false;
+  }
+};
+
 app.elements = {
   sidebar: {
     template: TEMPLATES.gridSidebarTemplate,
@@ -425,6 +460,7 @@ app.elements = {
     },
   },
   contentGrid,
+  rightSidebar: chatPanel,
   projectSelector: {
     template: TEMPLATES.projectSelectorTemplate,
     initialState: {
@@ -445,8 +481,8 @@ contentGrid.addEventListener("layoutchange", () =>
 app.layouts = {
   App: {
     template: `
-      "sidebar contentGrid" 1fr
-      /auto 1fr
+      "sidebar contentGrid rightSidebar" 1fr
+      /auto 1fr auto
     `,
   },
   ProjectSelection: {

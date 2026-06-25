@@ -114,9 +114,22 @@ export const viewportGridTemplate: BUI.StatefullComponent<ViewportGridState> = (
       update();
     };
 
+    const onToggleChat = () => {
+      if ((window as any).toggleBimChat) {
+        (window as any).toggleBimChat();
+      }
+      update();
+    };
+
+    const isChatActive = () => {
+      const panel = document.getElementById("bim-chat-panel");
+      return panel ? panel.style.display === "flex" : false;
+    };
+
     return BUI.html`
       <bim-toolbar style="align-self: start;" vertical>
         <bim-toolbar-section>
+          <bim-button id="bim-chat-toggle-btn" ?active=${isChatActive()} label="AI Assistant" title="AI Assistant" icon=${appIcons.CHATBOT} @click=${onToggleChat}></bim-button>
           <bim-button ?active=${areMeasurementsEnabled} label="Measurements" title="Measurements" icon=${appIcons.RULER} @click=${onMeasurementsClick}>
             <bim-context-menu>
               <div style="display: flex; gap: 0.25rem; overflow: hidden; width: max-content;">

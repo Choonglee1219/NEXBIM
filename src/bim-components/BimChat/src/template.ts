@@ -393,13 +393,9 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
       display: flex;
       flex-direction: column;
       height: 100%;
-      background: rgba(20, 22, 26, 0.85);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 12px;
+      background: var(--bim-ui_bg-base);
+      border-left: 1px solid var(--bim-ui_bg-contrast-40);
       overflow: hidden;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     ">
       <style>
         .custom-scrollbar::-webkit-scrollbar {
@@ -424,21 +420,26 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
         justify-content: space-between;
         align-items: center;
         padding: 0.75rem 1rem;
-        background: rgba(255, 255, 255, 0.05);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--bim-ui_bg-contrast-5);
+        border-bottom: 1px solid var(--bim-ui_bg-contrast-20);
       ">
         <div style="display: flex; align-items: center; gap: 0.5rem;">
           <div style="width: 8px; height: 8px; background: #00ffaa; border-radius: 50%; box-shadow: 0 0 8px #00ffaa;"></div>
           <span style="font-weight: bold; font-size: 0.9rem; color: var(--bim-ui_bg-contrast-100);">AI Assistant</span>
         </div>
         <bim-button @click=${() => {
-      const chatPanel = document.getElementById("bim-chat-panel");
-      if (chatPanel) {
-        chatPanel.style.display = "none";
-        const chatBtn = document.getElementById("bim-chat-toggle-btn") as any;
-        if (chatBtn) chatBtn.active = false;
-      }
-    }} icon=${appIcons.CLEAR} style="flex: 0; --bim-button--bgc: transparent;"></bim-button>
+          if ((window as any).toggleBimChat) {
+            (window as any).toggleBimChat(false);
+          } else {
+            const chatPanel = document.getElementById("bim-chat-panel");
+            if (chatPanel) {
+              chatPanel.style.display = "none";
+              chatPanel.style.width = "0px";
+              const chatBtn = document.getElementById("bim-chat-toggle-btn") as any;
+              if (chatBtn) chatBtn.active = false;
+            }
+          }
+        }} icon=${appIcons.CLEAR} style="flex: 0; --bim-button--bgc: transparent;"></bim-button>
       </div>
 
       <!-- Message Area -->
@@ -472,8 +473,8 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
       <!-- Input Area -->
       <div style="
         padding: 0.75rem;
-        background: rgba(0, 0, 0, 0.2);
-        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        background: var(--bim-ui_bg-contrast-5);
+        border-top: 1px solid var(--bim-ui_bg-contrast-20);
         display: flex;
         gap: 0.5rem;
         align-items: center;
@@ -486,8 +487,8 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
           rows="1"
           style="
             flex: 1;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--bim-ui_bg-contrast-10);
+            border: 1px solid var(--bim-ui_bg-contrast-20);
             border-radius: 8px;
             padding: 0.5rem 0.75rem;
             color: var(--bim-ui_bg-contrast-100);
@@ -502,7 +503,7 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
             overflow-y: auto;
           "
           onfocus="this.style.borderColor='var(--bim-ui_accent-base)'"
-          onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'"
+          onblur="this.style.borderColor='var(--bim-ui_bg-contrast-20)'"
         ></textarea>
         <bim-button @click=${onSend} icon=${appIcons.CHATBOT} style="flex: 0; --bim-button--bgc: var(--bim-ui_main-base);" title="Send"></bim-button>
       </div>

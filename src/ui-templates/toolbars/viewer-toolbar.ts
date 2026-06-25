@@ -4,7 +4,6 @@ import * as OBF from "@thatopen/components-front";
 import * as FRAGS from "@thatopen/fragments";
 import { appIcons, tooltips } from "../../globals";
 import { Colorize } from "../../ui-components/Colorize";
-import { bimChatPanel } from "../../bim-components";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { CustomCameraControl } from "../../bim-components/CustomCameraControl";
 import { FloorExploder } from "../../bim-components/FloorExploder";
@@ -476,41 +475,6 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
     target.loading = false;
   };
 
-  const onToggleChat = () => {
-    let chatPanel = document.getElementById("bim-chat-panel");
-    const toggleBtn = document.getElementById("bim-chat-toggle-btn") as any;
-
-    if (!chatPanel) {
-      const [panelElement] = bimChatPanel({ components, world });
-      panelElement.id = "bim-chat-panel";
-      panelElement.style.position = "absolute";
-      panelElement.style.bottom = "80px";
-      panelElement.style.right = "20px";
-      panelElement.style.width = "360px";
-      panelElement.style.height = "500px";
-      panelElement.style.zIndex = "1000";
-      panelElement.style.display = "flex";
-
-      const viewportElement = document.querySelector("bim-viewport");
-      if (viewportElement) {
-        viewportElement.appendChild(panelElement);
-        chatPanel = panelElement;
-      } else {
-        document.body.appendChild(panelElement);
-        chatPanel = panelElement;
-      }
-      if (toggleBtn) toggleBtn.active = true;
-    } else {
-      if (chatPanel.style.display === "none") {
-        chatPanel.style.display = "flex";
-        if (toggleBtn) toggleBtn.active = true;
-      } else {
-        chatPanel.style.display = "none";
-        if (toggleBtn) toggleBtn.active = false;
-      }
-    }
-  };
-
   return BUI.html`
     <bim-toolbar style="overflow: visible; z-index: 100;">
       <bim-toolbar-section style="overflow: visible;">
@@ -541,7 +505,6 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
     }} style="width: 100%; cursor: pointer;">
           </div>
         </div>
-        <bim-button id="bim-chat-toggle-btn" tooltip-title="AI Assistant" tooltip-text="Ask AI about the model and control the viewer." icon=${appIcons.CHATBOT} @click=${onToggleChat}></bim-button>
       </bim-toolbar-section>
     </bim-toolbar>
   `;
