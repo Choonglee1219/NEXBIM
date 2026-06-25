@@ -74,10 +74,120 @@ const getModelContext = async (components: OBC.Components) => {
       try {
         const itemsData = await model.getItemsData(idArr, {
           attributesDefault: true,
-          relationsDefault: { attributes: true, relations: false }
+          relationsDefault: { attributes: false, relations: false },
+          relations: {
+            IsDefinedBy: { attributes: true, relations: true },
+            DefinesOcurrence: { attributes: false, relations: false },
+            ContainedInStructure: { attributes: true, relations: true },
+            ContainsElements: { attributes: false, relations: false },
+            Decomposes: { attributes: false, relations: false },
+            RelatingPropertyDefinition: { attributes: true, relations: true },
+            HasProperties: { attributes: true, relations: true },
+            Quantities: { attributes: true, relations: true },
+            HasAssociations: { attributes: true, relations: true },
+            HasPropertySets: { attributes: true, relations: true },
+          }
         });
         if (itemsData && itemsData.length > 0) {
-          selectedElementProps = itemsData[0];
+          const extractRawValue = (val: any): any => {
+            if (val === null || val === undefined) return null;
+            if (typeof val === "object") {
+              if ("value" in val) {
+                return extractRawValue(val.value);
+              }
+            }
+            return val;
+          };
+
+          const parseItem = (item: any) => {
+            if (!item) return null;
+            const result: any = {
+              expressId: extractRawValue(item._localId),
+              category: extractRawValue(item._category),
+              name: extractRawValue(item.Name),
+              attributes: {},
+              propertySets: {},
+              quantities: {}
+            };
+
+            const processPropSet = (set: any) => {
+              const setName = extractRawValue(set.Name) || extractRawValue(set._category) || "UnnamedSet";
+              const setCategory = extractRawValue(set._category);
+              const properties: any = {};
+
+              const items = [];
+              if (set.HasProperties) {
+                const p = Array.isArray(set.HasProperties) ? set.HasProperties : [set.HasProperties];
+                items.push(...p);
+              }
+              if (set.Quantities) {
+                const q = Array.isArray(set.Quantities) ? set.Quantities : [set.Quantities];
+                items.push(...q);
+              }
+
+              for (const prop of items) {
+                const propName = extractRawValue(prop.Name);
+                if (!propName) continue;
+                
+                let propValue = null;
+                if (prop.NominalValue !== undefined) {
+                  propValue = extractRawValue(prop.NominalValue);
+                } else {
+                  for (const k in prop) {
+                    if (k.endsWith("Value") && k !== "NominalValue") {
+                      propValue = extractRawValue(prop[k]);
+                      break;
+                    }
+                  }
+                }
+                properties[propName] = propValue;
+              }
+
+              if (setCategory === "IFCELEMENTQUANTITY") {
+                result.quantities[setName] = properties;
+              } else {
+                result.propertySets[setName] = properties;
+              }
+            };
+
+            for (const key in item) {
+              if (key.startsWith("_") || key === "Name") continue;
+              const val = item[key];
+              if (val === null || val === undefined) continue;
+
+              const isRelation = Array.isArray(val) || (typeof val === "object" && !("value" in val));
+              if (!isRelation) {
+                result.attributes[key] = extractRawValue(val);
+              } else {
+                if (key === "IsDefinedBy") {
+                  const defines = Array.isArray(val) ? val : [val];
+                  for (const def of defines) {
+                    if (def.RelatingPropertyDefinition) {
+                      const relDefs = Array.isArray(def.RelatingPropertyDefinition)
+                        ? def.RelatingPropertyDefinition
+                        : [def.RelatingPropertyDefinition];
+                      for (const relDef of relDefs) {
+                        processPropSet(relDef);
+                      }
+                    }
+                  }
+                } else if (key === "ContainedInStructure") {
+                  const cont = Array.isArray(val) ? val[0] : val;
+                  if (cont) {
+                    result.attributes["ContainedIn"] = extractRawValue(cont.Name) || extractRawValue(cont._category);
+                  }
+                }
+              }
+            }
+
+            if (Object.keys(result.attributes).length === 0) delete result.attributes;
+            if (Object.keys(result.propertySets).length === 0) delete result.propertySets;
+            if (Object.keys(result.quantities).length === 0) delete result.quantities;
+
+            return result;
+          };
+
+          selectedElementProps = parseItem(itemsData[0]);
         }
       } catch (err) {
         console.error("Failed to get selected items data:", err);
