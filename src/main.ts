@@ -296,7 +296,9 @@ fragments.list.onItemSet.add(async ({ value: model }) => {
   await highlighter.highlightByID("transparentCyan", modelIdMap, false, false);
   await hider.set(false, modelIdMap);
 
-  fitCameraToAllModels();
+  if (!appState.hasExternalLink) {
+    fitCameraToAllModels();
+  }
 });
 
 fragments.list.onItemDeleted.add(async () => {

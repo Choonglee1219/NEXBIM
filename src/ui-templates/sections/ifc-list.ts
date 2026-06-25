@@ -15,13 +15,13 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
   state,
 ) => {
   const { components } = state;
-  
+
   const ifcLoader = components.get(OBC.IfcLoader);
   const fragments = components.get(OBC.FragmentsManager);
   const sharedIFC = new SharedIFC();
   const sharedFRAG = new SharedFRAG();
   const bcfTopics = components.get(BCFTopics);
-  
+
   // --- Grouping 1단계: 사용자 정의 그룹 상태 관리 ---
   const paletteColors = [
     "hsl(0, 65%, 40%)",
@@ -68,21 +68,21 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     return BUI.html`
       <div style="display: flex; gap: 0.375rem; width: 100%;">
         ${state.groups.map(g => {
-          const isActive = state.activeFilter === g;
-          const isNone = g === "None";
-          const bg = isNone 
-            ? (isActive ? "var(--bim-ui_main-base)" : "var(--bim-ui_bg-contrast-20)") 
-            : g;
-          const border = isActive ? "3px solid #ffffff" : "1px solid transparent";
+      const isActive = state.activeFilter === g;
+      const isNone = g === "None";
+      const bg = isNone
+        ? (isActive ? "var(--bim-ui_main-base)" : "var(--bim-ui_bg-contrast-20)")
+        : g;
+      const border = isActive ? "3px solid #ffffff" : "1px solid transparent";
 
-          return BUI.html`
+      return BUI.html`
             <div 
               @click=${() => onBadgeClick(g)} 
               style="flex: 1; height: 1.25rem; padding: 0 0.25rem; background: ${bg}; border: ${border}; border-radius: 0.25rem; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; box-sizing: border-box;" onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter='none'">
               <span style="font-size: 0.75rem;">${state.counts[g] || 0} EA</span>
             </div>
           `;
-        })}
+    })}
       </div>
     `;
   };
@@ -110,7 +110,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
   // 일괄 Dispose를 위해 선택된 모델들을 추적
   const selectedLoadedModels = new Set<any>();
-  
+
   const updateLoadedModelsList = () => {
     const models = [...fragments.list.values()];
     // 이름을 기준으로 오름차순 정렬
@@ -161,25 +161,25 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       return BUI.html`
         <div style="display: flex; align-items: center; width: 100%; gap: 0.25rem; overflow: hidden; margin: 0; padding: 0; height: 1.5rem;">
           <bim-checkbox .checked=${isChecked} @change=${(e: Event) => {
-            const cb = e.target;
-            if (!(cb instanceof BUI.Checkbox)) return;
-            if (cb.checked) selectedLoadedModels.add(model);
-            else selectedLoadedModels.delete(model);
-            updateLoadedModelsList(); // 상태를 즉시 동기화
-          }} style="flex: 0 0 auto; margin: 0; padding: 0;"></bim-checkbox>
+          const cb = e.target;
+          if (!(cb instanceof BUI.Checkbox)) return;
+          if (cb.checked) selectedLoadedModels.add(model);
+          else selectedLoadedModels.delete(model);
+          updateLoadedModelsList(); // 상태를 즉시 동기화
+        }} style="flex: 0 0 auto; margin: 0; padding: 0;"></bim-checkbox>
           <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; padding: 0;" title=${name}>
             <bim-label style="margin: 0; padding: 0;">${name}</bim-label>
           </div>
           <div style="flex: 0 0 auto; display: flex; gap: 0.25rem; margin: 0; padding: 0;">
             <bim-button @click=${() => {
-              model.object.visible = !model.object.visible;
-              updateLoadedModelsList();
-              }} icon=${model.object.visible ? appIcons.SHOW : appIcons.HIDE} style=${tableButtonStyle} title="Visibility"></bim-button>
+          model.object.visible = !model.object.visible;
+          updateLoadedModelsList();
+        }} icon=${model.object.visible ? appIcons.SHOW : appIcons.HIDE} style=${tableButtonStyle} title="Visibility"></bim-button>
             <bim-button @click=${() => {
-              selectedLoadedModels.delete(model);
-              model.dispose();
-              updateLoadedModelsList();
-              }} icon=${appIcons.CLEAR} style=${tableButtonStyle} title="Dispose"></bim-button>
+          selectedLoadedModels.delete(model);
+          model.dispose();
+          updateLoadedModelsList();
+        }} icon=${appIcons.CLEAR} style=${tableButtonStyle} title="Dispose"></bim-button>
           </div>
         </div>
       `;
@@ -188,9 +188,9 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
   fragments.list.onItemUpdated.add(updateLoadedModelsList);
   fragments.list.onItemDeleted.add(updateLoadedModelsList);
-  
+
   updateLoadedModelsList();
-  
+
   const createFileInputHandler = (
     accept: string,
     multiple: boolean,
@@ -255,7 +255,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
         }
       }
     }
-    
+
     // 파일 로드 시 원본 버퍼를 ClashService에 캐싱 (정밀 간섭 검토용)
     if (modelId) {
       const clashService = components.get(ClashService);
@@ -294,12 +294,12 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
   const onProcessEdbData = createFileInputHandler(".ifc", false, async (file) => {
     const formData = new FormData();
     formData.append("file", file);
-    
+
     let fileToLoad = file;
     try {
       const response = await fetch("/api/add-edb-data", { method: "POST", body: formData });
       if (!response.ok) throw new Error("EDB Data processing failed");
-      
+
       const blob = await response.blob();
       fileToLoad = new File([blob], `${file.name}`, { type: file.type || "application/octet-stream" });
     } catch (err) {
@@ -363,28 +363,28 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       }
     }
   };
-  
-    const downloadIFCModel = async (ifcid: number, cascade = true) => {
-      const ifc = await sharedIFC.loadIFC(ifcid);
-      if (ifc && ifc.content) {
-        const blob = new Blob([ifc.content], { type: "application/octet-stream" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${ifc.name}.ifc`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
 
-        if (cascade) {
-          const fragFile = sharedFRAG.list.find(f => f.name === ifc.name);
-          if (fragFile) {
-            await downloadFRAGModel(fragFile.id, false);
-          }
+  const downloadIFCModel = async (ifcid: number, cascade = true) => {
+    const ifc = await sharedIFC.loadIFC(ifcid);
+    if (ifc && ifc.content) {
+      const blob = new Blob([ifc.content], { type: "application/octet-stream" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${ifc.name}.ifc`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      if (cascade) {
+        const fragFile = sharedFRAG.list.find(f => f.name === ifc.name);
+        if (fragFile) {
+          await downloadFRAGModel(fragFile.id, false);
         }
       }
-    };
+    }
+  };
 
   const deleteIFCModel = async (ifcid: number, cascade = true) => {
     const file = sharedIFC.list.find(f => f.id === ifcid);
@@ -455,7 +455,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       }
     }
   };
-  
+
   const downloadFRAGModel = async (fragid: number, cascade = true) => {
     const frag = await sharedFRAG.loadFRAG(fragid);
     if (frag && frag.content) {
@@ -546,12 +546,12 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
   setupBIMTable(fragTable);
 
   const updateFRAGTableData = () => {
-    const filteredList = activeGroupFilter 
+    const filteredList = activeGroupFilter
       ? sharedFRAG.list.filter(file => {
-          let groupName = fragGroups.get(file.id) || "None";
-          if (!customGroups.includes(groupName)) groupName = "None";
-          return groupName === activeGroupFilter;
-        })
+        let groupName = fragGroups.get(file.id) || "None";
+        if (!customGroups.includes(groupName)) groupName = "None";
+        return groupName === activeGroupFilter;
+      })
       : [...sharedFRAG.list]; // 원본 배열 보호를 위해 복사
 
     filteredList.sort((a, b) => a.name.localeCompare(b.name));
@@ -627,27 +627,27 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       const currentGroup = rowData.Group as string;
       const name = value as string;
       const isChecked = selectedFragModels.has(id);
-      
+
       return BUI.html`
         <div style="display: flex; align-items: center; width: 100%; gap: 0.25rem; overflow: hidden; margin: 0; padding: 0; height: 1.5rem;">
           <bim-checkbox .checked=${isChecked} @change=${(e: Event) => {
-            const cb = e.target;
-            if (!(cb instanceof BUI.Checkbox)) return;
-            if (cb.checked) selectedFragModels.add(id);
-            else selectedFragModels.delete(id);
-            updateFRAGTableData(); // 상태를 즉시 동기화
-          }} style="flex: 0 0 auto; margin: 0; padding: 0;"></bim-checkbox>
+          const cb = e.target;
+          if (!(cb instanceof BUI.Checkbox)) return;
+          if (cb.checked) selectedFragModels.add(id);
+          else selectedFragModels.delete(id);
+          updateFRAGTableData(); // 상태를 즉시 동기화
+        }} style="flex: 0 0 auto; margin: 0; padding: 0;"></bim-checkbox>
           <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; padding: 0;" title=${name}>
             <bim-label style="margin: 0; padding: 0;">${name}</bim-label>
           </div>
           <div style="flex: 0 0 auto; margin: 0; padding: 0;">
             <select @change=${(e: Event) => {
-              const select = e.target as HTMLSelectElement;
-              fragGroups.set(id, select.value);
-              saveFragGroupsToStorage();
-              updateFRAGTableData();
-              if (refreshBadges) refreshBadges();
-            }} style="padding: 0 0.25rem; margin: 0; border-radius: 4px; background: ${currentGroup === 'None' ? 'var(--bim-ui_bg-contrast-20)' : currentGroup}; border: none; outline: none; cursor: pointer; width: 2.5rem; height: 1.5rem;" title="${currentGroup}">
+          const select = e.target as HTMLSelectElement;
+          fragGroups.set(id, select.value);
+          saveFragGroupsToStorage();
+          updateFRAGTableData();
+          if (refreshBadges) refreshBadges();
+        }} style="padding: 0 0.25rem; margin: 0; border-radius: 4px; background: ${currentGroup === 'None' ? 'var(--bim-ui_bg-contrast-20)' : currentGroup}; border: none; outline: none; cursor: pointer; width: 2.5rem; height: 1.5rem;" title="${currentGroup}">
               ${customGroups.map(g => BUI.html`<option value="${g}" style="background: ${g === 'None' ? 'var(--bim-ui_bg-base)' : g};" title="${g}" ?selected=${g === currentGroup}>&nbsp;&nbsp;&nbsp;&nbsp;</option>`)}
             </select>
           </div>
@@ -701,12 +701,12 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
   const selectedIfcModels = new Set<number>();
 
   const updateIFCTableData = () => {
-    const filteredList = activeGroupFilter 
+    const filteredList = activeGroupFilter
       ? sharedIFC.list.filter(file => {
-          let groupName = ifcGroups.get(file.id) || "None";
-          if (!customGroups.includes(groupName)) groupName = "None";
-          return groupName === activeGroupFilter;
-        })
+        let groupName = ifcGroups.get(file.id) || "None";
+        if (!customGroups.includes(groupName)) groupName = "None";
+        return groupName === activeGroupFilter;
+      })
       : [...sharedIFC.list]; // 원본 배열 보호를 위해 복사
 
     filteredList.sort((a, b) => a.name.localeCompare(b.name));
@@ -730,27 +730,27 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       const currentGroup = rowData.Group as string;
       const name = value as string;
       const isChecked = selectedIfcModels.has(id);
-      
+
       return BUI.html`
         <div style="display: flex; align-items: center; width: 100%; gap: 0.25rem; overflow: hidden; margin: 0; padding: 0; height: 1.5rem;">
           <bim-checkbox .checked=${isChecked} @change=${(e: Event) => {
-            const cb = e.target;
-            if (!(cb instanceof BUI.Checkbox)) return;
-            if (cb.checked) selectedIfcModels.add(id);
-            else selectedIfcModels.delete(id);
-            updateIFCTableData(); // 상태를 즉시 동기화
-          }} style="flex: 0 0 auto; margin: 0; padding: 0;"></bim-checkbox>
+          const cb = e.target;
+          if (!(cb instanceof BUI.Checkbox)) return;
+          if (cb.checked) selectedIfcModels.add(id);
+          else selectedIfcModels.delete(id);
+          updateIFCTableData(); // 상태를 즉시 동기화
+        }} style="flex: 0 0 auto; margin: 0; padding: 0;"></bim-checkbox>
           <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; padding: 0;" title=${name}>
             <bim-label style="margin: 0; padding: 0;">${name}</bim-label>
           </div>
           <div style="flex: 0 0 auto; margin: 0; padding: 0;">
             <select @change=${(e: Event) => {
-              const select = e.target as HTMLSelectElement;
-              ifcGroups.set(id, select.value);
-              saveIfcGroupsToStorage();
-              updateIFCTableData();
-              if (refreshBadges) refreshBadges();
-            }} style="padding: 0 0.25rem; margin: 0; border-radius: 4px; background: ${currentGroup === 'None' ? 'var(--bim-ui_bg-contrast-20)' : currentGroup}; border: none; outline: none; cursor: pointer; width: 2.5rem; height: 1.5rem;" title="${currentGroup}">
+          const select = e.target as HTMLSelectElement;
+          ifcGroups.set(id, select.value);
+          saveIfcGroupsToStorage();
+          updateIFCTableData();
+          if (refreshBadges) refreshBadges();
+        }} style="padding: 0 0.25rem; margin: 0; border-radius: 4px; background: ${currentGroup === 'None' ? 'var(--bim-ui_bg-contrast-20)' : currentGroup}; border: none; outline: none; cursor: pointer; width: 2.5rem; height: 1.5rem;" title="${currentGroup}">
               ${customGroups.map(g => BUI.html`<option value="${g}" style="background: ${g === 'None' ? 'var(--bim-ui_bg-base)' : g};" title="${g}" ?selected=${g === currentGroup}>&nbsp;&nbsp;&nbsp;&nbsp;</option>`)}
             </select>
           </div>
@@ -823,57 +823,58 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       );
 
       if (!loadedModel) {
-        console.log(`[Automation] Automatically loading model ID: ${targetFrag.id}`);
-        // 🌟 기존 뷰어의 로컬 로드 함수를 그대로 대리 호출하여 정합성 보장!
         await loadFRAGModel(targetFrag.id);
-      } else {
-        console.log(`[Automation] Model is already loaded. Skipping load.`);
+        await new Promise((resolve) => setTimeout(resolve, 800));
       }
 
+      // 1. 모델 전체 혹은 특정 객체 줌인
+      const worlds = components.get(OBC.Worlds);
+      const world = worlds.list.values().next().value;
+      const cam = world?.camera as any;
+
       if (!paramGuid) {
+        if (cam && typeof cam.fitToItems === "function") {
+          await cam.fitToItems();
+        }
         clearAutomationParams();
+        appState.hasExternalLink = false;
         return;
       }
 
-      const checkAndZoom = async () => {
-        try {
-          console.log(`[Automation] Finding object GUID: ${paramGuid}`);
-          const modelIdMap = await fragments.guidsToModelIdMap([paramGuid]);
-          let hasValidItems = false;
-          for (const key in modelIdMap) {
-            if (modelIdMap[key].size > 0) {
-              hasValidItems = true;
-              break;
-            }
+      // 2. 객체 선택 및 객체 줌인
+      try {
+        console.log(`[Automation] Finding object GUID: ${paramGuid}`);
+        const modelIdMap = await fragments.guidsToModelIdMap([paramGuid]);
+        let hasValidItems = false;
+        for (const key in modelIdMap) {
+          if (modelIdMap[key].size > 0) {
+            hasValidItems = true;
+            break;
           }
-
-          if (hasValidItems) {
-            console.log(`[Automation] Focusing on object: ${paramGuid}`);
-            const highlighter = components.get(Highlighter);
-            await highlighter.highlightByID("select", modelIdMap);
-            
-            const worlds = components.get(OBC.Worlds);
-            const world = worlds.list.values().next().value;
-            const cam = world?.camera as any;
-            if (cam && typeof cam.fitToItems === "function") {
-              await cam.fitToItems(modelIdMap);
-            }
-          } else {
-            console.warn(`[Automation] GUID "${paramGuid}" not found in loaded models.`);
-          }
-        } catch (zoomErr) {
-          console.error("[Automation] Focus operation failed:", zoomErr);
-        } finally {
-          clearAutomationParams();
         }
-      };
 
-      // 로딩 및 씬 구성을 고려해 약간의 지연 처리 후 줌인 구동
-      setTimeout(checkAndZoom, 1200);
+        if (hasValidItems) {
+          console.log(`[Automation] Focusing on object: ${paramGuid}`);
+          const highlighter = components.get(Highlighter);
+          await highlighter.highlightByID("select", modelIdMap);
+
+          if (cam && typeof cam.fitToItems === "function") {
+            await cam.fitToItems(modelIdMap);
+          }
+        } else {
+          console.warn(`[Automation] GUID "${paramGuid}" not found in loaded models.`);
+        }
+      } catch (zoomErr) {
+        console.error("[Automation] Focus operation failed:", zoomErr);
+      } finally {
+        clearAutomationParams();
+        appState.hasExternalLink = false;
+      }
 
     } catch (err) {
       console.error("[Automation] Failed:", err);
       clearAutomationParams();
+      appState.hasExternalLink = false;
     }
   };
 
@@ -886,7 +887,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     }
     if (refreshBadges) refreshBadges();
     updateFRAGTableData();
-    
+
     // 외부 연동 자동화 수행
     runExternalAutomation();
   };
@@ -903,10 +904,10 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       <div data-flex="false" style="display: flex; flex-direction: column; gap: 0.25rem;">
         <div @click=${onToggleSection} style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
           <div style="display: flex; align-items: center; gap: 0.5rem; pointer-events: none;">
-          <bim-label style="font-weight: bold;" ${BUI.ref((e) => { 
-            loadedModelLabel = e as BUI.Label; 
-            loadedModelLabel.textContent = `Loaded Model (${fragments.list.size})`; 
-          })}>Loaded Model</bim-label>
+          <bim-label style="font-weight: bold;" ${BUI.ref((e) => {
+    loadedModelLabel = e as BUI.Label;
+    loadedModelLabel.textContent = `Loaded Model (${fragments.list.size})`;
+  })}>Loaded Model</bim-label>
           <bim-label class="toggle-icon" icon=${appIcons.MINOR} style="--bim-icon--fz: 1.25rem;"></bim-label>
           </div>
           <div style="display: flex; gap: 0.25rem;">
@@ -927,19 +928,19 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       <div data-flex="true" style="display: flex; flex-direction: column; gap: 0.25rem; flex: 1; min-height: 0; overflow: hidden;">
         <div @click=${onToggleSection} style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; flex-shrink: 0;">
           <div style="display: flex; align-items: center; gap: 0.5rem; pointer-events: none;">
-          <bim-label style="font-weight: bold;" ${BUI.ref((e) => { 
-            sharedModelLabel = e as BUI.Label; 
-            sharedModelLabel.textContent = `Shared Model (${sharedFRAG.list.length})`; 
-          })}>Shared Model</bim-label>
+          <bim-label style="font-weight: bold;" ${BUI.ref((e) => {
+    sharedModelLabel = e as BUI.Label;
+    sharedModelLabel.textContent = `Shared Model (${sharedFRAG.list.length})`;
+  })}>Shared Model</bim-label>
           <bim-label class="toggle-icon" icon=${appIcons.MINOR} style="--bim-icon--fz: 1.25rem;"></bim-label>
           </div>
           <div style="display: flex; gap: 0.25rem;">
             <bim-button @click=${(e: Event) => { e.stopPropagation(); onSelectAllFragModels(); }} label="Select All" style="flex: 0;"></bim-button>
             <bim-button @click=${(e: Event) => {
-              e.stopPropagation();
-              const target = (e.target as HTMLElement).closest("bim-button") as BUI.Button;
-              if (target) onLoadSelectedFragModels(target);
-            }} label="Load" icon=${appIcons.OPEN} style="flex: 0;"></bim-button>
+      e.stopPropagation();
+      const target = (e.target as HTMLElement).closest("bim-button") as BUI.Button;
+      if (target) onLoadSelectedFragModels(target);
+    }} label="Load" icon=${appIcons.OPEN} style="flex: 0;"></bim-button>
           </div>
         </div>
         <div style="display: flex; flex-direction: column; gap: 0.25rem; overflow-y: auto; flex: 1; min-height: 0;">
