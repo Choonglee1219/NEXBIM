@@ -743,22 +743,6 @@ export const drawingEditorTemplate: BUI.StatefullComponent<DrawingEditorState> =
 
   return BUI.html`
     <div ${BUI.ref(onContainerCreated)} style="display: flex; flex-direction: row; width: 100%; height: 100%; overflow: hidden; background-color: var(--bim-ui_bg-contrast-20, #f0f0f0); position: relative;">
-      <style>
-        .drawing-scroll-wrapper::-webkit-scrollbar {
-          height: 8px;
-          width: 8px;
-        }
-        .drawing-scroll-wrapper::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .drawing-scroll-wrapper::-webkit-scrollbar-thumb {
-          background: var(--bim-ui_bg-contrast-20);
-          border-radius: 4px;
-        }
-        .drawing-scroll-wrapper::-webkit-scrollbar-thumb:hover {
-          background: var(--bim-ui_bg-contrast-40);
-        }
-      </style>
       
       <!-- ⬅️ 좌측: 리본 메뉴 및 도면 영역 -->
       <div style="display: flex; flex-direction: column; flex: 1; min-width: 0; position: relative;">
@@ -768,7 +752,7 @@ export const drawingEditorTemplate: BUI.StatefullComponent<DrawingEditorState> =
         <bim-tabs active="annotate" style="width: 100%; height: 100%; display: flex; flex-direction: column;">
           
           <bim-tab name="view" label="View & Export" style="flex: 1; overflow: hidden;">
-            <div class="drawing-scroll-wrapper" style="display: flex; flex-direction: row; gap: 2rem; padding: 0.5rem 1rem; height: 100%; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
+            <div class="bim-scroll-md" style="display: flex; flex-direction: row; gap: 2rem; padding: 0.5rem 1rem; height: 100%; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
               <!-- Projection Group -->
               <div style="display: flex; flex-direction: column; gap: 0.5rem; min-width: 250px;">
                 <bim-label style="font-weight: bold; border-bottom: 1px solid var(--bim-ui_bg-contrast-20); padding-bottom: 0.25rem;">Projection</bim-label>
@@ -807,7 +791,7 @@ export const drawingEditorTemplate: BUI.StatefullComponent<DrawingEditorState> =
           </bim-tab>
 
           <bim-tab name="annotate" label="Annotations" style="flex: 1; overflow: hidden;">
-            <div class="drawing-scroll-wrapper" style="display: flex; flex-direction: row; gap: 2rem; padding: 0.5rem 1rem; height: 100%; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
+            <div class="bim-scroll-md" style="display: flex; flex-direction: row; gap: 2rem; padding: 0.5rem 1rem; height: 100%; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
               <!-- Tools Group -->
               <div style="display: flex; flex-direction: column; gap: 0.5rem; min-width: 250px;">
                 <bim-label style="font-weight: bold; border-bottom: 1px solid var(--bim-ui_bg-contrast-20); padding-bottom: 0.25rem;">Tools</bim-label>
@@ -837,7 +821,7 @@ export const drawingEditorTemplate: BUI.StatefullComponent<DrawingEditorState> =
                   </bim-label>
                 </div>
                 
-                <div class="drawing-scroll-wrapper" style="display: flex; flex-direction: row; gap: 0.5rem; flex-wrap: wrap; overflow-y: auto; align-items: center; max-height: 70px; align-content: flex-start;">
+                <div class="bim-scroll-md" style="display: flex; flex-direction: row; gap: 0.5rem; flex-wrap: wrap; overflow-y: auto; align-items: center; max-height: 70px; align-content: flex-start;">
                   ${activeTool === "linear" ? (() => {
                     const s = dimTool.system.styles.get("default")!;
                     const set = (patch: Partial<typeof s>) => { 
@@ -995,7 +979,7 @@ export const drawingEditorTemplate: BUI.StatefullComponent<DrawingEditorState> =
                 <bim-label style="font-weight: bold; color: var(--bim-ui_main-contrast); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="Color for '${activeColorLayer}'">Color for '${activeColorLayer}'</bim-label>
                 <div @click=${() => { activeColorLayer = null; update(); }} style="cursor: pointer; padding: 0.25rem; font-weight: bold; color: var(--bim-ui_main-contrast); flex-shrink: 0;">✕</div>
               </div>
-              <div class="drawing-scroll-wrapper" style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; overflow-y: auto; flex: 1; align-content: start;">
+              <div class="bim-scroll-md" style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; overflow-y: auto; flex: 1; align-content: start;">
                 ${ACI_COLORS.map((c, i) => BUI.html`
                   <div title="ACI ${i}: ${c}" @click=${() => {
                     if (editor.activeDrawing && activeColorLayer) {

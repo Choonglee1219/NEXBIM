@@ -512,20 +512,20 @@ const handleExternalLink = async () => {
   }
 
   try {
-    console.log(`[ExternalLink] Searching for project: ${paramProject}`);
-    // 2. 프로젝트 리스트를 조회하여 이름이 일치하는 프로젝트 검색
+    console.log(`[ExternalLink] Searching for project with code: ${paramProject}`);
+    // 2. 프로젝트 리스트를 조회하여 code 가 일치하는 프로젝트 검색
     const res = await fetch(`/api/projects?email=${appState.currentUser}`);
     if (!res.ok) throw new Error("Failed to fetch projects");
     const projects = await res.json();
-    const targetProject = projects.find((p: any) => p.name === paramProject);
+    const targetProject = projects.find((p: any) => p.code === paramProject);
 
     if (!targetProject) {
-      console.warn(`[ExternalLink] Project "${paramProject}" not found.`);
+      console.warn(`[ExternalLink] Project with code "${paramProject}" not found.`);
       appState.hasExternalLink = false;
       return;
     }
 
-    console.log(`[ExternalLink] Entering project: ${targetProject.name} (ID: ${targetProject.id})`);
+    console.log(`[ExternalLink] Entering project: ${targetProject.name} (Code: ${targetProject.code}, ID: ${targetProject.id})`);
     // 3. 프로젝트 진입 상태 설정
     appState.currentProject = {
       id: targetProject.id,
