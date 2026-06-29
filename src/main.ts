@@ -17,6 +17,7 @@ import { setupBoxSelection } from "./ui-components/BoxSelection";
 import { Measurer } from "./bim-components/Measurer";
 import { ClipperBox } from "./bim-components/ClipperBox";
 import { bimChatPanel } from "./bim-components";
+import { GISMapComponent } from "./bim-components/GISMap";
 
 // 🎨Override the bim-label template to use a local SVG icon and apply custom colors
 // @ts-ignore
@@ -256,6 +257,10 @@ clipperBox.init(world);
 // 🔲 Box Selection Setup
 setupBoxSelection(components, world, viewport, highlighter);
 
+// 🗺️ GIS Map Setup
+const gisMap = components.get(GISMapComponent);
+gisMap.init(world);
+
 // 📌 Context Menu Setup
 setupContextMenu(components, world, viewport);
 
@@ -300,6 +305,10 @@ fragments.list.onItemSet.add(async ({ value: model }) => {
   if (!appState.hasExternalLink) {
     fitCameraToAllModels();
   }
+
+  // 🗺️ Detect and setup GIS map coordinates
+  const gisMap = components.get(GISMapComponent);
+  gisMap.detectGeoreferencing(model);
 });
 
 fragments.list.onItemDeleted.add(async () => {
@@ -364,11 +373,13 @@ const setInitialLayout = () => {
     window.location.hash = "Viewer";
     contentGrid.layout = "Viewer";
   }
+  gisMap.enabled = contentGrid.layout === "GISMap";
 };
 
 setInitialLayout();
 
 contentGrid.addEventListener("layoutchange", () => {
+  gisMap.enabled = contentGrid.layout === "GISMap";
   window.location.hash = contentGrid.layout as string;
 });
 
@@ -384,6 +395,7 @@ const contentGridIcons: Record<TEMPLATES.ContentGridLayouts[number], string> = {
   ClashDetection: appIcons.CLASH,
   DrawingEditor: appIcons.DRAWING,
   Timeline: appIcons.GANTT,
+  GISMap: appIcons.MAP,
 };
 
 // 🏁App Grid Setup

@@ -5,6 +5,8 @@ import bcfRouter from "./bcf.js";
 import clashRouter from "./clash.js";
 import propertiesRouter from "./properties.js";
 import chatRouter from "./chat.js";
+import mapRouter from "./map.js";
+
 
 const router = express.Router();
 
@@ -25,5 +27,7 @@ router.use(bcfRouter);
 router.use(clashRouter);
 router.use(propertiesRouter);
 router.use(chatRouter);
+router.use(mapRouter);
+
 
 export default router;

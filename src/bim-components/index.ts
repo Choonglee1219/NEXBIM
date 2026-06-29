@@ -6,3 +6,4 @@ export * from "./SharedFRAG";
 export * from "./Timeline";
 export * from "./ClipperBox";
 export * from "./BimChat";
+export * from "./GISMap";

@@ -90,6 +90,11 @@ type PhaseManager = {
   state: TEMPLATES.PhaseManagerPanelState;
 };
 
+type GISSettings = {
+  name: "gisSettings";
+  state: TEMPLATES.GISSettingsPanelState;
+};
+
 export type ContentGridElements = [
   Viewer,
   IFCList,
@@ -108,9 +113,10 @@ export type ContentGridElements = [
   DrawingEditor,
   Timeline,
   PhaseManager,
+  GISSettings,
 ];
 
-export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "IDSCheck", "FullScreen", "Quantities", "DrawingEditor", "Timeline"];
+export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "IDSCheck", "FullScreen", "Quantities", "DrawingEditor", "Timeline", "GISMap"];
 
 export interface ContentGridState {
   components: OBC.Components;
@@ -198,6 +204,10 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         template: TEMPLATES.phaseManagerPanelTemplate,
         initialState: { components },
       },
+      gisSettings: {
+        template: TEMPLATES.gisSettingsPanelTemplate,
+        initialState: { components },
+      },
       viewer: state.viewportTemplate,
     };
 
@@ -276,6 +286,12 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         template: `
         "viewer" 1fr
         / 1fr
+        `,
+      },
+      GISMap: {
+        template: `
+        "viewer gisSettings" 1fr
+        / 1fr var(--right-col-width)
         `,
       },
     };

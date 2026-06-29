@@ -15,4 +15,5 @@ export * from "./drawing";
 export * from "./timeline";
 export * from "./phase-manager";
 export * from "./project-selector";
+export * from "./gis-settings";
 
