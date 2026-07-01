@@ -1,20 +1,51 @@
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
-import { appIcons } from "../../globals";
+import { appIcons, appState } from "../../globals";
 import { GISMapComponent } from "../../bim-components/GISMap";
+import { Highlighter } from "../../bim-components/Highlighter";
+import { SharedIFC } from "../../bim-components/SharedIFC";
+import { SharedFRAG } from "../../bim-components/SharedFRAG";
 
 export interface GISSettingsPanelState {
   components: OBC.Components;
 }
+
+let originalGeoreferencing: {
+  eastings: number;
+  northings: number;
+  orthogonalHeight: number;
+  rotationAngle: number;
+} | null = null;
 
 export const gisSettingsPanelTemplate: BUI.StatefullComponent<
   GISSettingsPanelState
 > = (state, update) => {
   const { components } = state;
   const gisMap = components.get(GISMapComponent);
+  const fragments = components.get(OBC.FragmentsManager);
+  const highlighter = components.get(Highlighter);
+  const ifcLoader = components.get(OBC.IfcLoader);
+  const sharedIFC = new SharedIFC();
+  const sharedFRAG = new SharedFRAG();
 
   const data = gisMap.mapData || gisMap.manualData;
   const isDetected = gisMap.mapData !== null;
+
+  if (isDetected && data && originalGeoreferencing === null) {
+    const angleRad = Math.atan2(data.xAxisOrdinate, data.xAxisAbscissa);
+    let angleDeg = Number(((angleRad * 180) / Math.PI).toFixed(4));
+    if (angleDeg < 0) angleDeg += 360;
+    angleDeg = Number(angleDeg.toFixed(4));
+
+    originalGeoreferencing = {
+      eastings: data.eastings,
+      northings: data.northings,
+      orthogonalHeight: data.orthogonalHeight,
+      rotationAngle: angleDeg
+    };
+  } else if (!isDetected) {
+    originalGeoreferencing = null;
+  }
 
   // Convert current rotation vector to degrees
   const currentAngleRad = Math.atan2(data.xAxisOrdinate, data.xAxisAbscissa);
@@ -22,10 +53,16 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
   if (currentAngleDeg < 0) currentAngleDeg += 360;
   currentAngleDeg = Number(currentAngleDeg.toFixed(4));
 
-  // Re-run this check when model detectGeoreferencing event fires if needed.
   (window as any).refreshGISMapSettingsSection = () => {
     update();
   };
+
+  fragments.list.onItemDeleted.add(() => {
+    originalGeoreferencing = null;
+  });
+  fragments.list.onItemSet.add(() => {
+    originalGeoreferencing = null;
+  });
 
   const onHeightChange = (e: Event) => {
     const val = Number((e.target as HTMLInputElement).value);
@@ -91,7 +128,6 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
     gisMap.updateMapTiles();
 
     try {
-      console.log(`[GISMap] Triggering backend download for: East=${east}, North=${north}, Zoom=${gisMap.zoom}, GridSize=${gisMap.gridSize}`);
       const res = await fetch("/api/download-map-tiles", {
         method: "POST",
         headers: {
@@ -107,7 +143,6 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
 
       const result = await res.json();
       if (res.ok) {
-        console.log("[GISMap] Backend tiles downloaded successfully:", result.message);
         gisMap.updateMapTiles();
         alert(`Manual coordinates applied!\n\nBackend Download Status: ${result.message}`);
       } else {
@@ -120,6 +155,185 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
       manualApplyBtn.textContent = originalText;
       manualApplyBtn.disabled = false;
       update();
+    }
+  };
+
+  const checkValuesModified = () => {
+    if (!eastingInput || !northingInput || !heightInput || !rotationInput) return;
+
+    const east = Number(eastingInput.value);
+    const north = Number(northingInput.value);
+    const height = Number(heightInput.value);
+    const rotationDeg = Number(rotationInput.value);
+
+    let isModified = true;
+
+    if (isDetected && originalGeoreferencing) {
+      const dEast = Math.abs(east - originalGeoreferencing.eastings) > 1e-5;
+      const dNorth = Math.abs(north - originalGeoreferencing.northings) > 1e-5;
+      const dHeight = Math.abs(height - originalGeoreferencing.orthogonalHeight) > 1e-5;
+      const dRot = Math.abs(rotationDeg - originalGeoreferencing.rotationAngle) > 1e-5;
+
+      isModified = dEast || dNorth || dHeight || dRot;
+    }
+
+    const injectBtn = document.getElementById("gis-manual-inject-btn") as BUI.Button | null;
+    if (injectBtn) {
+      injectBtn.disabled = !isModified;
+    }
+  };
+
+  const onInjectGeoreferencing = async (e: Event) => {
+    const injectBtn = e.target as BUI.Button;
+    
+    const loadedModels = Array.from(fragments.list.values()) as any[];
+    if (loadedModels.length === 0) {
+      alert("현재 3D 뷰어에 로드된 모델이 없습니다.");
+      return;
+    }
+
+    const validModels = loadedModels.filter(m => m.dbId !== undefined && m.dbId !== null);
+    if (validModels.length === 0) {
+      alert("데이터베이스 ID(dbId)가 존재하는 로드된 모델이 없습니다. DB에서 로드된 모델만 Georeferencing 주입이 가능합니다.");
+      return;
+    }
+
+    if (!eastingInput || !northingInput || !heightInput || !rotationInput) {
+      alert("좌표 입력 양식이 준비되지 않았습니다.");
+      return;
+    }
+
+    const east = Number(eastingInput.value);
+    const north = Number(northingInput.value);
+    const height = Number(heightInput.value);
+    const rotationDeg = Number(rotationInput.value);
+
+    if (isNaN(east) || isNaN(north) || isNaN(height) || isNaN(rotationDeg)) {
+      alert("동향(Eastings), 북향(Northings), 높이 및 회전각에 올바른 숫자를 입력해주세요.");
+      return;
+    }
+
+    // 대상 모델들의 정보 리스트 미리 추출
+    const modelTargets = validModels.map(m => ({
+      uuid: m.uuid,
+      dbId: (m as any).dbId,
+      name: (m as any).name || "model"
+    }));
+
+    const activeProjectId = appState.currentProject?.id;
+    injectBtn.loading = true;
+
+    try {
+      // 뷰어 리셋 및 하이라이트 지우기
+      await highlighter.clear("select");
+      highlighter.events.select.onClear.trigger();
+      await fragments.core.update(true);
+
+      let successCount = 0;
+
+      for (const target of modelTargets) {
+        const { dbId, name: originalName } = target;
+
+        // 1. DB에서 원본 IFC 다운로드
+        const ifcData = await sharedIFC.loadIFC(dbId);
+        if (!ifcData || !ifcData.content) {
+          console.warn(`[GISMap] DB에서 원본 IFC 바이너리를 로드하는 데 실패했습니다. Target ID: ${dbId}`);
+          continue;
+        }
+        const ifcBuffer = ifcData.content as Uint8Array;
+
+        // 2. 백엔드 파이썬 마이크로서비스 호출을 위한 FormData 생성
+        const formData = new FormData();
+        const blob = new Blob([ifcBuffer as any], { type: "application/octet-stream" });
+        
+        let baseName = originalName;
+        if (baseName.toLowerCase().endsWith(".ifc")) {
+          baseName = baseName.substring(0, baseName.length - 4);
+        }
+        const geoName = `${baseName}_geo`;
+
+        formData.append("file", blob, `${geoName}.ifc`);
+        formData.append("eastings", String(east));
+        formData.append("northings", String(north));
+        formData.append("orthogonalHeight", String(height));
+        formData.append("rotationAngle", String(rotationDeg));
+        
+        // S-JTSK 디폴트 좌표 파라미터 주입
+        formData.append("crsName", "EPSG:5514");
+        formData.append("crsDescription", "S-JTSK / Krovak East North");
+        formData.append("crsGeodeticDatum", "S-JTSK");
+        formData.append("crsVerticalDatum", "Baltic after adjustment");
+        formData.append("crsMapProjection", "Krovak");
+        formData.append("crsMapZone", "Undefined");
+        formData.append("scale", "1.0");
+
+        const response = await fetch("/api/inject-georeferencing", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errJson = await response.json();
+          throw new Error(`모델 '${originalName}' 주입 실패: ${errJson.details || errJson.error || "알 수 없는 에러"}`);
+        }
+
+        // 3. 가공된 새 IFC 바이너리 획득
+        const arrayBuffer = await response.arrayBuffer();
+        const modifiedBuffer = new Uint8Array(arrayBuffer);
+
+        // 4. 뷰어 리로딩 처리
+        const currentInstance = fragments.list.get(target.uuid);
+        if (currentInstance) {
+          currentInstance.dispose();
+        }
+
+        // 워커 정리/메모리 해제 데드락 예방을 위한 딜레이
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        const modelName = `${geoName}.ifc`;
+        const reloadedModel = await ifcLoader.load(modifiedBuffer, false, modelName, {
+          instanceCallback: (importer) => {
+            importer.includeUniqueAttributes = true;
+            importer.includeRelationNames = true;
+            importer.addAllAttributes();
+            importer.addAllRelations();
+          },
+        });
+
+        (reloadedModel as any).name = geoName;
+        await fragments.core.update(true);
+
+        // 5. Oracle 데이터베이스에 새 파일들 저장 (현재 프로젝트 ID 바인딩)
+        const ifcFile = new File([modifiedBuffer as any], `${geoName}.ifc`, { type: "application/octet-stream" });
+        const fragData = await (reloadedModel as any).getBuffer(false);
+        const fragFile = new File([fragData as any], `${geoName}.frag`, { type: "application/octet-stream" });
+
+        const newIfcId = await sharedIFC.saveIFC(ifcFile, activeProjectId);
+        if (newIfcId) {
+          const newFragId = await sharedFRAG.saveFRAG(fragFile, activeProjectId);
+          if (newFragId) {
+            (reloadedModel as any).dbId = newIfcId;
+            successCount++;
+          } else {
+            console.error(`[GISMap] 가공된 FRAG 파일 저장 실패. Model: ${geoName}`);
+          }
+        } else {
+          console.error(`[GISMap] 가공된 IFC 파일 저장 실패. Model: ${geoName}`);
+        }
+      }
+
+      await fragments.core.update(true);
+      alert(`성공적으로 총 ${modelTargets.length}개 중 ${successCount}개 모델에 Georeferencing 정보가 주입되어 데이터베이스에 새로운 모델로 저장 및 리로드되었습니다!`);
+      
+      if ((window as any).refreshGISMapSettingsSection) {
+        (window as any).refreshGISMapSettingsSection();
+      }
+
+    } catch (err: any) {
+      console.error("[GISMap] Error injecting georeferencing to all models:", err);
+      alert(`Georeferencing 주입 실패: ${err.message}`);
+    } finally {
+      injectBtn.loading = false;
     }
   };
 
@@ -136,7 +350,7 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span>Zoom Level</span>
           <select id="gis-zoom-select" @change=${onZoomChange} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 4px; font-size: 0.8rem; cursor: pointer; box-sizing: border-box;">
-            ${[12, 13, 14, 15, 16, 17, 18, 19].map(z => BUI.html`
+            ${[14, 15, 16].map(z => BUI.html`
               <option value="${z}" ?selected=${z === gisMap.zoom}>${z}</option>
             `)}
           </select>
@@ -145,7 +359,7 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span>Grid Size</span>
           <select id="gis-grid-select" @change=${onGridChange} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 4px; font-size: 0.8rem; cursor: pointer; box-sizing: border-box;">
-            ${[1, 3, 5].map(g => BUI.html`
+            ${[3, 5, 7].map(g => BUI.html`
               <option value="${g}" ?selected=${g === gisMap.gridSize}>${g}x${g}</option>
             `)}
           </select>
@@ -171,39 +385,45 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
           <span>CRS Name</span>
           <input type="text" value="${data.crsName}" disabled style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: var(--bim-ui_gray-10, #888); border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${data.crsName}">
         </div>
-        
+
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span>Eastings</span>
-          <input id="gis-easting-input" type="number" step="1" value="${data.eastings}" ${isDetected ? "disabled" : ""} ${BUI.ref(el => eastingInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
+          <input id="gis-easting-input" type="number" step="1" value="${data.eastings}" @input=${checkValuesModified} ${BUI.ref(el => eastingInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
         </div>
         
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span>Northings</span>
-          <input id="gis-northing-input" type="number" step="1" value="${data.northings}" ${isDetected ? "disabled" : ""} ${BUI.ref(el => northingInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
+          <input id="gis-northing-input" type="number" step="1" value="${data.northings}" @input=${checkValuesModified} ${BUI.ref(el => northingInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
         </div>
         
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span>Height (H)</span>
-          <input id="gis-height-input" type="number" step="0.5" value="${data.orthogonalHeight}" ${isDetected ? "disabled" : ""} ${BUI.ref(el => heightInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
+          <input id="gis-height-input" type="number" step="0.5" value="${data.orthogonalHeight}" @input=${checkValuesModified} ${BUI.ref(el => heightInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
         </div>
-
+ 
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span>Rotation (deg)</span>
-          <input id="gis-rotation-input" type="number" min="0" max="360" step="any" value="${currentAngleDeg}" ${isDetected ? "disabled" : ""} @input=${onRotationInput} ${BUI.ref(el => rotationInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
+          <input id="gis-rotation-input" type="number" min="0" max="360" step="any" value="${currentAngleDeg}" @input=${() => { onRotationInput(); checkValuesModified(); }} ${BUI.ref(el => rotationInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
         </div>
-
+ 
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span>Rot Vector</span>
           <input id="gis-rot-vector-val" type="text" value="${data.xAxisAbscissa.toFixed(4)}, ${data.xAxisOrdinate.toFixed(4)}" disabled ${BUI.ref(el => rotVectorVal = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: var(--bim-ui_gray-10, #888); border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
         </div>
-
-        ${!isDetected ? BUI.html`
+ 
+        <div style="display: flex; gap: 8px;">
           <button id="gis-manual-apply-btn" 
             @click=${onApplyManual}
-            style="background: var(--bim-ui_main-base, #8fbc0c); color: var(--bim-ui_bg-base, #000); border: none; border-radius: 4px; padding: 6px; font-weight: bold; cursor: pointer; margin-top: 4px; font-size: 0.75rem;">
-            Apply
+            style="flex: 1; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 6px; cursor: pointer; margin-top: 4px; font-size: 0.75rem;">
+            Preview
           </button>
-        ` : BUI.html``}
+          <bim-button id="gis-manual-inject-btn"
+            @click=${onInjectGeoreferencing}
+            label="Apply to IFC & Save"
+            ?disabled=${isDetected}
+            style="flex: 1; margin-top: 4px; font-size: 0.75rem; background-color: var(--bim-ui_main-base); color: var(--bim-ui_main-contrast); font-weight: bold;">
+          </bim-button>
+        </div>
       </div>
     </bim-panel-section>
   `;

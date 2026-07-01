@@ -6,6 +6,7 @@ import { SharedFRAG } from '../../bim-components/SharedFRAG';
 import { BCFTopics } from "../../bim-components/BCFTopics";
 import { ClashService } from "../../bim-components/ClashService";
 import { Highlighter } from "../../bim-components/Highlighter";
+import { GISMapComponent } from "../../bim-components/GISMap";
 
 export interface IFCListPanelState {
   components: OBC.Components;
@@ -256,6 +257,10 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       }
     }
 
+    // 🗺️ Detect georeferencing from raw IFC buffer (before any caching)
+    const gisMap = components.get(GISMapComponent);
+    gisMap.detectGeorefFromBuffer(bytes);
+
     // 파일 로드 시 원본 버퍼를 ClashService에 캐싱 (정밀 간섭 검토용)
     if (modelId) {
       const clashService = components.get(ClashService);
@@ -353,6 +358,11 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
           }
         }
       }
+
+      // 🗺️ Detect georeferencing from raw IFC buffer
+      const gisMap = components.get(GISMapComponent);
+      gisMap.detectGeorefFromBuffer(ifc.content as Uint8Array);
+
       if (modelId) {
         sharedIFC.addModelUUID(ifcid, modelId);
         fragments.list.set(modelId, model);
@@ -446,6 +456,10 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
         if (ifcFile) {
           const ifcData = await sharedIFC.loadIFC(ifcFile.id);
           if (ifcData && ifcData.content) {
+            // 🗺️ Detect georeferencing from the matched IFC buffer
+            const gisMap = components.get(GISMapComponent);
+            gisMap.detectGeorefFromBuffer(ifcData.content as Uint8Array);
+
             const clashService = components.get(ClashService);
             clashService.addIfcBuffer(modelId, ifcData.content as Uint8Array);
           }

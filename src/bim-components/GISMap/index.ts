@@ -178,66 +178,72 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
   }
 
   /**
-   * Scans loaded model for IfcMapConversion & IfcProjectedCRS
+   * Parses IfcMapConversion & IfcProjectedCRS directly from the raw IFC STEP buffer.
+   * This is the reliable approach since getItemsOfCategories() does not index
+   * non-geometry meta-entities like IfcMapConversion in the fragments model.
+   *
+   * Call this right after ifcLoader.load() or fragments.core.load() where the
+   * raw IFC bytes are available (ifc-list.ts load functions).
    */
-  detectGeoreferencing(model: any): boolean {
-    if (!model || !model.properties) return false;
+  detectGeorefFromBuffer(buffer: Uint8Array): boolean {
+    try {
+      const text = new TextDecoder().decode(buffer);
 
-    let mapConversion: any = null;
-    let projectedCRS: any = null;
+      // ── IfcProjectedCRS: first parameter is the CRS name string ──────────────
+      // Format: #NNN= IFCPROJECTEDCRS('CRS_NAME', ...);
+      const crsMatch = text.match(/#\d+=\s*IFCPROJECTEDCRS\s*\(\s*'([^']+)'/i);
+      const crsName = crsMatch ? crsMatch[1] : "EPSG:5514";
 
-    const extractValue = (prop: any): any => {
-      if (prop === null || prop === undefined) return null;
-      if (Array.isArray(prop)) return prop.length > 0 ? extractValue(prop[0]) : null;
-      if (typeof prop === "object" && "value" in prop) return prop.value;
-      return prop;
-    };
+      // ── IfcMapConversion: params 3-8 are eastings/northings/height/vectors/scale ──
+      // Format: #NNN= IFCMAPCONVERSION(#src, #tgt, eastings, northings, height, xAbs, xOrd, scale);
+      // Values may be integers, floats, or scientific notation; nulls are '$'
+      const paramRe = /[-\d.E+]+|\$/gi;
+      const mcBlockMatch = text.match(
+        /#\d+=\s*IFCMAPCONVERSION\s*\(([^)]+)\)/i
+      );
 
-    for (const expressID in model.properties) {
-      const entity = model.properties[expressID];
-      if (!entity || !entity.type) continue;
+      if (!mcBlockMatch) return false;
 
-      const typeStr = entity.type.toUpperCase();
-      if (typeStr === "IFCMAPCONVERSION") {
-        mapConversion = entity;
-      } else if (typeStr === "IFCPROJECTEDCRS") {
-        projectedCRS = entity;
-      }
-    }
+      // Extract all tokens from the parenthesised block
+      const tokens = mcBlockMatch[1].match(paramRe) ?? [];
+      // tokens[0] = SourceCRS ref (e.g. "#193"), tokens[1] = TargetCRS ref
+      // tokens[2..7] = eastings, northings, height, xAbscissa, xOrdinate, scale
+      const parse = (t: string | undefined, def: number) =>
+        !t || t === "$" ? def : Number(t);
 
-    if (mapConversion) {
-      const crsName = extractValue(projectedCRS?.Name) ?? "EPSG:5514";
       this._mapData = {
-        eastings: Number(extractValue(mapConversion.Eastings) ?? 0),
-        northings: Number(extractValue(mapConversion.Northings) ?? 0),
-        orthogonalHeight: Number(extractValue(mapConversion.OrthogonalHeight) ?? 0),
-        xAxisAbscissa: Number(extractValue(mapConversion.XAxisAbscissa) ?? 1.0),
-        xAxisOrdinate: Number(extractValue(mapConversion.XAxisOrdinate) ?? 0.0),
-        scale: Number(extractValue(mapConversion.Scale) ?? 1.0),
-        crsName: crsName
+        eastings:         parse(tokens[2], 0),
+        northings:        parse(tokens[3], 0),
+        orthogonalHeight: parse(tokens[4], 0),
+        xAxisAbscissa:    parse(tokens[5], 1.0),
+        xAxisOrdinate:    parse(tokens[6], 0.0),
+        scale:            parse(tokens[7], 1.0),
+        crsName,
       };
 
-      console.log("[GISMap] Georeferencing detected in model:", this._mapData);
-      
-      // Update manualData fallback with detected values
+
+      // Mirror into manual fallback
       this.manualData = { ...this._mapData };
-      
-      // Refresh the settings card UI if it exists
+
+      // Refresh settings UI
       if (typeof (window as any).refreshGISMapSettingsCard === "function") {
         (window as any).refreshGISMapSettingsCard();
       }
       if (typeof (window as any).refreshGISMapSettingsSection === "function") {
         (window as any).refreshGISMapSettingsSection();
       }
-      
-      if (this._enabled) {
-        this.updateMapTiles();
-      }
-      return true;
-    }
 
-    return false;
+      if (this._enabled) this.updateMapTiles();
+      return true;
+
+    } catch (err) {
+      console.error("[GISMap] Error parsing IFC buffer for georeferencing:", err);
+      return false;
+    }
   }
+
+
+
 
   /**
    * Helper math to convert slippy map tile to Longitude & Latitude
@@ -326,15 +332,12 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
       const [lon, lat] = krovakToWgs84(activeData.eastings, activeData.northings);
       lonCenter = lon;
       latCenter = lat;
-      console.log(`[GISMap] Map center WGS84: Lon=${lonCenter.toFixed(6)}, Lat=${latCenter.toFixed(6)}`);
     } catch (err) {
       console.error("[GISMap] Failed to convert EPSG:5514 coordinates:", err);
     }
 
     // Step 2: Compute slippy map tile index of the center
     const centerTile = this.lonLatToTile(lonCenter, latCenter, this._zoom);
-    console.log(`[GISMap] Zoom=${this._zoom}, Center Tile X=${centerTile.x}, Y=${centerTile.y}`);
-
     // Step 3: Draw a grid of tiles around the center
     const halfGrid = Math.floor(this._gridSize / 2);
     

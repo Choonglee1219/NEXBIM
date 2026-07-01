@@ -306,9 +306,6 @@ fragments.list.onItemSet.add(async ({ value: model }) => {
     fitCameraToAllModels();
   }
 
-  // 🗺️ Detect and setup GIS map coordinates
-  const gisMap = components.get(GISMapComponent);
-  gisMap.detectGeoreferencing(model);
 });
 
 fragments.list.onItemDeleted.add(async () => {

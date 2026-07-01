@@ -1,5 +1,6 @@
 import express, { Request, Response } from "express";
 import { krovakToWgs84 } from "../bim-components/GISMap/krovak.js";
+import { upload } from "../app.js";
 import fs from "fs";
 import path from "path";
 
@@ -142,6 +143,70 @@ router.post("/api/download-map-tiles", async (req: Request, res: Response): Prom
     if (!res.headersSent) {
       res.status(500).json({ error: "Failed to start tile download.", details: err.message });
     }
+  }
+});
+
+// Process IFC via Python microservice: Inject Georeferencing
+router.post("/api/inject-georeferencing", (req, res, next) => upload.single("file")(req, res, next), async (req: Request, res: Response): Promise<any> => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded." });
+    }
+
+    const { 
+      eastings, 
+      northings, 
+      orthogonalHeight, 
+      rotationAngle, 
+      crsName, 
+      crsDescription, 
+      crsGeodeticDatum, 
+      crsVerticalDatum, 
+      crsMapProjection, 
+      crsMapZone, 
+      scale, 
+      scaleY 
+    } = req.body;
+
+    if (eastings === undefined || northings === undefined || rotationAngle === undefined) {
+      return res.status(400).json({ error: "Missing required georeferencing input parameters." });
+    }
+
+    const formData = new FormData();
+    const blob = new Blob([req.file.buffer as any], { type: req.file.mimetype || "application/octet-stream" });
+    formData.append("file", blob, req.file.originalname);
+    formData.append("eastings", String(eastings));
+    formData.append("northings", String(northings));
+    formData.append("orthogonalHeight", String(orthogonalHeight ?? 0.0));
+    formData.append("rotationAngle", String(rotationAngle));
+    
+    if (crsName) formData.append("crsName", String(crsName));
+    if (crsDescription) formData.append("crsDescription", String(crsDescription));
+    if (crsGeodeticDatum) formData.append("crsGeodeticDatum", String(crsGeodeticDatum));
+    if (crsVerticalDatum) formData.append("crsVerticalDatum", String(crsVerticalDatum));
+    if (crsMapProjection) formData.append("crsMapProjection", String(crsMapProjection));
+    if (crsMapZone) formData.append("crsMapZone", String(crsMapZone));
+    if (scale) formData.append("scale", String(scale));
+    if (scaleY) formData.append("scaleY", String(scaleY));
+
+    const response = await fetch("http://127.0.0.1:8000/inject-georeferencing", {
+      method: "POST",
+      body: formData as any,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: "Error from Python georeferencing service", details: errorText });
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const processedBuffer = Buffer.from(arrayBuffer);
+
+    res.setHeader("Content-Type", response.headers.get("Content-Type") || "application/octet-stream");
+    res.send(processedBuffer);
+  } catch (err) {
+    console.error("Error in inject-georeferencing route:", err);
+    res.status(500).json({ error: "Internal Server Error", details: err instanceof Error ? err.message : String(err) });
   }
 });
 
