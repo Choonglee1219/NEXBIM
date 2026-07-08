@@ -1,6 +1,6 @@
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
-import { appIcons, onToggleSection } from "../../globals";
+import { appIcons, onToggleSection, appState } from "../../globals";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { SharedIFC } from "../../bim-components/SharedIFC";
 import { SharedFRAG } from "../../bim-components/SharedFRAG";
@@ -49,7 +49,11 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
     const fQuery = finder.list.get(queryName);
     let results: OBC.ModelIdMap = {};
     if (fQuery) {
+      try {
         results = await fQuery.test({ modelIds: [/.*/] });
+      } catch (err) {
+        console.warn(`Category query failed for ${category}:`, err);
+      }
     }
     finder.list.delete(queryName);
     return results;
@@ -248,9 +252,13 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
   );
 
   // 모델 로드/언로드 시 카테고리 목록 갱신
+  const debouncedUpdateCategories = () => {
+    setTimeout(updateCategories, 100);
+  };
+
   setTimeout(updateCategories, 500);
-  fragments.list.onItemSet.add(updateCategories);
-  fragments.list.onItemDeleted.add(updateCategories);
+  fragments.list.onItemSet.add(debouncedUpdateCategories);
+  fragments.list.onItemDeleted.add(debouncedUpdateCategories);
 
   const processProperties = async (target: BUI.Button, action: string, successMsg: string) => {
     const activeModel = getActiveModel();
@@ -345,11 +353,9 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
 
       // 새 IFC 로드 (IFC -> FRAG 변환 및 로딩)
       const reloadedModel = await ifcLoader.load(modifiedBuffer, false, modelName, {
-        instanceCallback: (importer) => {
+        instanceCallback: (importer: any) => {
           importer.includeUniqueAttributes = true;
           importer.includeRelationNames = true;
-          importer.addAllAttributes();
-          importer.addAllRelations();
         },
       });
       (reloadedModel as any).name = modelName;
@@ -468,13 +474,21 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
       const fragData = await (targetModel as any).getBuffer(false);
       const fragFile = new File([fragData as any], `${baseName}.frag`, { type: "application/octet-stream" });
 
-      const ifcid = await sharedIFC.saveIFC(ifcFile);
+      const activeProjectId = appState.currentProject?.id;
+      const ifcid = await sharedIFC.saveIFC(ifcFile, activeProjectId);
       if (ifcid) {
-        const fragid = await sharedFRAG.saveFRAG(fragFile);
+        const fragid = await sharedFRAG.saveFRAG(fragFile, activeProjectId);
         if (fragid) {
           alert(`성공적으로 데이터베이스에 저장되었습니다!\n- 모델명: ${baseName}\n- IFC ID: ${ifcid}\n- FRAG ID: ${fragid}`);
           (targetModel as any).dbId = ifcid; 
           (targetModel as any).name = baseName;
+
+          if ((window as any).refreshLoadedModelList) {
+            (window as any).refreshLoadedModelList();
+          }
+          if ((window as any).refreshModelTree) {
+            (window as any).refreshModelTree();
+          }
         } else alert("FRAG 파일 저장에 실패했습니다.");
       } else alert("IFC 파일 저장에 실패했습니다.");
     } catch (err) {

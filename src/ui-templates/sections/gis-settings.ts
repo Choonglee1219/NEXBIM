@@ -5,6 +5,7 @@ import { GISMapComponent } from "../../bim-components/GISMap";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { SharedIFC } from "../../bim-components/SharedIFC";
 import { SharedFRAG } from "../../bim-components/SharedFRAG";
+import { ClashService } from "../../bim-components/ClashService";
 
 export interface GISSettingsPanelState {
   components: OBC.Components;
@@ -25,6 +26,7 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
   const fragments = components.get(OBC.FragmentsManager);
   const highlighter = components.get(Highlighter);
   const ifcLoader = components.get(OBC.IfcLoader);
+  const clashService = components.get(ClashService);
   const sharedIFC = new SharedIFC();
   const sharedFRAG = new SharedFRAG();
 
@@ -282,7 +284,13 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
         const modifiedBuffer = new Uint8Array(arrayBuffer);
 
         // 4. 뷰어 리로딩 처리
-        const currentInstance = fragments.list.get(target.uuid);
+        let currentInstance: any = null;
+        for (const [, m] of fragments.list) {
+          if ((m as any).dbId === dbId || (m as any).uuid === target.uuid) {
+            currentInstance = m;
+            break;
+          }
+        }
         if (currentInstance) {
           currentInstance.dispose();
         }
@@ -292,16 +300,26 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
 
         const modelName = `${geoName}.ifc`;
         const reloadedModel = await ifcLoader.load(modifiedBuffer, false, modelName, {
-          instanceCallback: (importer) => {
+          instanceCallback: (importer: any) => {
             importer.includeUniqueAttributes = true;
             importer.includeRelationNames = true;
-            importer.addAllAttributes();
-            importer.addAllRelations();
           },
         });
 
         (reloadedModel as any).name = geoName;
         await fragments.core.update(true);
+
+        // 🗺️ Detect georeferencing from raw IFC buffer
+        gisMap.detectGeorefFromBuffer(modifiedBuffer);
+
+        const newModelId = (reloadedModel as any).uuid;
+        if (newModelId) {
+          clashService.addIfcBuffer(newModelId, modifiedBuffer);
+        }
+
+        if ((window as any).refreshLoadedModelList) {
+          (window as any).refreshLoadedModelList();
+        }
 
         // 5. Oracle 데이터베이스에 새 파일들 저장 (현재 프로젝트 ID 바인딩)
         const ifcFile = new File([modifiedBuffer as any], `${geoName}.ifc`, { type: "application/octet-stream" });
@@ -313,6 +331,8 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
           const newFragId = await sharedFRAG.saveFRAG(fragFile, activeProjectId);
           if (newFragId) {
             (reloadedModel as any).dbId = newIfcId;
+            sharedIFC.addModelUUID(newIfcId, newModelId);
+            sharedFRAG.addModelUUID(newFragId, newModelId);
             successCount++;
           } else {
             console.error(`[GISMap] 가공된 FRAG 파일 저장 실패. Model: ${geoName}`);
@@ -323,6 +343,13 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
       }
 
       await fragments.core.update(true);
+
+      if ((window as any).refreshSharedModelLists) {
+        await (window as any).refreshSharedModelLists();
+      }
+      if ((window as any).refreshLoadedModelList) {
+        (window as any).refreshLoadedModelList();
+      }
       alert(`성공적으로 총 ${modelTargets.length}개 중 ${successCount}개 모델에 Georeferencing 정보가 주입되어 데이터베이스에 새로운 모델로 저장 및 리로드되었습니다!`);
       
       if ((window as any).refreshGISMapSettingsSection) {

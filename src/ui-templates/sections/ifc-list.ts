@@ -128,6 +128,10 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     }
   };
 
+  (window as any).refreshLoadedModelList = () => {
+    updateLoadedModelsList();
+  };
+
   const onDisposeSelectedModels = () => {
     if (selectedLoadedModels.size === 0) {
       alert("선택된 모델이 없습니다.");
@@ -189,6 +193,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
   fragments.list.onItemUpdated.add(updateLoadedModelsList);
   fragments.list.onItemDeleted.add(updateLoadedModelsList);
+  fragments.list.onItemSet.add(updateLoadedModelsList);
 
   updateLoadedModelsList();
 
@@ -238,11 +243,9 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
     const model = await ifcLoader.load(bytes, false, newModelName, {
-      instanceCallback: (importer) => {
+      instanceCallback: (importer: any) => {
         importer.includeUniqueAttributes = true;
         importer.includeRelationNames = true;
-        importer.addAllAttributes();
-        importer.addAllRelations();
       },
     }); // 좌표 원점 조정 해제
     (model as any).name = newModelName;
@@ -339,11 +342,9 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     const ifc = await sharedIFC.loadIFC(ifcid);
     if (ifc && ifc.content) {
       const model = await ifcLoader.load(ifc.content, false, ifc.name, {
-        instanceCallback: (importer) => {
+        instanceCallback: (importer: any) => {
           importer.includeUniqueAttributes = true;
           importer.includeRelationNames = true;
-          importer.addAllAttributes();
-          importer.addAllRelations();
         },
       });
       (model as any).name = ifc.name;
@@ -904,6 +905,15 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
     // 외부 연동 자동화 수행
     runExternalAutomation();
+  };
+
+  (window as any).refreshSharedModelLists = async () => {
+    await refreshSharedIFCList();
+    await refreshSharedFRAGList();
+  };
+
+  (window as any).refreshLoadedModelList = () => {
+    updateLoadedModelsList();
   };
 
   refreshSharedIFCList();

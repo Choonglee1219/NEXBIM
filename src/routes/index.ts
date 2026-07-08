@@ -6,6 +6,7 @@ import clashRouter from "./clash.js";
 import propertiesRouter from "./properties.js";
 import chatRouter from "./chat.js";
 import mapRouter from "./map.js";
+import spatialRouter from "./spatial.js";
 
 
 const router = express.Router();
@@ -28,6 +29,7 @@ router.use(clashRouter);
 router.use(propertiesRouter);
 router.use(chatRouter);
 router.use(mapRouter);
+router.use(spatialRouter);
 
 
 export default router;
