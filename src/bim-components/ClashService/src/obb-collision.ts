@@ -9,6 +9,7 @@ export interface OBB {
 export interface ClashOptions {
   clearance?: number;
   tolerance?: number;
+  excludeSelfCheck?: boolean;
 }
 
 export interface ClashResult {

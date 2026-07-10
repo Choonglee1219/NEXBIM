@@ -257,7 +257,7 @@ self.onmessage = async (e) => {
             continue;
           }
 
-          if (itemA.modelId === itemB.modelId && itemA.expressID === itemB.expressID) continue;
+          if (itemA.modelId === itemB.modelId && (options.excludeSelfCheck || itemA.expressID === itemB.expressID)) continue;
 
           const pairId1 = `${itemA.modelId}-${itemA.expressID}`;
           const pairId2 = `${itemB.modelId}-${itemB.expressID}`;

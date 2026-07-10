@@ -29,6 +29,7 @@ let isClashClearRegistered = false;
 let badgeFilter = "All";
 let badgeFilterDropdown: BUI.Dropdown;
 let matrixCellFilterSet: Set<any> | null = null;
+let cachedExcludeSelfCheck = false;
 
 export const clashUIState = {
   get rawValidResults() { return rawValidResults; },
@@ -111,7 +112,8 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
   let clashValueLabel: BUI.Label;
   let groupDistInput: BUI.TextInput;
   let deleteBtn: BUI.Button;
-  let markerBtn: BUI.Button;
+  let markerBtn: any;
+  let selfCheckBtn: any;
   let searchInput: BUI.TextInput;
 
   // --- Pagination State & Logic ---
@@ -588,7 +590,11 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     const toleranceVal = cachedClashMode === "Hard" ? inputVal : 0;
     const clearanceVal = cachedClashMode === "Soft" ? inputVal : 0;
     
-    const results = await clashService.detectClashes(setA, setB, { clearance: clearanceVal, tolerance: toleranceVal });
+    const results = await clashService.detectClashes(setA, setB, { 
+      clearance: clearanceVal, 
+      tolerance: toleranceVal,
+      excludeSelfCheck: cachedExcludeSelfCheck
+    });
     
     const getCategory = (modelId: string, expressID: number) => {
       for (const [catName, mapData] of preFetchedCategories.entries()) {
@@ -737,10 +743,15 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     }
   };
 
-  const toggleMarkers = () => {
-    isMarkersVisible = !isMarkersVisible;
-    if (markerBtn) markerBtn.active = isMarkersVisible;
+  const onMarkersChange = (e: Event) => {
+    const cb = e.target as any;
+    isMarkersVisible = cb.checked;
     updateMarkers();
+  };
+
+  const onSelfCheckChange = (e: Event) => {
+    const cb = e.target as any;
+    cachedExcludeSelfCheck = !cb.checked;
   };
 
   const saveAllToTopics = async (e?: Event) => {
@@ -854,7 +865,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     applyFilters();
     if (isMarkersVisible) {
       isMarkersVisible = false;
-      if (markerBtn) markerBtn.active = false;
+      if (markerBtn) markerBtn.checked = false;
       updateMarkers();
     }
     await highlighter.clear("select");
@@ -1007,7 +1018,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
       })} fixed label="Clash List ( Total(0) = New(0) + Hold(0) + Exclude(0) )" icon=${appIcons.CLASH}>
       <div style="display: flex; flex-direction: column; gap: 0.5rem; height: 100%;">
         <div style="display: flex; gap: 0.5rem; flex-shrink: 0; align-items: center; position: relative; z-index: 10;">
-          <div style="display: flex; gap: 0.25rem; flex: 1;">
+          <div style="display: flex; gap: 0.25rem; flex: 1; align-items: center;">
             <bim-dropdown
               @change=${(e: Event) => {
                 const dp = e.target as BUI.Dropdown;
@@ -1035,14 +1046,15 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
               @input=${(e: Event) => { cachedClashValue = (e.target as BUI.TextInput).value; }} 
               type="number" style="width: 60px; flex-shrink: 0;">
             </bim-text-input>
+            <bim-checkbox ${BUI.ref(e => selfCheckBtn = e as any)} label="Self Check" .checked=${!cachedExcludeSelfCheck} @change=${onSelfCheckChange} style="padding: 0.5rem; white-space: nowrap;" title="동일한 모델 내 객체 간의 간섭검토 여부"></bim-checkbox>
             <bim-button label="Run Clash" icon=${appIcons.CLASH} @click=${runClash} style="flex: 1; background-color: var(--bim-ui_main-base); color: var(--bim-ui_main-contrast); font-weight: bold;"></bim-button>
-            <bim-button ${BUI.ref(e => markerBtn = e as BUI.Button)} label="Markers" ?active=${isMarkersVisible} icon=${appIcons.MAP} @click=${toggleMarkers} style="flex: 1;"></bim-button>
             <bim-button ${BUI.ref(e => deleteBtn = e as BUI.Button)} label="Delete" icon=${appIcons.DELETE} @click=${onDeleteSelected} disabled style="flex: 1;"></bim-button>
             <bim-button label="Clear" icon=${appIcons.CLEAR} @click=${onClearAll} style="flex: 1;"></bim-button>
+            <bim-checkbox ${BUI.ref(e => markerBtn = e as any)} label="Markers" .checked=${isMarkersVisible} @change=${onMarkersChange} style="padding: 0.5rem; white-space: nowrap;" title="간섭 위치 마커 표시 여부"></bim-checkbox>
             <bim-button label="To Topic" icon=${appIcons.SAVE} @click=${saveAllToTopics} style="flex: 1;"></bim-button>
             <bim-button label="Export" icon=${appIcons.EXPORT} @click=${onExportCSV} style="flex: 1;"></bim-button>
           </div>
-          <div style="display: flex; gap: 0.25rem; flex: 1;">
+          <div style="display: flex; gap: 0.25rem; flex: 1; align-items: center;">
             <bim-dropdown
             ${BUI.ref(e => badgeFilterDropdown = e as BUI.Dropdown)}
             @change=${(e: Event) => {
