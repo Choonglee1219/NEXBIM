@@ -354,8 +354,11 @@ router.get("/api/bcf/:id", async (req: Request, res: Response): Promise<void> =>
       res.status(404).json({ error: "BCF data not found" });
       return;
     }
-    const base64Content = bcf.content.toString("base64");
-    res.json({ name: bcf.name, content: base64Content });
+    res.setHeader("Content-Type", "application/octet-stream");
+    const encodedName = encodeURIComponent(bcf.name || "model.bcf");
+    res.setHeader("x-file-name", encodedName);
+    res.setHeader("Content-Disposition", `attachment; filename="${encodedName}"`);
+    res.send(bcf.content);
   } catch (err) {
     console.error("Error fetching BCF:", err);
     res.status(500).json({ error: "Failed to fetch BCF" });

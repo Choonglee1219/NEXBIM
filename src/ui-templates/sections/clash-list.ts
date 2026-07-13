@@ -113,7 +113,6 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
   let groupDistInput: BUI.TextInput;
   let deleteBtn: BUI.Button;
   let markerBtn: any;
-  let selfCheckBtn: any;
   let searchInput: BUI.TextInput;
 
   // --- Pagination State & Logic ---
@@ -130,7 +129,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     let newCount = 0;
     let holdCount = 0;
     let excludeCount = 0;
-    
+
     // 화면의 행(Row) 기준이 아닌 실제 모든 간섭 아이템(Flat Data) 기준으로 집계
     for (const row of cachedFlatData) {
       const badge = (row.data.raw as any).badge || row.data.Badge || "New";
@@ -138,7 +137,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
       else if (badge === "Exclude") excludeCount++;
       else newCount++;
     }
-    
+
     clashSection.label = `Clash List ( Total(${cachedFlatData.length}) = New(${newCount}) + Hold(${holdCount}) + Exclude(${excludeCount}) )`;
   };
 
@@ -149,7 +148,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
         let colorStr = "hsl(0, 65%, 40%)"; // New
         if (badge === "Hold") colorStr = "hsl(45, 65%, 40%)";
         else if (badge === "Exclude") colorStr = "hsl(205, 65%, 40%)";
-        
+
         return {
           position: row.data.raw.position,
           color: new THREE.Color(colorStr)
@@ -175,7 +174,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
 
   const applyFilters = () => {
     let matrixClashData: any[] = [];
-    
+
     if (!rawValidResults) {
       filteredClashData = [];
       cachedFlatData = [];
@@ -187,7 +186,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
       // 2. 동적 그룹화 (거리 기반 계산)
       const parsedDist = parseFloat(cachedGroupDistance);
       const GROUP_DISTANCE = isNaN(parsedDist) ? 0.5 : parsedDist;
-      
+
       const groups: { center: THREE.Vector3, items: ClashResult[] }[] = [];
       for (const res of effectiveResults) {
         let foundGroup = false;
@@ -248,12 +247,12 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
             uniqueObjects.add(`${item.id2.modelId}-${item.id2.expressID}`);
           });
           const entityStr = Array.from(entities).join(", ");
-          
+
           const model1Name = model1Set.size === 1 ? (modelNamesCache.get(Array.from(model1Set)[0]) || "Unknown") : "Multi";
           const model2Name = model2Set.size === 1 ? (modelNamesCache.get(Array.from(model2Set)[0]) || "Unknown") : "Multi";
 
           const pos = group.center;
-          
+
           let groupBadge = "New";
           if (items.length > 0) {
             const hasNew = items.some(item => ((item as any).badge || "New") === "New");
@@ -298,7 +297,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
         const filterTree = (nodes: any[]): any[] => {
           return nodes.map(node => {
             const d = node.data;
-            
+
             let matchSearch = true;
             if (searchQuery) {
               if (d.isGroup) {
@@ -314,12 +313,12 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
                 );
               }
             }
-            
+
             let matchBadge = true;
             if (badgeFilter !== "All") {
               matchBadge = d.Badge === badgeFilter;
             }
-            
+
             let matchMatrix = true;
             if (matrixCellFilterSet) {
               if (d.isGroup) {
@@ -328,7 +327,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
                 matchMatrix = matrixCellFilterSet.has(d.raw);
               }
             }
-            
+
             const match = matchSearch && matchBadge && matchMatrix;
 
             if (node.children) {
@@ -342,7 +341,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
             return match ? node : null;
           }).filter(n => n !== null);
         };
-        
+
         filteredClashData = filterTree(cachedClashData);
       } else {
         filteredClashData = [...cachedClashData];
@@ -350,11 +349,11 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
 
       cachedFlatData = getFlatDataFromTree(filteredClashData);
     }
-    
+
     totalItems = filteredClashData.length;
     totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
     if (currentPage >= totalPages) currentPage = Math.max(0, totalPages - 1);
-    
+
     updatePage();
 
     if (updateMatrixFn) {
@@ -389,7 +388,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     }
 
     updateClashCountLabel();
-    
+
     if (paginationRefs.container) paginationRefs.container.style.display = totalPages > 1 ? "flex" : "none";
     if (paginationRefs.label) paginationRefs.label.textContent = `${currentPage + 1} / ${totalPages}`;
     if (paginationRefs.prev) paginationRefs.prev.disabled = currentPage === 0;
@@ -419,31 +418,31 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
         "New": "hsl(0, 65%, 40%)"
       };
       const color = colors[currentBadge] || colors["New"];
-      
+
       return BUI.html`
         <bim-dropdown
           @change=${(e: Event) => {
-            e.stopPropagation();
-            const dp = e.target as BUI.Dropdown;
-            dp.visible = false;
-            const newVal = (dp.value[0] as string) || "New";
-            row.Badge = newVal;
-            dp.style.color = colors[newVal];
-            dp.style.setProperty("--bim-ui_bg-contrast-100", colors[newVal]);
-            
-            if (row.isGroup) {
-              (row.rawGroup as any).badge = newVal;
-              for (const res of (row.rawGroup as any[])) {
-                res.badge = newVal;
-              }
-            } else {
-              (row.raw as any).badge = newVal;
+          e.stopPropagation();
+          const dp = e.target as BUI.Dropdown;
+          dp.visible = false;
+          const newVal = (dp.value[0] as string) || "New";
+          row.Badge = newVal;
+          dp.style.color = colors[newVal];
+          dp.style.setProperty("--bim-ui_bg-contrast-100", colors[newVal]);
+
+          if (row.isGroup) {
+            (row.rawGroup as any).badge = newVal;
+            for (const res of (row.rawGroup as any[])) {
+              res.badge = newVal;
             }
-            
-            // 마커 색상 즉시 업데이트
-            updateMarkers();
-            updateClashCountLabel();
-          }}
+          } else {
+            (row.raw as any).badge = newVal;
+          }
+
+          // 마커 색상 즉시 업데이트
+          updateMarkers();
+          updateClashCountLabel();
+        }}
           style="width: 100%; min-width: 90px; color: ${color}; --bim-ui_bg-contrast-100: ${color}; font-weight: bold; background: transparent;"
         >
           <bim-option label="New" value="New" style="color: ${colors["New"]}; --bim-ui_bg-contrast-100: ${colors["New"]}; font-weight: bold;" ?checked=${currentBadge === "New"}></bim-option>
@@ -457,56 +456,56 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
         return BUI.html`
           <div style="display: flex; justify-content: center; gap: 0.25rem;">
             <bim-button style=${tableButtonStyle || ''} icon=${appIcons.SELECT} @click=${async (e: Event) => {
-              e.stopPropagation();
-              const resList = row.rawGroup as ClashResult[];
-              const map: OBC.ModelIdMap = {};
-              for(const r of resList) {
-                if(!map[r.id1.modelId]) map[r.id1.modelId] = new Set();
-                map[r.id1.modelId].add(r.id1.expressID);
-                if(!map[r.id2.modelId]) map[r.id2.modelId] = new Set();
-                map[r.id2.modelId].add(r.id2.expressID);
-              }
-              const highlighter = components.get(Highlighter);
-              await highlighter.clear("select");
-              await highlighter.highlightByID("select", map);
-            }} title="Select All Objects in Group"></bim-button>
+            e.stopPropagation();
+            const resList = row.rawGroup as ClashResult[];
+            const map: OBC.ModelIdMap = {};
+            for (const r of resList) {
+              if (!map[r.id1.modelId]) map[r.id1.modelId] = new Set();
+              map[r.id1.modelId].add(r.id1.expressID);
+              if (!map[r.id2.modelId]) map[r.id2.modelId] = new Set();
+              map[r.id2.modelId].add(r.id2.expressID);
+            }
+            const highlighter = components.get(Highlighter);
+            await highlighter.clear("select");
+            await highlighter.highlightByID("select", map);
+          }} title="Select All Objects in Group"></bim-button>
             <bim-button style=${tableButtonStyle || ''} icon=${appIcons.DELETE} @click=${(e: Event) => {
-              e.stopPropagation();
-              if (!confirm("이 간섭 그룹을 삭제하시겠습니까?")) return;
-              const resList = row.rawGroup as ClashResult[];
-              const toDelete = new Set(resList);
-              if (rawValidResults) {
-                rawValidResults = rawValidResults.filter(r => !toDelete.has(r));
-                clashTable.selection.clear();
-                if (deleteBtn) deleteBtn.disabled = true;
-                applyFilters();
-              }
-            }} title="Delete Group"></bim-button>
-            <bim-button style=${tableButtonStyle || ''} icon=${appIcons.SAVE} @click=${(e: Event) => {
-              e.stopPropagation();
-              const posStr = row.Position as string;
-              const coords = posStr.split(",").map(Number);
-              const resList = row.rawGroup as ClashResult[];
-              clashService.saveGroupToTopic(new THREE.Vector3(coords[0], coords[1], coords[2]), resList);
-            }} title="Create Topic for Group"></bim-button>
-          </div>
-        `;
-      }
-      
-      const res = row.raw as ClashResult;
-      return BUI.html`
-        <div style="display: flex; justify-content: center; gap: 0.25rem;">
-          <bim-button style=${tableButtonStyle || ''} icon=${appIcons.SELECT} @click=${(e: Event) => { e.stopPropagation(); clashService.selectClashObjects(res); }} title="Select Objects"></bim-button>
-          <bim-button style=${tableButtonStyle || ''} icon=${appIcons.DELETE} @click=${(e: Event) => { 
-            e.stopPropagation(); 
-            if (!confirm("이 간섭 항목을 삭제하시겠습니까?")) return;
+            e.stopPropagation();
+            if (!confirm("이 간섭 그룹을 삭제하시겠습니까?")) return;
+            const resList = row.rawGroup as ClashResult[];
+            const toDelete = new Set(resList);
             if (rawValidResults) {
-              rawValidResults = rawValidResults.filter(r => r !== res);
+              rawValidResults = rawValidResults.filter(r => !toDelete.has(r));
               clashTable.selection.clear();
               if (deleteBtn) deleteBtn.disabled = true;
               applyFilters();
             }
-          }} title="Delete Clash"></bim-button>
+          }} title="Delete Group"></bim-button>
+            <bim-button style=${tableButtonStyle || ''} icon=${appIcons.SAVE} @click=${(e: Event) => {
+            e.stopPropagation();
+            const posStr = row.Position as string;
+            const coords = posStr.split(",").map(Number);
+            const resList = row.rawGroup as ClashResult[];
+            clashService.saveGroupToTopic(new THREE.Vector3(coords[0], coords[1], coords[2]), resList);
+          }} title="Create Topic for Group"></bim-button>
+          </div>
+        `;
+      }
+
+      const res = row.raw as ClashResult;
+      return BUI.html`
+        <div style="display: flex; justify-content: center; gap: 0.25rem;">
+          <bim-button style=${tableButtonStyle || ''} icon=${appIcons.SELECT} @click=${(e: Event) => { e.stopPropagation(); clashService.selectClashObjects(res); }} title="Select Objects"></bim-button>
+          <bim-button style=${tableButtonStyle || ''} icon=${appIcons.DELETE} @click=${(e: Event) => {
+          e.stopPropagation();
+          if (!confirm("이 간섭 항목을 삭제하시겠습니까?")) return;
+          if (rawValidResults) {
+            rawValidResults = rawValidResults.filter(r => r !== res);
+            clashTable.selection.clear();
+            if (deleteBtn) deleteBtn.disabled = true;
+            applyFilters();
+          }
+        }} title="Delete Clash"></bim-button>
           <bim-button style=${tableButtonStyle || ''} icon=${appIcons.SAVE} @click=${(e: Event) => { e.stopPropagation(); clashService.saveToTopic(res); }} title="Create Topic"></bim-button>
         </div>
       `;
@@ -516,7 +515,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
   const runClash = async (e?: Event) => {
     const btn = e ? e.target as BUI.Button : null;
     if (btn) btn.loading = true;
-    
+
     let setA: OBC.ModelIdMap = {};
     let setB: OBC.ModelIdMap = {};
 
@@ -550,13 +549,13 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
               preFetchedCategories.set(cleanCatName, mapData);
             }
           }
-        } catch (e) {}
+        } catch (e) { }
       }
     }
     cachedAllCategories = Array.from(preFetchedCategories.keys()).sort();
 
     const allModelIdMap: OBC.ModelIdMap = {};
-    
+
     for (const modelIdMap of preFetchedCategories.values()) {
       OBC.ModelIdMapUtils.add(allModelIdMap, modelIdMap);
     }
@@ -589,13 +588,13 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     const inputVal = isNaN(rawVal) ? 0.05 : rawVal;
     const toleranceVal = cachedClashMode === "Hard" ? inputVal : 0;
     const clearanceVal = cachedClashMode === "Soft" ? inputVal : 0;
-    
-    const results = await clashService.detectClashes(setA, setB, { 
-      clearance: clearanceVal, 
+
+    const results = await clashService.detectClashes(setA, setB, {
+      clearance: clearanceVal,
       tolerance: toleranceVal,
       excludeSelfCheck: cachedExcludeSelfCheck
     });
-    
+
     const getCategory = (modelId: string, expressID: number) => {
       for (const [catName, mapData] of preFetchedCategories.entries()) {
         if (mapData[modelId] && mapData[modelId].has(expressID)) {
@@ -619,10 +618,10 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     for (const res of validResults) {
       if (!idMap[res.id1.modelId]) idMap[res.id1.modelId] = new Set();
       idMap[res.id1.modelId].add(res.id1.expressID);
-      
+
       if (!idMap[res.id2.modelId]) idMap[res.id2.modelId] = new Set();
       idMap[res.id2.modelId].add(res.id2.expressID);
-      
+
       if (!modelNames.has(res.id1.modelId)) {
         const m = fragmentsManager.list.get(res.id1.modelId);
         modelNames.set(res.id1.modelId, m && (m as any).name ? (m as any).name : `Model-${res.id1.modelId.substring(0, 4)}`);
@@ -647,22 +646,22 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
             attributesDefault: true,
             relationsDefault: { attributes: false, relations: false },
           });
-          
+
           for (let i = 0; i < itemsData.length; i++) {
-             const itemAny = itemsData[i] as any;
-             const expressId = itemAny.expressID ?? itemAny.id ?? itemAny._localId?.value ?? itemAny._localId ?? idsArray[i];
-             let name = "Unknown";
-             let guid = "Unknown";
-             if (itemAny.Name) {
-               name = typeof itemAny.Name === "object" && itemAny.Name.value !== undefined ? String(itemAny.Name.value) : String(itemAny.Name);
-             }
-             if (itemAny._guid) {
-               guid = typeof itemAny._guid === "object" && itemAny._guid.value !== undefined ? String(itemAny._guid.value) : String(itemAny._guid);
-             } else if (itemAny.GlobalId) {
-               guid = typeof itemAny.GlobalId === "object" && itemAny.GlobalId.value !== undefined ? String(itemAny.GlobalId.value) : String(itemAny.GlobalId);
-             }
-             itemNamesCache.set(`${modelId}-${expressId}`, name);
-             itemGuidsCache.set(`${modelId}-${expressId}`, guid);
+            const itemAny = itemsData[i] as any;
+            const expressId = itemAny.expressID ?? itemAny.id ?? itemAny._localId?.value ?? itemAny._localId ?? idsArray[i];
+            let name = "Unknown";
+            let guid = "Unknown";
+            if (itemAny.Name) {
+              name = typeof itemAny.Name === "object" && itemAny.Name.value !== undefined ? String(itemAny.Name.value) : String(itemAny.Name);
+            }
+            if (itemAny._guid) {
+              guid = typeof itemAny._guid === "object" && itemAny._guid.value !== undefined ? String(itemAny._guid.value) : String(itemAny._guid);
+            } else if (itemAny.GlobalId) {
+              guid = typeof itemAny.GlobalId === "object" && itemAny.GlobalId.value !== undefined ? String(itemAny.GlobalId.value) : String(itemAny.GlobalId);
+            }
+            itemNamesCache.set(`${modelId}-${expressId}`, name);
+            itemGuidsCache.set(`${modelId}-${expressId}`, guid);
           }
         } catch (e) {
           console.warn("Error fetching item names:", e);
@@ -688,12 +687,12 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ pairs: pairsToFetch })
         });
-        
+
         if (dbRes.ok) {
           const dbStatuses = await dbRes.json();
           const dbMap = new Map();
           for (const row of dbStatuses) dbMap.set(`${row.guid1}|${row.guid2}`, row.badge);
-          
+
           for (const res of validResults) {
             const g1 = itemGuidsCache.get(`${res.id1.modelId}-${res.id1.expressID}`) || "";
             const g2 = itemGuidsCache.get(`${res.id2.modelId}-${res.id2.expressID}`) || "";
@@ -720,7 +719,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
       // UI 자동 탭 전환 로직 (ThatOpen UI 구조 대응)
       if (clashSection) {
         clashSection.collapsed = false;
-        
+
         const parentPanel = clashSection.closest("bim-panel");
         if (parentPanel) {
           const tabId = parentPanel.getAttribute("name") || parentPanel.getAttribute("slot");
@@ -757,17 +756,17 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
   const saveAllToTopics = async (e?: Event) => {
     const btn = e ? e.target as BUI.Button : null;
     if (btn) btn.loading = true;
-    
+
     // 1. Hold 및 Exclude 상태인 간섭들을 DB에 백업하여 모델 개정 시 유지되도록 처리 (UPSERT)
     const statusPayload: any[] = [];
-    const deletePayload: {guid1: string, guid2: string}[] = [];
+    const deletePayload: { guid1: string, guid2: string }[] = [];
     if (cachedFlatData) {
       for (const row of cachedFlatData) {
         const badge = ((row.data.raw as any).badge || row.data.Badge || "New");
         const raw = row.data.raw as ClashResult;
         const g1 = itemGuidsCache.get(`${raw.id1.modelId}-${raw.id1.expressID}`) || "Unknown";
         const g2 = itemGuidsCache.get(`${raw.id2.modelId}-${raw.id2.expressID}`) || "Unknown";
-        
+
         // 순서 무결성을 위해 GUID를 알파벳 순으로 정렬합니다.
         const [sortedG1, sortedG2] = [g1, g2].sort();
         const isSwapped = sortedG1 !== g1;
@@ -816,8 +815,8 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     // 평탄화된 데이터 중에서 Badge 값이 "New"인 간섭 결과만 추출하여 BCF로 내보냅니다.
     const newResults = cachedFlatData
       ? cachedFlatData
-          .filter(row => ((row.data.raw as any).badge || row.data.Badge || "New") === "New")
-          .map(row => row.data.raw as ClashResult)
+        .filter(row => ((row.data.raw as any).badge || row.data.Badge || "New") === "New")
+        .map(row => row.data.raw as ClashResult)
       : [];
 
     if (newResults.length === 0) {
@@ -836,14 +835,14 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     for (const sel of clashTable.selection) {
       if ((sel as any).raw) selectedSet.add((sel as any).raw);
     }
-    
+
     if (rawValidResults) {
       rawValidResults = rawValidResults.filter(res => !selectedSet.has(res));
     }
-    
+
     clashTable.selection.clear();
     if (deleteBtn) deleteBtn.disabled = true;
-    
+
     applyFilters();
   };
 
@@ -870,7 +869,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     }
     await highlighter.clear("select");
     const clashPalette = [
-      "#C00000", "#00B050", "#0070C0", "#FFC000", "#7030A0", 
+      "#C00000", "#00B050", "#0070C0", "#FFC000", "#7030A0",
       "#FF66CC", "#00CCFF", "#FF9933", "#99CC00", "#3399FF"
     ];
     for (const color of clashPalette) {
@@ -911,15 +910,15 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
   const onExcludeSearch = () => {
     if (!rawValidResults || !searchQuery) return;
     if (cachedFlatData.length === 0) return;
-    
+
     if (!confirm(`검색된 ${cachedFlatData.length}개의 간섭 결과를 삭제(Exclude)하시겠습니까?`)) return;
 
     const excludedSet = new Set(cachedFlatData.map(row => row.data.raw));
     rawValidResults = rawValidResults.filter(res => !excludedSet.has(res));
-    
+
     clashTable.selection.clear();
     if (deleteBtn) deleteBtn.disabled = true;
-    
+
     onClearSearch();
   };
 
@@ -931,7 +930,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
 
     const isolateSet = new Set(cachedFlatData.map(row => row.data.raw));
     rawValidResults = rawValidResults.filter(res => isolateSet.has(res));
-    
+
     clashTable.selection.clear();
     if (deleteBtn) deleteBtn.disabled = true;
 
@@ -973,7 +972,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     URL.revokeObjectURL(url);
   };
 
-  const [matrixPanel, updateMatrix] = clashMatrix({ 
+  const [matrixPanel, updateMatrix] = clashMatrix({
     components,
     clashData: filteredClashData,
     allCategories: cachedAllCategories,
@@ -989,14 +988,14 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     },
     onBadgeChanged: (pairs: [string, string][], badge: string) => {
       if (pairs.length === 0) return;
-      
+
       if (rawValidResults) {
         for (const res of rawValidResults) {
           const cat1 = String((res.id1 as any).category || "").toUpperCase();
           const cat2 = String((res.id2 as any).category || "").toUpperCase();
           for (const [pc1, pc2] of pairs) {
-            if ((cat1 === pc1.toUpperCase() && cat2 === pc2.toUpperCase()) || 
-                (cat1 === pc2.toUpperCase() && cat2 === pc1.toUpperCase())) {
+            if ((cat1 === pc1.toUpperCase() && cat2 === pc2.toUpperCase()) ||
+              (cat1 === pc2.toUpperCase() && cat2 === pc1.toUpperCase())) {
               (res as any).badge = badge;
             }
           }
@@ -1012,41 +1011,41 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
   matrixPanel.style.boxSizing = "border-box";
 
   return BUI.html`
-    <bim-panel-section ${BUI.ref((el) => { 
-        clashSection = el as BUI.PanelSection; 
-        setTimeout(() => applyFilters(), 0); 
-      })} fixed label="Clash List ( Total(0) = New(0) + Hold(0) + Exclude(0) )" icon=${appIcons.CLASH}>
+    <bim-panel-section ${BUI.ref((el) => {
+    clashSection = el as BUI.PanelSection;
+    setTimeout(() => applyFilters(), 0);
+  })} fixed label="Clash List ( Total(0) = New(0) + Hold(0) + Exclude(0) )" icon=${appIcons.CLASH}>
       <div style="display: flex; flex-direction: column; gap: 0.5rem; height: 100%;">
         <div style="display: flex; gap: 0.5rem; flex-shrink: 0; align-items: center; position: relative; z-index: 10;">
           <div style="display: flex; gap: 0.25rem; flex: 1; align-items: center;">
             <bim-dropdown
               @change=${(e: Event) => {
-                const dp = e.target as BUI.Dropdown;
-                dp.visible = false;
-                cachedClashMode = dp.value[0] as string;
-                if (clashValueLabel) clashValueLabel.textContent = cachedClashMode === "Hard" ? "Tolerance (m)" : "Clearance (m)";
-              }}
+      const dp = e.target as BUI.Dropdown;
+      dp.visible = false;
+      cachedClashMode = dp.value[0] as string;
+      if (clashValueLabel) clashValueLabel.textContent = cachedClashMode === "Hard" ? "Tolerance (m)" : "Clearance (m)";
+    }}
               style="width: 120px; flex-shrink: 0;"
             >
               <bim-option label="Hard Clash" value="Hard" ?checked=${cachedClashMode === "Hard"}></bim-option>
               <bim-option label="Soft Clash" value="Soft" ?checked=${cachedClashMode === "Soft"}></bim-option>
             </bim-dropdown>
             <bim-label ${BUI.ref(e => {
-              clashValueLabel = e as BUI.Label;
-              if (clashValueLabel) {
-                clashValueLabel.textContent = cachedClashMode === "Hard" ? "Tolerance (m)" : "Clearance (m)";
-              }
-              })} style="white-space: nowrap; margin: 0 0.25rem;">
+      clashValueLabel = e as BUI.Label;
+      if (clashValueLabel) {
+        clashValueLabel.textContent = cachedClashMode === "Hard" ? "Tolerance (m)" : "Clearance (m)";
+      }
+    })} style="white-space: nowrap; margin: 0 0.25rem;">
             </bim-label>
             <bim-text-input 
-              ${BUI.ref((e) => { 
-                clashValueInput = e as BUI.TextInput; 
-                if (clashValueInput) { clashValueInput.value = cachedClashValue; }
-              })} 
+              ${BUI.ref((e) => {
+      clashValueInput = e as BUI.TextInput;
+      if (clashValueInput) { clashValueInput.value = cachedClashValue; }
+    })} 
               @input=${(e: Event) => { cachedClashValue = (e.target as BUI.TextInput).value; }} 
               type="number" style="width: 60px; flex-shrink: 0;">
             </bim-text-input>
-            <bim-checkbox ${BUI.ref(e => selfCheckBtn = e as any)} label="Self Check" .checked=${!cachedExcludeSelfCheck} @change=${onSelfCheckChange} style="padding: 0.5rem; white-space: nowrap;" title="동일한 모델 내 객체 간의 간섭검토 여부"></bim-checkbox>
+            <bim-checkbox label="Self Check" .checked=${!cachedExcludeSelfCheck} @change=${onSelfCheckChange} style="padding: 0.5rem; white-space: nowrap;" title="동일한 모델 내 객체 간의 간섭검토 여부"></bim-checkbox>
             <bim-button label="Run Clash" icon=${appIcons.CLASH} @click=${runClash} style="flex: 1; background-color: var(--bim-ui_main-base); color: var(--bim-ui_main-contrast); font-weight: bold;"></bim-button>
             <bim-button ${BUI.ref(e => deleteBtn = e as BUI.Button)} label="Delete" icon=${appIcons.DELETE} @click=${onDeleteSelected} disabled style="flex: 1;"></bim-button>
             <bim-button label="Clear" icon=${appIcons.CLEAR} @click=${onClearAll} style="flex: 1;"></bim-button>
@@ -1058,12 +1057,12 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
             <bim-dropdown
             ${BUI.ref(e => badgeFilterDropdown = e as BUI.Dropdown)}
             @change=${(e: Event) => {
-              const dp = e.target as BUI.Dropdown;
-              dp.visible = false;
-              badgeFilter = (dp.value[0] as string) || "All";
-              currentPage = 0;
-              applyFilters();
-            }}
+      const dp = e.target as BUI.Dropdown;
+      dp.visible = false;
+      badgeFilter = (dp.value[0] as string) || "All";
+      currentPage = 0;
+      applyFilters();
+    }}
             style="flex: 0.2;"
             >
             <bim-option label="All" value="All" ?checked=${badgeFilter === "All"}></bim-option>
@@ -1073,14 +1072,14 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
             </bim-dropdown>
             <bim-label style="white-space: nowrap; margin: 0 0.25rem;">Group Dist. (m)</bim-label>
             <bim-text-input 
-              ${BUI.ref((e) => { 
-                groupDistInput = e as BUI.TextInput; 
-                if (groupDistInput) { groupDistInput.value = cachedGroupDistance; }
-              })} 
-              @input=${(e: Event) => { 
-                cachedGroupDistance = (e.target as BUI.TextInput).value; 
-                applyFilters();
-              }} type="number" style="flex: 0.2;" title="근접한 간섭 마커를 하나로 묶을 반경 거리 (m)"></bim-text-input>
+              ${BUI.ref((e) => {
+      groupDistInput = e as BUI.TextInput;
+      if (groupDistInput) { groupDistInput.value = cachedGroupDistance; }
+    })} 
+              @input=${(e: Event) => {
+      cachedGroupDistance = (e.target as BUI.TextInput).value;
+      applyFilters();
+    }} type="number" style="flex: 0.2;" title="근접한 간섭 마커를 하나로 묶을 반경 거리 (m)"></bim-text-input>
             <bim-text-input ${BUI.ref((e) => { searchInput = e as BUI.TextInput; })} @input=${onSearch} vertical placeholder="Search Model or Entity..." debounce="200" style="flex: 1;"></bim-text-input>
             <bim-button @click=${onClearSearch} icon=${appIcons.CLEAR} tooltip-title="Clear Search" style="flex: 0 0 auto;"></bim-button>
             <bim-button @click=${onExcludeSearch} icon=${appIcons.EXCLUDE} tooltip-title="Remove search results from list" style="flex: 0 0 auto;"></bim-button>

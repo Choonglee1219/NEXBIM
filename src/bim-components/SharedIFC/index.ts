@@ -1,8 +1,3 @@
-interface IfcRow {
-  id: number;
-  name: string;
-  content: Uint8Array | string;
-}
 
 interface IfcBasicInfo {
   id: number;
@@ -52,27 +47,22 @@ export class SharedIFC {
         alert("해당 ID의 IFC 데이터를 찾을 수 없습니다.")
         return null;
       }
-      const ifcRow: IfcRow = await ifcResponse.json();
+      const encodedName = ifcResponse.headers.get("x-file-name") || "model.ifc";
+      const name = decodeURIComponent(encodedName);
 
-      if (!ifcRow.content || ifcRow.content.length === 0) {
+      const arrayBuffer = await ifcResponse.arrayBuffer();
+      const ifc_data = new Uint8Array(arrayBuffer);
+
+      if (ifc_data.length === 0) {
         console.error("Not found IFC data found.");
-        alert("IFC 데이터를 찹을 수 없습니다.")
+        alert("IFC 데이터를 찾을 수 없습니다.")
         return null;
       }
 
-      if (typeof ifcRow.content === 'string') {
-        const decodedContent = atob(ifcRow.content);
-        const ifc_data = new Uint8Array(decodedContent.length);
-        for (let i = 0; i < decodedContent.length; i++) {
-          ifc_data[i] = decodedContent.charCodeAt(i);
-        }
-        
-        return {
-          name: ifcRow.name,
-          content: ifc_data, 
-        };
-      }
-      return null;
+      return {
+        name,
+        content: ifc_data, 
+      };
     }
     catch (error) {
       console.error("Error loading IFC data:", error);

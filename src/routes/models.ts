@@ -67,8 +67,11 @@ router.get("/api/ifc/:id", async (req: Request, res: Response): Promise<void> =>
       res.status(404).json({ error: "IFC data not found" });
       return;
     }
-    const base64Content = ifc.content.toString("base64");
-    res.json({ name: ifc.name, content: base64Content });
+    res.setHeader("Content-Type", "application/octet-stream");
+    const encodedName = encodeURIComponent(ifc.name || "model.ifc");
+    res.setHeader("x-file-name", encodedName);
+    res.setHeader("Content-Disposition", `attachment; filename="${encodedName}"`);
+    res.send(ifc.content);
   } catch (err) {
     console.error("Error fetching IFC:", err);
     res.status(500).json({ error: "Failed to fetch IFC" });
@@ -247,8 +250,11 @@ router.get("/api/frag/:id", async (req: Request, res: Response): Promise<void> =
       res.status(404).json({ error: "FRAG data not found" });
       return;
     }
-    const base64Content = frag.content.toString("base64");
-    res.json({ name: frag.name, content: base64Content });
+    res.setHeader("Content-Type", "application/octet-stream");
+    const encodedName = encodeURIComponent(frag.name || "model.frag");
+    res.setHeader("x-file-name", encodedName);
+    res.setHeader("Content-Disposition", `attachment; filename="${encodedName}"`);
+    res.send(frag.content);
   } catch (err) {
     console.error("Error fetching FRAG:", err);
     res.status(500).json({ error: "Failed to fetch FRAG" });

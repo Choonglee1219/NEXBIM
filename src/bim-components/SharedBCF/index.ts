@@ -1,8 +1,3 @@
-interface BcfRow {
-  id: number;
-  name: string;
-  content: Uint8Array | string;
-}
 
 interface BcfBasicInfo {
   id: number;
@@ -56,24 +51,22 @@ export class SharedBCF {
         alert("해당 ID의 BCF 데이터를 찾을 수 없습니다.")
         return null;
       }
-      const bcfRow: BcfRow = await bcfResponse.json();
-      if (!bcfRow.content || bcfRow.content.length === 0) {
+      const encodedName = bcfResponse.headers.get("x-file-name") || "model.bcf";
+      const name = decodeURIComponent(encodedName);
+
+      const arrayBuffer = await bcfResponse.arrayBuffer();
+      const bcf_data = new Uint8Array(arrayBuffer);
+
+      if (bcf_data.length === 0) {
         console.error("Not found BCF data found.");
         alert("BCF 데이터를 찾을 수 없습니다.")
         return null;
       }
-      if (typeof bcfRow.content === 'string') {
-        const decodedContent = atob(bcfRow.content);
-        const bcf_data = new Uint8Array(decodedContent.length);
-        for (let i = 0; i < decodedContent.length; i++) {
-          bcf_data[i] = decodedContent.charCodeAt(i);
-        }
-        return {
-          name: bcfRow.name,
-          content: bcf_data, 
-        };
-      }
-      return null;
+
+      return {
+        name,
+        content: bcf_data, 
+      };
     }
     catch (error) {
       console.error("Error loading BCF data:", error);

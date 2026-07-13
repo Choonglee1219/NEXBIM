@@ -1,8 +1,3 @@
-interface FragRow {
-  id: number;
-  name: string;
-  content: Uint8Array | string;
-}
 
 interface FragBasicInfo {
   id: number;
@@ -52,27 +47,22 @@ export class SharedFRAG {
         alert("해당 ID의 FRAG 데이터를 찾을 수 없습니다.")
         return null;
       }
-      const fragRow: FragRow = await fragResponse.json();
+      const encodedName = fragResponse.headers.get("x-file-name") || "model.frag";
+      const name = decodeURIComponent(encodedName);
 
-      if (!fragRow.content || fragRow.content.length === 0) {
+      const arrayBuffer = await fragResponse.arrayBuffer();
+      const frag_data = new Uint8Array(arrayBuffer);
+
+      if (frag_data.length === 0) {
         console.error("Not found FRAG data found.");
-        alert("FRAG 데이터를 찹을 수 없습니다.")
+        alert("FRAG 데이터를 찾을 수 없습니다.")
         return null;
       }
 
-      if (typeof fragRow.content === 'string') {
-        const decodedContent = atob(fragRow.content);
-        const frag_data = new Uint8Array(decodedContent.length);
-        for (let i = 0; i < decodedContent.length; i++) {
-          frag_data[i] = decodedContent.charCodeAt(i);
-        }
-        
-        return {
-          name: fragRow.name,
-          content: frag_data, 
-        };
-      }
-      return null;
+      return {
+        name,
+        content: frag_data, 
+      };
     }
     catch (error) {
       console.error("Error loading FRAG data:", error);
