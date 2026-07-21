@@ -848,9 +848,6 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       const cam = world?.camera as any;
 
       if (!paramGuid) {
-        if (cam && typeof cam.fitToItems === "function") {
-          await cam.fitToItems();
-        }
         clearAutomationParams();
         appState.hasExternalLink = false;
         return;

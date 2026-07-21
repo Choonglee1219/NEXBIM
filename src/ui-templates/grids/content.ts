@@ -5,10 +5,13 @@ import {
   CONTENT_GRID_GAP,
   CONTENT_GRID_ID,
   MEDIUM_COLUMN_WIDTH,
+  appIcons,
 } from "../../globals";
 import { BCFTopics } from "../../bim-components/BCFTopics";
+import { DiagramComponent } from "../../bim-components/Diagram";
 
 type Viewer = "viewer";
+type Diagram = "diagram";
 
 type IFCList = {
   name: "ifcList";
@@ -114,9 +117,10 @@ export type ContentGridElements = [
   Timeline,
   PhaseManager,
   GISSettings,
+  Diagram,
 ];
 
-export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "IDSCheck", "FullScreen", "Quantities", "DrawingEditor", "Timeline", "GISMap"];
+export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "IDSCheck", "FullScreen", "Quantities", "DrawingEditor", "Timeline", "GISMap", "Diagram"];
 
 export interface ContentGridState {
   components: OBC.Components;
@@ -208,6 +212,18 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         template: TEMPLATES.gisSettingsPanelTemplate,
         initialState: { components },
       },
+      diagram: () => BUI.html`
+        <bim-panel label="Diagram View" icon=${appIcons.DRAWING} style="height: 100%;">
+          <div ${BUI.ref((e) => {
+        if (!e) return;
+        const container = e as HTMLElement;
+        if (container.children.length === 0) {
+          const diagramComp = components.get(DiagramComponent);
+          diagramComp.mount(container);
+        }
+      })} style="width: 100%; height: 100%; overflow: hidden;"></div>
+        </bim-panel>
+      `,
       viewer: state.viewportTemplate,
     };
 
@@ -292,6 +308,12 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         template: `
         "viewer gisSettings" 1fr
         / 1fr var(--right-col-width)
+        `,
+      },
+      Diagram: {
+        template: `
+        "diagram viewer elementData" 1fr
+        / var(--half-col-width, 1fr) 1fr var(--right-col-width)
         `,
       },
     };

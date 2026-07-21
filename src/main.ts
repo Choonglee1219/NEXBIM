@@ -393,6 +393,7 @@ const contentGridIcons: Record<TEMPLATES.ContentGridLayouts[number], string> = {
   DrawingEditor: appIcons.DRAWING,
   Timeline: appIcons.GANTT,
   GISMap: appIcons.MAP,
+  Diagram: appIcons.DIAGRAM,
 };
 
 // 🏁App Grid Setup

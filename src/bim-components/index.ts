@@ -7,3 +7,4 @@ export * from "./Timeline";
 export * from "./ClipperBox";
 export * from "./BimChat";
 export * from "./GISMap";
+export * from "./Diagram";
