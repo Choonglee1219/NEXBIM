@@ -494,9 +494,44 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
     }
   };
 
-  setTimeout(() => {
-    if (messageListContainer) messageListContainer.scrollTop = messageListContainer.scrollHeight;
-  }, 100);
+  const onStartDragHeader = (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName.toLowerCase() === "bim-button" || target.closest("bim-button")) return;
+
+    const panel = document.getElementById("bim-chat-panel");
+    if (!panel) return;
+
+    e.preventDefault();
+    const rect = panel.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      let newLeft = moveEvent.clientX - offsetX;
+      let newTop = moveEvent.clientY - offsetY;
+
+      // Keep within screen bounds
+      newLeft = Math.max(10, Math.min(window.innerWidth - rect.width - 10, newLeft));
+      newTop = Math.max(10, Math.min(window.innerHeight - rect.height - 10, newTop));
+
+      panel.style.left = `${newLeft}px`;
+      panel.style.top = `${newTop}px`;
+      panel.style.right = "auto";
+      panel.style.bottom = "auto";
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.cursor = "move";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  };
 
   return BUI.html`
     <div style="
@@ -504,8 +539,8 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
       flex-direction: column;
       height: 100%;
       background: var(--bim-ui_bg-base);
-      border-left: 1px solid var(--bim-ui_bg-contrast-40);
       overflow: hidden;
+      border-radius: 12px;
     ">
       <style>
         .custom-scrollbar::-webkit-scrollbar {
@@ -524,16 +559,23 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
         }
       </style>
 
-      <!-- Header -->
-      <div style="
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.75rem 1rem;
-        background: var(--bim-ui_bg-contrast-5);
-        border-bottom: 1px solid var(--bim-ui_bg-contrast-20);
-      ">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
+      <!-- Header (Draggable) -->
+      <div
+        @mousedown=${onStartDragHeader}
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 0.75rem 1rem;
+          background: var(--bim-ui_bg-contrast-10);
+          border-bottom: 1px solid var(--bim-ui_bg-contrast-20);
+          cursor: move;
+          user-select: none;
+          flex-shrink: 0;
+        "
+        title="Drag header to move floating window"
+      >
+        <div style="display: flex; align-items: center; gap: 0.5rem; pointer-events: none;">
           <div style="width: 8px; height: 8px; background: #00ffaa; border-radius: 50%; box-shadow: 0 0 8px #00ffaa;"></div>
           <span style="font-weight: bold; font-size: 0.9rem; color: var(--bim-ui_bg-contrast-100);">AI Assistant</span>
         </div>
@@ -544,7 +586,6 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
             const chatPanel = document.getElementById("bim-chat-panel");
             if (chatPanel) {
               chatPanel.style.display = "none";
-              chatPanel.style.width = "0px";
               const chatBtn = document.getElementById("bim-chat-toggle-btn") as any;
               if (chatBtn) chatBtn.active = false;
             }

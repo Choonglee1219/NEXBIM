@@ -414,12 +414,7 @@ type ProjectSelector = {
   state: TEMPLATES.ProjectSelectorState;
 };
 
-type RightSidebar = {
-  name: "rightSidebar";
-  state: any;
-};
-
-type AppGridElements = [Sidebar, ContentGrid, ProjectSelector, RightSidebar];
+type AppGridElements = [Sidebar, ContentGrid, ProjectSelector];
 
 const app = document.getElementById("app") as BUI.Grid<
   AppLayouts,
@@ -431,12 +426,25 @@ const app = document.getElementById("app") as BUI.Grid<
 // ---------------------------------------------------------
 await initDrawingEditor(components, world);
 
-// 🤖 BimChat Panel setup as Right Sidebar
+// 🤖 BimChat Floating Panel Setup
 const [chatPanel] = bimChatPanel({ components, world });
 chatPanel.id = "bim-chat-panel";
+chatPanel.style.position = "fixed";
+chatPanel.style.right = "24px";
+chatPanel.style.bottom = "24px";
+chatPanel.style.width = "420px";
+chatPanel.style.height = "560px";
+chatPanel.style.minWidth = "340px";
+chatPanel.style.minHeight = "320px";
+chatPanel.style.zIndex = "1000";
 chatPanel.style.display = "none";
-chatPanel.style.width = "0px";
-chatPanel.style.height = "100%";
+chatPanel.style.borderRadius = "12px";
+chatPanel.style.boxShadow = "0 12px 36px rgba(0, 0, 0, 0.5)";
+chatPanel.style.border = "1px solid var(--bim-ui_bg-contrast-40)";
+chatPanel.style.overflow = "hidden";
+chatPanel.style.resize = "both";
+
+document.body.appendChild(chatPanel);
 
 // Define toggle function globally
 (window as any).toggleBimChat = (force?: boolean) => {
@@ -447,7 +455,6 @@ chatPanel.style.height = "100%";
   const show = force !== undefined ? force : (panel.style.display === "none");
   if (show) {
     panel.style.display = "flex";
-    panel.style.width = "360px";
     if (toggleBtn) toggleBtn.active = true;
     setTimeout(() => {
       const textarea = panel.querySelector("textarea") as HTMLTextAreaElement;
@@ -455,7 +462,6 @@ chatPanel.style.height = "100%";
     }, 100);
   } else {
     panel.style.display = "none";
-    panel.style.width = "0px";
     if (toggleBtn) toggleBtn.active = false;
   }
 };
@@ -470,7 +476,6 @@ app.elements = {
     },
   },
   contentGrid,
-  rightSidebar: chatPanel,
   projectSelector: {
     template: TEMPLATES.projectSelectorTemplate,
     initialState: {
@@ -491,8 +496,8 @@ contentGrid.addEventListener("layoutchange", () =>
 app.layouts = {
   App: {
     template: `
-      "sidebar contentGrid rightSidebar" 1fr
-      /auto 1fr auto
+      "sidebar contentGrid" 1fr
+      /auto 1fr
     `,
   },
   ProjectSelection: {
