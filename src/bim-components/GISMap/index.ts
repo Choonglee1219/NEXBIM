@@ -187,7 +187,23 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
    */
   detectGeorefFromBuffer(buffer: Uint8Array): boolean {
     try {
-      const text = new TextDecoder().decode(buffer);
+      // Decode initial 5MB chunk where IFC meta-entities (IfcMapConversion/IfcProjectedCRS) reside,
+      // avoiding massive JS string allocations (hundreds of MBs) for large IFC buffers.
+      const initialChunkSize = Math.min(buffer.length, 5 * 1024 * 1024);
+      let text = new TextDecoder().decode(buffer.subarray(0, initialChunkSize));
+
+      let mcBlockMatch = text.match(
+        /#\d+=\s*IFCMAPCONVERSION\s*\(([^)]+)\)/i
+      );
+
+      // Fallback: If IFCMAPCONVERSION isn't in first 5MB, attempt up to 20MB
+      if (!mcBlockMatch && buffer.length > initialChunkSize) {
+        const fallbackSize = Math.min(buffer.length, 20 * 1024 * 1024);
+        text = new TextDecoder().decode(buffer.subarray(0, fallbackSize));
+        mcBlockMatch = text.match(
+          /#\d+=\s*IFCMAPCONVERSION\s*\(([^)]+)\)/i
+        );
+      }
 
       // ── IfcProjectedCRS: first parameter is the CRS name string ──────────────
       // Format: #NNN= IFCPROJECTEDCRS('CRS_NAME', ...);
@@ -198,9 +214,6 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
       // Format: #NNN= IFCMAPCONVERSION(#src, #tgt, eastings, northings, height, xAbs, xOrd, scale);
       // Values may be integers, floats, or scientific notation; nulls are '$'
       const paramRe = /[-\d.E+]+|\$/gi;
-      const mcBlockMatch = text.match(
-        /#\d+=\s*IFCMAPCONVERSION\s*\(([^)]+)\)/i
-      );
 
       if (!mcBlockMatch) return false;
 

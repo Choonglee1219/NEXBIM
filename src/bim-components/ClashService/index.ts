@@ -3,6 +3,7 @@ import * as OBC from "@thatopen/components";
 import { ClashOptions } from "./src/obb-collision";
 import { Highlighter } from "../Highlighter";
 import { BCFTopics } from "../BCFTopics";
+import { SharedIFC } from "../SharedIFC";
 import { appState } from "../../globals";
 
 export interface ViewpointClippingPlane {
@@ -68,6 +69,51 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
     for (const worker of this._workers) {
       worker.postMessage({ action: "clear", modelId });
       this._workerCacheStatus.get(worker)?.delete(modelId);
+    }
+  }
+
+  public clearAllIfcBuffers() {
+    this._originalIfcBuffers.clear();
+    for (const worker of this._workers) {
+      worker.postMessage({ action: "clearAll" });
+      this._workerCacheStatus.get(worker)?.clear();
+    }
+  }
+
+  /**
+   * On-demand fetching for missing IFC buffers required for clash detection.
+   */
+  public async ensureIfcBuffers(modelIds: Iterable<string>): Promise<void> {
+    const missingIds = Array.from(modelIds).filter(id => !this._originalIfcBuffers.has(id));
+    if (missingIds.length === 0) return;
+
+    const fragments = this.components.get(OBC.FragmentsManager);
+    const sharedIFC = new SharedIFC();
+    await sharedIFC.loadIFCFiles();
+
+    for (const modelId of missingIds) {
+      const model = fragments.list.get(modelId);
+      if (!model) continue;
+
+      let ifcData: { name: string; content: Uint8Array } | null = null;
+      const dbId = (model as any).dbId;
+      if (dbId) {
+        ifcData = await sharedIFC.loadIFC(dbId);
+      }
+
+      if (!ifcData && (model as any).name) {
+        const baseName = (model as any).name.replace(/\.frag$/i, "").replace(/\.ifc$/i, "");
+        const matchingFile = sharedIFC.list.find(f => f.name.replace(/\.ifc$/i, "") === baseName);
+        if (matchingFile) {
+          ifcData = await sharedIFC.loadIFC(matchingFile.id);
+        }
+      }
+
+      if (ifcData && ifcData.content) {
+        this.addIfcBuffer(modelId, ifcData.content);
+      } else {
+        console.warn(`[ClashService] Could not fetch raw IFC buffer on-demand for model ${modelId}`);
+      }
     }
   }
 
@@ -162,6 +208,9 @@ export class ClashService extends OBC.Component implements OBC.Disposable {
       ...Object.keys(setA),
       ...(isSelfClash ? [] : Object.keys(setB)),
     ]);
+
+    // 1-1. 필요한 원본 IFC 버퍼가 메인 스레드에 없으면 On-demand로 비동기 로드
+    await this.ensureIfcBuffers(targetModelIds);
 
     const modelsData: { id: string; buffer: ArrayBuffer }[] = [];
 

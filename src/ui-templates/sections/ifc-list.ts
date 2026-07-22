@@ -450,23 +450,6 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       if (modelId) {
         sharedFRAG.addModelUUID(fragid, modelId);
         bcfTopics.onRefresh.trigger();
-
-        // 간섭 검토용 원본 IFC를 DB에서 가져와 캐싱
-        const baseName = frag.name.replace(/\.frag$/i, "");
-        const ifcFile = sharedIFC.list.find(f => f.name.replace(/\.ifc$/i, "") === baseName);
-        if (ifcFile) {
-          const ifcData = await sharedIFC.loadIFC(ifcFile.id);
-          if (ifcData && ifcData.content) {
-            // 🗺️ Detect georeferencing from the matched IFC buffer
-            const gisMap = components.get(GISMapComponent);
-            gisMap.detectGeorefFromBuffer(ifcData.content as Uint8Array);
-
-            const clashService = components.get(ClashService);
-            clashService.addIfcBuffer(modelId, ifcData.content as Uint8Array);
-          }
-        } else {
-          console.warn(`[ClashService] FRAG 모델 (${frag.name})과 매칭되는 원본 IFC를 찾을 수 없습니다. 정밀 간섭 검토가 불가능할 수 있습니다.`);
-        }
       }
     }
   };
