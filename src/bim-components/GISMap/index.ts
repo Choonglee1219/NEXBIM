@@ -304,10 +304,18 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
    * Clear and dispose of loaded tile resources
    */
   clearMap() {
+    let post: any = null;
+    if (this._world && this._world.renderer && "postproduction" in this._world.renderer) {
+      post = (this._world.renderer as any).postproduction;
+    }
+
     this._tileCache.forEach((mesh) => {
       this.mapGroup.remove(mesh);
-      mesh.geometry.dispose();
       const material = mesh.material as THREE.MeshBasicMaterial;
+      if (post && post.excludedObjectsPass) {
+        post.excludedObjectsPass.removeExcludedMaterial(material);
+      }
+      mesh.geometry.dispose();
       if (material.map) material.map.dispose();
       material.dispose();
     });
@@ -450,5 +458,13 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
     mesh.name = `Map_Tile_${tileKey}`;
     this.mapGroup.add(mesh);
     this._tileCache.set(tileKey, mesh);
+
+    // Exclude this specific mesh material from postproduction outlines
+    if (this._world && this._world.renderer && "postproduction" in this._world.renderer) {
+      const post = (this._world.renderer as any).postproduction;
+      if (post && post.excludedObjectsPass) {
+        post.excludedObjectsPass.addExcludedMaterial(material);
+      }
+    }
   }
 }

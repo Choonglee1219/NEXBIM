@@ -117,6 +117,7 @@ components.get(OBC.Raycasters).get(world);
 const { postproduction } = world.renderer;
 postproduction.enabled = true;
 postproduction.style = OBF.PostproductionAspect.COLOR_PEN_SHADOWS;
+postproduction.excludedObjectsEnabled = true;
 
 const { aoPass, edgesPass } = world.renderer.postproduction;
 
