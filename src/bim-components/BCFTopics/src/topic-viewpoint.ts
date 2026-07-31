@@ -50,7 +50,7 @@ export class TopicViewpointManager {
       // 무시 (Clipper가 없으면 수집하지 않음)
     }
 
-    if (clipper) {
+    if (clipper && clipper.enabled !== false) {
       const bcfPlanes: any[] = [];
       let planes: any[] = [];
       
@@ -64,17 +64,21 @@ export class TopicViewpointManager {
       }
 
       for (const item of planes) {
-        const planeObj = item.plane || item; // THREE.Plane 추출
-        const normal = planeObj.normal || item.normal;
+        if (item.enabled === false) continue;
+
+        // @thatopen/components SimplePlane 객체에서 Three.js THREE.Plane 추출
+        const threePlane: THREE.Plane | undefined = item.three || item.plane || (item instanceof THREE.Plane ? item : undefined);
+        const normal = threePlane?.normal || item.normal;
         if (!normal) continue;
 
         const point = new THREE.Vector3();
-        if (item.origin) {
+        // 드래그/이동된 최근 단면 위치를 반영하기 위해 THREE.Plane의 coplanarPoint 또는 constant 값을 최우선으로 사용
+        if (threePlane && typeof threePlane.coplanarPoint === "function") {
+          threePlane.coplanarPoint(point);
+        } else if (threePlane && threePlane.constant !== undefined && normal) {
+          point.copy(normal).multiplyScalar(-threePlane.constant);
+        } else if (item.origin) {
           point.copy(item.origin);
-        } else if (planeObj.constant !== undefined && normal) {
-          point.copy(normal).multiplyScalar(-planeObj.constant);
-        } else if (typeof planeObj.coplanarPoint === "function") {
-          planeObj.coplanarPoint(point);
         }
 
         bcfPlanes.push({
