@@ -145,12 +145,15 @@ export const checkCrossModelAnomalies = async (components: OBC.Components): Prom
           }
         }
 
-        if (maxCount < 3) continue;
+        // 1. Dominant Value must represent at least 90% of total occurrences
+        const dominantRatio = maxCount / totalCount;
+        if (dominantRatio < 0.90) continue;
 
-        const threshold = Math.max(1, Math.min(totalCount * 0.08, maxCount / 8));
+        // 2. Anomaly Threshold: values other than dominantVal that appear in <= 5% of total items (outliers)
+        const threshold = Math.max(1, Math.floor(totalCount * 0.05));
 
         for (const [v, occList] of valMap.entries()) {
-          if (occList.length <= threshold && maxCount >= 4) {
+          if (v !== dominantVal && occList.length <= threshold) {
             anomalyCount += occList.length;
             for (const el of occList) {
               if (!fail[el.modelId]) fail[el.modelId] = new Set();
@@ -164,7 +167,7 @@ export const checkCrossModelAnomalies = async (components: OBC.Components): Prom
                 Name: el.name,
                 GUID: el.guid,
                 Entity: entity,
-                Value: `[Anomaly] ${psetName}.${propName}: "${v}" (Dominant: "${dominantVal}")`,
+                Value: `[Anomaly] ${psetName}.${propName}: "${v}" (Dominant: "${dominantVal}", ${Math.round(dominantRatio * 100)}%)`,
                 Count: 1,
                 Status: "Fail",
               });
@@ -297,11 +300,11 @@ export const checkPropertyCompletionRate = async (components: OBC.Components): P
     for (const [psetName, propMap] of propCounts.entries()) {
       for (const [propName, count] of propMap.entries()) {
         const coverage = count / totalEl;
-        if (coverage >= 0.7 && coverage < 1.0) {
+        if (coverage >= 0.90 && coverage < 1.0) {
           expectedProps.push({
             psetName,
             propName,
-            coveragePct: Math.round(coverage * 100),
+            coveragePct: Math.trunc(coverage * 100),
           });
         }
       }
@@ -326,9 +329,9 @@ export const checkPropertyCompletionRate = async (components: OBC.Components): P
             Name: el.name,
             GUID: el.guid,
             Entity: entity,
-            Value: `[Missing] ${exp.psetName}.${exp.propName} missing (Coverage: ${exp.coveragePct}%)`,
+            Value: `${exp.psetName}.${exp.propName} missing (Coverage: ${exp.coveragePct}%)`,
             Count: 1,
-            Status: "Fail",
+            Status: `Missing(${100 - exp.coveragePct}%)`,
           });
         }
       }

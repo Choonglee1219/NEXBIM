@@ -1,5 +1,5 @@
 import * as OBC from "@thatopen/components";
-import { RuleSpecDefinition } from "../../../setup/specs";
+import { RuleSpecDefinition } from "../../../setup/rules";
 import { RuleTableData, RuleGroupByOption } from "./types";
 
 export const getFlatData = (nodes: any[]): RuleTableData[] => {

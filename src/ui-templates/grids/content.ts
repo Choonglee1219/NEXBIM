@@ -175,7 +175,7 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         initialState: { components },
       },
       idsSpecs: {
-        template: TEMPLATES.idsSpecPanelTemplate,
+        template: TEMPLATES.ruleSpecPanelTemplate,
         initialState: { components },
       },
       propsManager: {
@@ -183,7 +183,7 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         initialState: { components },
       },
       idsResults: {
-        template: TEMPLATES.idsResultsPanelTemplate,
+        template: TEMPLATES.ruleResultsPanelTemplate,
         initialState: { components },
       },
       topicList: {

@@ -1,5 +1,5 @@
 import * as OBC from "@thatopen/components";
-import { RuleSpecDefinition } from "../../setup/specs";
+import { RuleSpecDefinition } from "../../setup/rules";
 import { appState } from "../../globals";
 import { setModelTransparent, restoreModelMaterials } from "../../ui-templates/toolbars/viewer-toolbar";
 import { Highlighter } from "../Highlighter";

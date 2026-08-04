@@ -1,7 +1,7 @@
 import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import * as THREE from "three";
-import { RuleSpecDefinition } from "../../../setup/specs";
+import { RuleSpecDefinition } from "../../../setup/rules";
 import { setModelTransparent } from "../../../ui-templates/toolbars/viewer-toolbar";
 import { RuleTableData } from "./types";
 import { extractData, generateTableData } from "./data-extractor";

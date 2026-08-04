@@ -1,7 +1,7 @@
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
 import { appIcons, setupBIMTable, tableButtonStyle } from "../../globals";
-import { RuleSpecDefinition, predefinedSpecs } from "../../setup/specs";
+import { RuleSpecDefinition, predefinedSpecs } from "../../setup/rules";
 import { RuleService } from "../../bim-components/RuleService";
 
 export interface RuleSpecPanelState {
@@ -16,9 +16,9 @@ type SpecTableData = {
   spec: any;
 };
 
-export const idsSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> = (state) => {
+export const ruleSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> = (state) => {
   const { components } = state;
-  const idsService = components.get(RuleService);
+  const ruleService = components.get(RuleService);
 
   // Tab State & References
   let activeTab: "list" | "builder" = "list";
@@ -35,7 +35,7 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> = 
     if (builderTabBtn) builderTabBtn.active = tab === "builder";
   };
 
-  // UI References for Spec. Builder
+  // UI References for Rule Builder
   let reqTypeDropdown: BUI.Dropdown;
   let entityInput: BUI.TextInput;
   let psetInput: BUI.TextInput;
@@ -74,7 +74,7 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> = 
           <bim-button style=${tableButtonStyle} tooltip-title="Check" icon=${appIcons.PLAY} @click=${async (e: Event) => {
           const btn = e.target as BUI.Button;
           btn.loading = true;
-          try { await idsService.testSpec(spec); } catch (err) { console.error(err); alert("테스트 중 오류가 발생했습니다."); } finally { btn.loading = false; }
+          try { await ruleService.testSpec(spec); } catch (err) { console.error(err); alert("테스트 중 오류가 발생했습니다."); } finally { btn.loading = false; }
         }}></bim-button>
         </div>
       `;
@@ -99,10 +99,10 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> = 
           value: propValInput?.value || ""
         }
       };
-      await idsService.testSpec(specDef);
+      await ruleService.testSpec(specDef);
     } catch (e) {
       console.error(e);
-      alert("사양(Specification) 테스트 중 오류가 발생했습니다.");
+      alert("규칙 테스트 중 오류가 발생했습니다.");
     } finally {
       target.loading = false;
     }
@@ -140,15 +140,15 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> = 
       }
     }];
 
-    alert("사양이 Spec. List에 추가되었습니다.");
+    alert("규칙이 Rule List에 추가되었습니다.");
     switchTab("list");
   };
 
   return BUI.html`
     <bim-panel-section fixed icon=${appIcons.TASK} label="Rule Check">
       <div style="display: flex; gap: 0.25rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--bim-ui_bg-contrast-20);">
-        <bim-button ${BUI.ref((e) => { listTabBtn = e as BUI.Button; })} label="Spec. List" icon=${appIcons.TABLE} ?active=${(activeTab as string) === "list"} @click=${() => switchTab("list")}></bim-button>
-        <bim-button ${BUI.ref((e) => { builderTabBtn = e as BUI.Button; })} label="Spec. Builder" icon=${appIcons.EDIT} ?active=${(activeTab as string) === "builder"} @click=${() => switchTab("builder")}></bim-button>
+        <bim-button ${BUI.ref((e) => { listTabBtn = e as BUI.Button; })} label="Rule List" icon=${appIcons.TABLE} ?active=${(activeTab as string) === "list"} @click=${() => switchTab("list")}></bim-button>
+        <bim-button ${BUI.ref((e) => { builderTabBtn = e as BUI.Button; })} label="Rule Builder" icon=${appIcons.EDIT} ?active=${(activeTab as string) === "builder"} @click=${() => switchTab("builder")}></bim-button>
       </div>
 
       <div ${BUI.ref((e) => { specListContainer = e as HTMLDivElement; })} style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 0.5rem;">

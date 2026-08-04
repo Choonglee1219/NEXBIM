@@ -10,12 +10,12 @@ export interface RuleResultsPanelState {
 
 let selectedRowId: string | null = null;
 
-export const idsResultsPanelTemplate: BUI.StatefullComponent<RuleResultsPanelState> = (state) => {
+export const ruleResultsPanelTemplate: BUI.StatefullComponent<RuleResultsPanelState> = (state) => {
   const { components } = state;
   const highlighter = components.get(Highlighter);
-  const idsService = components.get(RuleService);
+  const ruleService = components.get(RuleService);
 
-  let allResultsData: any[] = idsService.allResultsData;
+  let allResultsData: any[] = ruleService.allResultsData;
   let currentPage = 0;
   const pageSize = 30;
   const paginationRefs: PaginationRefs = {};
@@ -178,8 +178,8 @@ export const idsResultsPanelTemplate: BUI.StatefullComponent<RuleResultsPanelSta
   };
 
   // Subscribe to RuleService results changes
-  idsService.onResultsChanged.add(() => {
-    allResultsData = idsService.allResultsData;
+  ruleService.onResultsChanged.add(() => {
+    allResultsData = ruleService.allResultsData;
     selectedRowId = null;
     currentPage = 0;
     updatePage();
@@ -189,20 +189,20 @@ export const idsResultsPanelTemplate: BUI.StatefullComponent<RuleResultsPanelSta
   updatePage();
 
   return BUI.html`
-    <bim-panel-section fixed icon=${appIcons.TABLE} label="Spec. Check Results" style="height: 100%; min-height: 0;">
+    <bim-panel-section fixed icon=${appIcons.TABLE} label="Rule Check Results" style="height: 100%; min-height: 0;">
       <div style="display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 0.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-shrink: 0; padding-bottom: 0.25rem; border-bottom: 1px solid var(--bim-ui_bg-contrast-20);">
           <div style="display: flex; gap: 0.5rem; align-items: center;">
-            <bim-button label="Select All" @click=${() => idsService.selectObjects()} icon=${appIcons.SELECT}></bim-button>
-            <bim-button label="To Topic" @click=${() => idsService.failToTopic()} icon=${appIcons.SAVE}></bim-button>
-            <bim-button label="Export CSV" @click=${() => idsService.exportCSV()} icon=${appIcons.EXPORT}></bim-button>
+            <bim-button label="Select All" @click=${() => ruleService.selectObjects()} icon=${appIcons.SELECT}></bim-button>
+            <bim-button label="To Topic" @click=${() => ruleService.failToTopic()} icon=${appIcons.SAVE}></bim-button>
+            <bim-button label="Export CSV" @click=${() => ruleService.exportCSV()} icon=${appIcons.EXPORT}></bim-button>
             <div style="display: flex; gap: 0.35rem; align-items: center; margin-left: 0.5rem;">
               <bim-label style="font-weight: bold; white-space: nowrap;">Group By:</bim-label>
               <bim-dropdown style="min-width: 8rem;" @change=${(e: Event) => {
       const dropdown = e.target as BUI.Dropdown;
       dropdown.visible = false;
       const val = (dropdown.value[0] || "None") as RuleGroupByOption;
-      idsService.setGroupBy(val);
+      ruleService.setGroupBy(val);
     }}>
                 <bim-option label="None (Flat)" value="None" checked></bim-option>
                 <bim-option label="GUID" value="GUID"></bim-option>
