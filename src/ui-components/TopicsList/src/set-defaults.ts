@@ -168,7 +168,7 @@ export const setDefaults = (
           `
         : BUI.html`
             <bim-button 
-              icon=${appIcons.IDS_CHECK} 
+              icon=${appIcons.Rule_CHECK} 
               style="${tableButtonStyle} opacity: 0.5; pointer-events: none;" 
               title="Synced with TDVS"
             ></bim-button>

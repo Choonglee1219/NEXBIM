@@ -1,9 +1,9 @@
 import * as OBC from "@thatopen/components";
-import { IDSSpecDefinition } from "../../../setup/specs";
-import { IDSTableData, IDSGroupByOption } from "./types";
+import { RuleSpecDefinition } from "../../../setup/specs";
+import { RuleTableData, RuleGroupByOption } from "./types";
 
-export const getFlatData = (nodes: any[]): IDSTableData[] => {
-  let result: IDSTableData[] = [];
+export const getFlatData = (nodes: any[]): RuleTableData[] => {
+  let result: RuleTableData[] = [];
   for (const n of nodes) {
     const d = n.data || n;
     if (d.isGroup && d.rawGroup) {
@@ -17,7 +17,7 @@ export const getFlatData = (nodes: any[]): IDSTableData[] => {
   return result;
 };
 
-const formatGroupColValue = (items: IDSTableData[], propKey: keyof IDSTableData, isGroupKey: boolean, defaultValue: string = "-"): string => {
+const formatGroupColValue = (items: RuleTableData[], propKey: keyof RuleTableData, isGroupKey: boolean, defaultValue: string = "-"): string => {
   if (isGroupKey) {
     return String(items[0]?.[propKey] ?? defaultValue);
   }
@@ -35,14 +35,14 @@ const formatGroupColValue = (items: IDSTableData[], propKey: keyof IDSTableData,
   return `${uniqueVals.length} Unique`;
 };
 
-const getGroupStatus = (items: IDSTableData[]): string => {
+const getGroupStatus = (items: RuleTableData[]): string => {
   if (items.length === 0) return "Pass (100%)";
   const passCount = items.filter((i) => String(i.Status).startsWith("Pass")).length;
   const passRate = Math.round((passCount / items.length) * 100);
   return passRate === 100 ? "Pass (100%)" : `Fail (${passRate}%)`;
 };
 
-export const groupResultsBy = (flatItems: IDSTableData[], groupByColumn: IDSGroupByOption = "None"): any[] => {
+export const groupResultsBy = (flatItems: RuleTableData[], groupByColumn: RuleGroupByOption = "None"): any[] => {
   if (groupByColumn === "None") {
     return flatItems.map((item) => {
       const { isGroup, rawGroup, ...cleanItem } = item;
@@ -50,7 +50,7 @@ export const groupResultsBy = (flatItems: IDSTableData[], groupByColumn: IDSGrou
     });
   }
 
-  const groups = new Map<string, IDSTableData[]>();
+  const groups = new Map<string, RuleTableData[]>();
 
   for (const item of flatItems) {
     let key = "";
@@ -71,7 +71,7 @@ export const groupResultsBy = (flatItems: IDSTableData[], groupByColumn: IDSGrou
 
     if (groupByColumn === "GUID") {
       if (items.length > 1 && key && key !== "Unknown" && key !== "Null") {
-        const groupRowData: IDSTableData = {
+        const groupRowData: RuleTableData = {
           id: `group-guid-${key}-${groupCounter++}`,
           isGroup: true,
           Model: formatGroupColValue(items, "Model", false),
@@ -91,7 +91,7 @@ export const groupResultsBy = (flatItems: IDSTableData[], groupByColumn: IDSGrou
         treeData.push(...items.map(i => ({ data: { ...i, Count: 1 } })));
       }
     } else if (groupByColumn === "Model") {
-      const groupRowData: IDSTableData = {
+      const groupRowData: RuleTableData = {
         id: `group-model-${key}-${groupCounter++}`,
         isGroup: true,
         Model: key,
@@ -108,7 +108,7 @@ export const groupResultsBy = (flatItems: IDSTableData[], groupByColumn: IDSGrou
         children: items.map(i => ({ data: { ...i, Count: 1 } }))
       });
     } else if (groupByColumn === "Entity") {
-      const groupRowData: IDSTableData = {
+      const groupRowData: RuleTableData = {
         id: `group-entity-${key}-${groupCounter++}`,
         isGroup: true,
         Model: formatGroupColValue(items, "Model", false),
@@ -125,7 +125,7 @@ export const groupResultsBy = (flatItems: IDSTableData[], groupByColumn: IDSGrou
         children: items.map(i => ({ data: { ...i, Count: 1 } }))
       });
     } else if (groupByColumn === "Status") {
-      const groupRowData: IDSTableData = {
+      const groupRowData: RuleTableData = {
         id: `group-status-${key}-${groupCounter++}`,
         isGroup: true,
         Model: formatGroupColValue(items, "Model", false),
@@ -153,7 +153,7 @@ export const groupByGUID = (flatData: any[]) => {
   return groupResultsBy(flatItems, "None");
 };
 
-export const extractData = async (fragments: OBC.FragmentsManager, allIds: OBC.ModelIdMap, specDef: IDSSpecDefinition) => {
+export const extractData = async (fragments: OBC.FragmentsManager, allIds: OBC.ModelIdMap, specDef: RuleSpecDefinition) => {
   const itemPropsMap: Record<string, Record<number, { name: string; value: string; guid: string; entity: string }>> = {};
 
   const attrRegex = new RegExp(specDef.requirement.name || "", "i");
@@ -241,8 +241,8 @@ export const generateTableData = (
   resultMap: OBC.ModelIdMap,
   status: "Pass" | "Fail",
   itemPropsMap: Record<string, Record<number, { name: string; value: string; guid: string; entity: string }>>
-): IDSTableData[] => {
-  const data: IDSTableData[] = [];
+): RuleTableData[] => {
+  const data: RuleTableData[] = [];
   for (const [modelId, expressIds] of Object.entries(resultMap)) {
     const model = fragments.list.get(modelId);
     const modelName = (model as any)?.name || modelId;

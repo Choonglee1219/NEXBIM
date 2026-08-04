@@ -120,7 +120,7 @@ export const appIcons = {
   MAP: "/icons/mdi--map-marker-radius.svg",
   PLAY: "/icons/mdi--play.svg",
   PAUSE: "/icons/mdi--pause.svg",
-  IDS_CHECK: "/icons/mdi--check-bold.svg",
+  Rule_CHECK: "/icons/mdi--check-bold.svg",
   TABLE: "/icons/mdi--table-filter.svg",
   BACK: "/icons/eva--arrow-ios-back-outline.svg",
   FORWARD: "/icons/eva--arrow-ios-forward-outline.svg",

@@ -2,10 +2,39 @@ import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import * as THREE from "three";
 import { setModelTransparent } from "../../../ui-templates/toolbars/viewer-toolbar";
-import { IDSTableData } from "./types";
+import { RuleTableData } from "./types";
 import { groupResultsBy } from "./data-extractor";
 
-export const checkDuplicateGUIDs = async (components: OBC.Components): Promise<{ resultsData: any[]; rawFlatItems: IDSTableData[]; failMap: OBC.ModelIdMap; message: string }> => {
+// Check if an entity is a non-geometric metadata node
+const isNonGeometricEntity = (entity: string): boolean => {
+  const e = entity.toUpperCase();
+  return (
+    e.includes("TYPE") ||
+    e.includes("REL") ||
+    e.includes("CLASSIFICATION") ||
+    e.includes("GROUP") ||
+    e.includes("PROPERTY") ||
+    e.includes("QUANTITY") ||
+    e.includes("MATERIAL") ||
+    e.includes("PLACEMENT") ||
+    e.includes("POINT") ||
+    e.includes("DIRECTION") ||
+    e.includes("UNIT") ||
+    e.includes("GRID") ||
+    e.includes("SHAPE") ||
+    e.includes("SWEPT") ||
+    e.includes("DIMENSION") ||
+    e.includes("ADDRESS") ||
+    e.includes("PRESENTATION") ||
+    e.includes("ORGANIZATION") ||
+    e.includes("APPLICATION") ||
+    e.includes("PERSON") ||
+    e.includes("ACTOR") ||
+    e.includes("OWNER")
+  );
+};
+
+export const checkDuplicateGUIDs = async (components: OBC.Components): Promise<{ resultsData: any[]; rawFlatItems: RuleTableData[]; failMap: OBC.ModelIdMap; message: string }> => {
   const fragments = components.get(OBC.FragmentsManager);
   if (fragments.list.size === 0) {
     throw new Error("로드된 모델이 없습니다.");
@@ -27,6 +56,15 @@ export const checkDuplicateGUIDs = async (components: OBC.Components): Promise<{
       const expressId = (itemAny.expressID ?? itemAny.id ?? itemAny._localId?.value ?? itemAny._localId) as number;
       if (expressId === undefined) continue;
 
+      let rawCategory = itemAny._category;
+      if (rawCategory && typeof rawCategory === "object" && rawCategory.value !== undefined) {
+        rawCategory = rawCategory.value;
+      }
+      const entity = String(rawCategory || "").replace(/^IFC/i, "") || "Unknown";
+      if (isNonGeometricEntity(entity)) {
+        continue;
+      }
+
       let guid = itemAny._guid ?? itemAny.GlobalId;
       if (guid && typeof guid === "object" && guid.value !== undefined) {
         guid = guid.value;
@@ -41,12 +79,6 @@ export const checkDuplicateGUIDs = async (components: OBC.Components): Promise<{
       }
       name = String(name || "Unnamed").trim();
 
-      let rawCategory = itemAny._category;
-      if (rawCategory && typeof rawCategory === "object" && rawCategory.value !== undefined) {
-        rawCategory = rawCategory.value;
-      }
-      const entity = String(rawCategory || "").replace(/^IFC/i, "") || "Unknown";
-
       if (!guidMap.has(guid)) {
         guidMap.set(guid, []);
       }
@@ -55,7 +87,7 @@ export const checkDuplicateGUIDs = async (components: OBC.Components): Promise<{
   }
 
   const fail: OBC.ModelIdMap = {};
-  const tableData: IDSTableData[] = [];
+  const tableData: RuleTableData[] = [];
 
   let duplicateCount = 0;
   let intraCount = 0;

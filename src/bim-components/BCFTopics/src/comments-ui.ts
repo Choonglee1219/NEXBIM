@@ -271,7 +271,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
           const viewpointsObj = components.get(OBC.Viewpoints);
           const worlds = components.get(OBC.Worlds);
           const world = worlds.list.values().next().value;
-          
+
           let importCount = 0;
           let newVpCount = 0;
 
@@ -304,7 +304,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
                 if (world) {
                   newVp.world = world;
                   await newVp.updateCamera();
-                  
+
                   newVp.camera.camera_view_point = {
                     x: vCmt.coord.x,
                     y: vCmt.coord.z,
@@ -375,7 +375,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
     if (mrimsNo && flatTdvsComments.length > 0 && !isDismissed) {
       ackSyncBtn.disabled = false;
       ackSyncBtn.label = "Acknowledge Sync";
-      ackSyncBtn.icon = appIcons.IDS_CHECK;
+      ackSyncBtn.icon = appIcons.Rule_CHECK;
       ackSyncBtn.title = "Mark this topic's comments as synced / acknowledged";
       ackSyncBtn.addEventListener("click", async () => {
         ackSyncBtn.loading = true;
@@ -388,7 +388,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
             body: JSON.stringify({ mrimsNo, ackCommentNo: maxServerCommentNo })
           });
           if (!response.ok) throw new Error("네트워크 오류");
-          
+
           (topic as any).ackCommentNo = maxServerCommentNo;
           bcfTopics.onRefresh.trigger();
           alert("이 토픽의 동기화 경고를 해제(완료 처리)했습니다.");
@@ -402,7 +402,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
     } else {
       ackSyncBtn.disabled = true;
       ackSyncBtn.label = "Synced / Acknowledged";
-      ackSyncBtn.icon = appIcons.IDS_CHECK;
+      ackSyncBtn.icon = appIcons.Rule_CHECK;
     }
 
     leftSubToolbar.append(ackSyncBtn);
@@ -545,7 +545,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       titleLabel.style.whiteSpace = "nowrap";
       titleLabel.style.overflow = "hidden";
       titleLabel.style.textOverflow = "ellipsis";
-      
+
       if (g.viewpointGuid) {
         const vpIndex = Array.from(topic.viewpoints).indexOf(g.viewpointGuid);
         titleLabel.textContent = vpIndex === 0 ? "Rep. Viewpoint" : `Viewpoint ${vpIndex + 1}`;
@@ -572,7 +572,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
         syncItemBtn.title = `${matchingServerCmts.length} un-synced comment(s) on TDVS. Click to sync.`;
         syncItemBtn.style.setProperty("--bim-button--bg", "var(--bim-ui_accent, #3880ff)");
         syncItemBtn.style.setProperty("--bim-button--c", "var(--bim-ui_accent-contrast, #ffffff)");
-        
+
         syncItemBtn.addEventListener("click", (evt) => {
           evt.stopPropagation();
           syncItemBtn.loading = true;
@@ -818,8 +818,8 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       replyBtn.addEventListener("click", async () => {
         if (!replyInput.value.trim()) return;
         if (!pendingCommentViewpoint) {
-           alert("코멘트를 추가하려면 먼저 [Capture] 또는 [Import] 버튼을 눌러 뷰를 캡처하거나 이미지를 업로드해야 합니다.");
-           return;
+          alert("코멘트를 추가하려면 먼저 [Capture] 또는 [Import] 버튼을 눌러 뷰를 캡처하거나 이미지를 업로드해야 합니다.");
+          return;
         }
         replyBtn.loading = true;
         bcf.config.author = appState.currentUser;
@@ -828,10 +828,10 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
 
         const newComment = bcfTopics.addComment(topic.guid, replyInput.value.trim());
         if (newComment) {
-            newComment.viewpoint = pendingCommentViewpoint.guid;
-            if (pendingCommentSnapshot) (newComment as any).snapshot = pendingCommentSnapshot;
+          newComment.viewpoint = pendingCommentViewpoint.guid;
+          if (pendingCommentSnapshot) (newComment as any).snapshot = pendingCommentSnapshot;
         }
-        
+
         isAddingNewComment = false;
         pendingCommentViewpoint = null;
         pendingCommentSnapshot = null;
@@ -846,20 +846,20 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       cancelBtn.style.height = "2rem";
 
       if (totalPages > 0) {
-          cancelBtn.title = "Cancel";
-          cancelBtn.addEventListener("click", () => {
-              isAddingNewComment = false;
-              pendingCommentViewpoint = null;
-              pendingCommentSnapshot = null;
-              renderComments(topic);
-          });
+        cancelBtn.title = "Cancel";
+        cancelBtn.addEventListener("click", () => {
+          isAddingNewComment = false;
+          pendingCommentViewpoint = null;
+          pendingCommentSnapshot = null;
+          renderComments(topic);
+        });
       } else {
-          cancelBtn.title = "Clear";
-          cancelBtn.addEventListener("click", () => {
-              replyInput.value = "";
-          });
+        cancelBtn.title = "Clear";
+        cancelBtn.addEventListener("click", () => {
+          replyInput.value = "";
+        });
       }
-      
+
       replySection.append(replyInput, replyBtn, cancelBtn);
       commentsListWrapper.append(replySection);
       pageWrapper.append(snapshotWrapper, commentsListWrapper);
@@ -900,7 +900,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
       snapshotWrapper.style.overflowY = "auto";
       snapshotWrapper.style.overflowX = "hidden";
       snapshotWrapper.classList.add("custom-scrollbar");
-      
+
       if (snapshotUrl) {
         const validSnapshotUrl = snapshotUrl;
         const img = document.createElement("img");
@@ -1097,7 +1097,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
     commentsListWrapper.style.display = "flex";
     commentsListWrapper.style.flexDirection = "column";
     commentsListWrapper.style.gap = "0.5rem";
-    
+
     const commentsScroll = document.createElement("div");
     commentsScroll.style.flex = "1";
     commentsScroll.style.minHeight = "0";
@@ -1257,7 +1257,7 @@ export const createCommentsUI = (components: OBC.Components, bcfTopics: any) => 
 
       commentsScroll.append(commentRow);
     }
-    
+
     commentsListWrapper.append(commentsScroll);
 
     // 4. "Add Reply" 섹션 추가 (뷰포인트가 있는 페이지에만)

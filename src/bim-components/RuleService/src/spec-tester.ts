@@ -1,15 +1,15 @@
 import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import * as THREE from "three";
-import { IDSSpecDefinition } from "../../../setup/specs";
+import { RuleSpecDefinition } from "../../../setup/specs";
 import { setModelTransparent } from "../../../ui-templates/toolbars/viewer-toolbar";
-import { IDSTableData } from "./types";
+import { RuleTableData } from "./types";
 import { extractData, generateTableData } from "./data-extractor";
 
 export const testStandardSpec = async (
   components: OBC.Components,
-  specDef: IDSSpecDefinition
-): Promise<{ rawFlatItems: IDSTableData[]; allIds: OBC.ModelIdMap }> => {
+  specDef: RuleSpecDefinition
+): Promise<{ rawFlatItems: RuleTableData[]; allIds: OBC.ModelIdMap }> => {
   const fragments = components.get(OBC.FragmentsManager);
   const ids = components.get(OBC.IDSSpecifications);
 

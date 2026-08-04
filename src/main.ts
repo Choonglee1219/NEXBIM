@@ -389,7 +389,7 @@ const contentGridIcons: Record<TEMPLATES.ContentGridLayouts[number], string> = {
   Quantities: appIcons.TABLE,
   FullScreen: appIcons.FULL_SCREEN,
   ViewPoints: appIcons.CAMERA,
-  IDSCheck: appIcons.IDS_CHECK,
+  RuleCheck: appIcons.Rule_CHECK,
   ClashDetection: appIcons.CLASH,
   DrawingEditor: appIcons.DRAWING,
   Timeline: appIcons.GANTT,

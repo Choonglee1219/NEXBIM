@@ -38,14 +38,14 @@ type ViewPoints = {
   state: TEMPLATES.ViewpointsPanelState
 };
 
-type IDSSpecs = {
+type RuleSpecs = {
   name: "idsSpecs";
-  state: TEMPLATES.IDSSpecPanelState;
+  state: TEMPLATES.RuleSpecPanelState;
 };
 
-type IDSResults = {
+type RuleResults = {
   name: "idsResults";
-  state: TEMPLATES.IDSResultsPanelState;
+  state: TEMPLATES.RuleResultsPanelState;
 };
 
 type ModelTree = {
@@ -115,8 +115,8 @@ export type ContentGridElements = [
   BCFList,
   Dashboard,
   ViewPoints,
-  IDSSpecs,
-  IDSResults,
+  RuleSpecs,
+  RuleResults,
   Quantities,
   ClashList,
   DrawingEditor,
@@ -126,7 +126,7 @@ export type ContentGridElements = [
   Diagram,
 ];
 
-export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "IDSCheck", "FullScreen", "Quantities", "DrawingEditor", "Timeline", "GISMap", "Diagram"];
+export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "RuleCheck", "FullScreen", "Quantities", "DrawingEditor", "Timeline", "GISMap", "Diagram"];
 
 export interface ContentGridState {
   components: OBC.Components;
@@ -275,7 +275,7 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         / var(--half-col-width, 1fr) 1fr
         `,
       },
-      IDSCheck: {
+      RuleCheck: {
         template: `
         "viewer idsSpecs elementData" var(--top-row-height, 1fr)
         "idsResults idsResults idsResults" 1fr

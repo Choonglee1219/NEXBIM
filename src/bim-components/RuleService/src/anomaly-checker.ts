@@ -2,7 +2,7 @@ import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import * as THREE from "three";
 import { setModelTransparent } from "../../../ui-templates/toolbars/viewer-toolbar";
-import { IDSTableData } from "./types";
+import { RuleTableData } from "./types";
 import { groupResultsBy } from "./data-extractor";
 
 const TBD_VALUES = new Set(["", "TBD", "NONE", "N/A", "-", "--", "NULL", "UNDEFINED"]);
@@ -65,7 +65,7 @@ const extractPsetsFromItem = (itemAny: any): Map<string, Map<string, string>> =>
   return psetMap;
 };
 
-export const checkCrossModelAnomalies = async (components: OBC.Components): Promise<{ resultsData: any[]; rawFlatItems: IDSTableData[]; failMap: OBC.ModelIdMap; message: string }> => {
+export const checkCrossModelAnomalies = async (components: OBC.Components): Promise<{ resultsData: any[]; rawFlatItems: RuleTableData[]; failMap: OBC.ModelIdMap; message: string }> => {
   const fragments = components.get(OBC.FragmentsManager);
   if (fragments.list.size === 0) {
     throw new Error("로드된 모델이 없습니다.");
@@ -122,7 +122,7 @@ export const checkCrossModelAnomalies = async (components: OBC.Components): Prom
   }
 
   const fail: OBC.ModelIdMap = {};
-  const tableData: IDSTableData[] = [];
+  const tableData: RuleTableData[] = [];
   let anomalyCount = 0;
 
   for (const [entity, psets] of merged.entries()) {
@@ -204,14 +204,14 @@ export const checkCrossModelAnomalies = async (components: OBC.Components): Prom
   return { resultsData, rawFlatItems: tableData, failMap: fail, message };
 };
 
-export const checkPropertyCompletionRate = async (components: OBC.Components): Promise<{ resultsData: any[]; rawFlatItems: IDSTableData[]; failMap: OBC.ModelIdMap; message: string }> => {
+export const checkPropertyCompletionRate = async (components: OBC.Components): Promise<{ resultsData: any[]; rawFlatItems: RuleTableData[]; failMap: OBC.ModelIdMap; message: string }> => {
   const fragments = components.get(OBC.FragmentsManager);
   if (fragments.list.size === 0) {
     throw new Error("로드된 모델이 없습니다.");
   }
 
   const fail: OBC.ModelIdMap = {};
-  const tableData: IDSTableData[] = [];
+  const tableData: RuleTableData[] = [];
   let missingCount = 0;
 
   type ElementInfo = {

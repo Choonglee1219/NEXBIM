@@ -1,10 +1,10 @@
 import * as OBC from "@thatopen/components";
-import { IDSSpecDefinition } from "../../setup/specs";
+import { RuleSpecDefinition } from "../../setup/specs";
 import { appState } from "../../globals";
 import { setModelTransparent, restoreModelMaterials } from "../../ui-templates/toolbars/viewer-toolbar";
 import { Highlighter } from "../Highlighter";
 import { BCFTopics } from "../BCFTopics";
-import { IDSTableData, IDSGroupByOption } from "./src/types";
+import { RuleTableData, RuleGroupByOption } from "./src/types";
 import { groupResultsBy, getFlatData } from "./src/data-extractor";
 import { checkCrossModelAnomalies, checkPropertyCompletionRate } from "./src/anomaly-checker";
 import { checkDuplicateGUIDs } from "./src/duplicate-checker";
@@ -13,7 +13,7 @@ import { testStandardSpec } from "./src/spec-tester";
 
 export * from "./src/types";
 
-export class IDSService extends OBC.Component implements OBC.Disposable {
+export class RuleService extends OBC.Component implements OBC.Disposable {
   static readonly uuid = "87d12f34-1b9a-4c28-98e3-0d5b9c1d2e3f" as const;
 
   enabled = true;
@@ -21,13 +21,13 @@ export class IDSService extends OBC.Component implements OBC.Disposable {
   readonly onResultsChanged = new OBC.Event<void>();
 
   allResultsData: any[] = [];
-  rawFlatItems: IDSTableData[] = [];
-  activeGroupBy: IDSGroupByOption = "None";
+  rawFlatItems: RuleTableData[] = [];
+  activeGroupBy: RuleGroupByOption = "None";
   latestResultsMap: OBC.ModelIdMap | null = null;
 
   constructor(components: OBC.Components) {
     super(components);
-    components.add(IDSService.uuid, this);
+    components.add(RuleService.uuid, this);
   }
 
   async dispose() {
@@ -35,17 +35,17 @@ export class IDSService extends OBC.Component implements OBC.Disposable {
     this.rawFlatItems = [];
     this.latestResultsMap = null;
     this.onResultsChanged.reset();
-    this.onDisposed.trigger(IDSService.uuid);
+    this.onDisposed.trigger(RuleService.uuid);
     this.onDisposed.reset();
   }
 
-  setGroupBy(option: IDSGroupByOption) {
+  setGroupBy(option: RuleGroupByOption) {
     this.activeGroupBy = option;
     this.allResultsData = groupResultsBy(this.rawFlatItems, this.activeGroupBy);
     this.onResultsChanged.trigger();
   }
 
-  async testSpec(specDef: IDSSpecDefinition): Promise<void> {
+  async testSpec(specDef: RuleSpecDefinition): Promise<void> {
     const fragments = this.components.get(OBC.FragmentsManager);
 
     restoreModelMaterials(this.components);
@@ -82,7 +82,7 @@ export class IDSService extends OBC.Component implements OBC.Disposable {
     }
 
     // 3. Duplicate GUIDs Check
-    if (specDef.name === "중복 GUID 여부 검사" || specDef.name === "Duplicate GUIDs") {
+    if (specDef.name.includes("중복 GUID") || specDef.name.includes("Duplicate GUID") || specDef.requirement.type === "duplicate-guid") {
       try {
         const { rawFlatItems, failMap, message } = await checkDuplicateGUIDs(this.components);
         this.rawFlatItems = rawFlatItems;
@@ -111,7 +111,7 @@ export class IDSService extends OBC.Component implements OBC.Disposable {
       return;
     }
 
-    // 5. Standard IDS Specification Test
+    // 5. Standard Rule Specification Test
     try {
       const { rawFlatItems, allIds } = await testStandardSpec(this.components, specDef);
       this.rawFlatItems = rawFlatItems;
@@ -119,7 +119,7 @@ export class IDSService extends OBC.Component implements OBC.Disposable {
       this.latestResultsMap = allIds;
       this.onResultsChanged.trigger();
     } catch (err: any) {
-      alert(err.message || "표준 IDS 점검 중 오류가 발생했습니다.");
+      alert(err.message || "표준 Rule 점검 중 오류가 발생했습니다.");
     }
   }
 
@@ -183,7 +183,7 @@ export class IDSService extends OBC.Component implements OBC.Disposable {
     }
 
     capturedViewpoint = viewpoints.create();
-    capturedViewpoint.title = `IDS Check Fail`;
+    capturedViewpoint.title = `Rule Check Fail`;
     capturedViewpoint.world = world;
     await capturedViewpoint.updateCamera();
 
@@ -197,8 +197,8 @@ export class IDSService extends OBC.Component implements OBC.Disposable {
     }
 
     try {
-      const title = `IDS Check Fail (${failData.length} items)`;
-      const description = `The following items failed the IDS specification check.`;
+      const title = `Rule Check Fail (${failData.length} items)`;
+      const description = `The following items failed the Rule specification check.`;
       const topicId = `ids-${Date.now()}`;
 
       let newTopic: any = null;

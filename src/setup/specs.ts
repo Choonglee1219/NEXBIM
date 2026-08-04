@@ -1,19 +1,19 @@
-export interface IDSSpecDefinition {
+export interface RuleSpecDefinition {
   name: string;
   description: string;
   applicability: {
     entity: string;
   };
   requirement: {
-    type: "property" | "attribute" | "quantity" | "cross-anomaly" | "completion-rate" | "schema-check";
+    type: "property" | "attribute" | "quantity" | "cross-anomaly" | "completion-rate" | "schema-check" | "duplicate-guid";
     propertySet?: string;
     name: string;
-    condition: "exists" | "pattern" | "anomaly-check" | "completion-check" | "schema-check";
+    condition: "exists" | "pattern" | "anomaly-check" | "completion-check" | "schema-check" | "duplicate-check";
     value?: string;
   };
 }
 
-export const predefinedSpecs: IDSSpecDefinition[] = [
+export const predefinedSpecs: RuleSpecDefinition[] = [
   {
     name: "1. IFC 스키마 및 규격 검사",
     description: "공간 구조(Storey) 소속 여부, PredefinedType Enum 유효성 등 IFC 스키마 규격을 검사한다.",
@@ -24,7 +24,7 @@ export const predefinedSpecs: IDSSpecDefinition[] = [
     name: "2. 중복 GUID 여부 검사",
     description: "불러져 있는 모든 모델들에 걸쳐 중복 GUID를 검사한다.",
     applicability: { entity: "ALL" },
-    requirement: { type: "attribute", name: "GlobalId", condition: "exists" }
+    requirement: { type: "duplicate-guid", name: "GlobalId", condition: "duplicate-check" }
   },
   {
     name: "3. 프로퍼티 값 이상치 검사",

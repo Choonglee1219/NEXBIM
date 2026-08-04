@@ -1,6 +1,6 @@
-export type IDSGroupByOption = "GUID" | "Model" | "Entity" | "Status" | "None";
+export type RuleGroupByOption = "GUID" | "Model" | "Entity" | "Status" | "None";
 
-export type IDSTableData = {
+export type RuleTableData = {
   id: string;
   ModelID?: string;
   ExpressID?: number;
@@ -12,5 +12,5 @@ export type IDSTableData = {
   Count: number | string;
   Status: string;
   isGroup?: boolean;
-  rawGroup?: IDSTableData[];
+  rawGroup?: RuleTableData[];
 };

@@ -2,18 +2,18 @@ import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
 import { appIcons, createPaginationTemplate, PaginationRefs, setupBIMTable } from "../../globals";
 import { Highlighter } from "../../bim-components/Highlighter";
-import { IDSService, IDSGroupByOption } from "../../bim-components/IDSService";
+import { RuleService, RuleGroupByOption } from "../../bim-components/RuleService";
 
-export interface IDSResultsPanelState {
+export interface RuleResultsPanelState {
   components: OBC.Components;
 }
 
 let selectedRowId: string | null = null;
 
-export const idsResultsPanelTemplate: BUI.StatefullComponent<IDSResultsPanelState> = (state) => {
+export const idsResultsPanelTemplate: BUI.StatefullComponent<RuleResultsPanelState> = (state) => {
   const { components } = state;
   const highlighter = components.get(Highlighter);
-  const idsService = components.get(IDSService);
+  const idsService = components.get(RuleService);
 
   let allResultsData: any[] = idsService.allResultsData;
   let currentPage = 0;
@@ -177,7 +177,7 @@ export const idsResultsPanelTemplate: BUI.StatefullComponent<IDSResultsPanelStat
     }
   };
 
-  // Subscribe to IDSService results changes
+  // Subscribe to RuleService results changes
   idsService.onResultsChanged.add(() => {
     allResultsData = idsService.allResultsData;
     selectedRowId = null;
@@ -199,11 +199,11 @@ export const idsResultsPanelTemplate: BUI.StatefullComponent<IDSResultsPanelStat
             <div style="display: flex; gap: 0.35rem; align-items: center; margin-left: 0.5rem;">
               <bim-label style="font-weight: bold; white-space: nowrap;">Group By:</bim-label>
               <bim-dropdown style="min-width: 8rem;" @change=${(e: Event) => {
-                const dropdown = e.target as BUI.Dropdown;
-                dropdown.visible = false;
-                const val = (dropdown.value[0] || "None") as IDSGroupByOption;
-                idsService.setGroupBy(val);
-              }}>
+      const dropdown = e.target as BUI.Dropdown;
+      dropdown.visible = false;
+      const val = (dropdown.value[0] || "None") as RuleGroupByOption;
+      idsService.setGroupBy(val);
+    }}>
                 <bim-option label="None (Flat)" value="None" checked></bim-option>
                 <bim-option label="GUID" value="GUID"></bim-option>
                 <bim-option label="Model" value="Model"></bim-option>

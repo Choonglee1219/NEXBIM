@@ -1,10 +1,10 @@
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
 import { appIcons, setupBIMTable, tableButtonStyle } from "../../globals";
-import { IDSSpecDefinition, predefinedSpecs } from "../../setup/specs";
-import { IDSService } from "../../bim-components/IDSService";
+import { RuleSpecDefinition, predefinedSpecs } from "../../setup/specs";
+import { RuleService } from "../../bim-components/RuleService";
 
-export interface IDSSpecPanelState {
+export interface RuleSpecPanelState {
   components: OBC.Components;
 }
 
@@ -16,9 +16,9 @@ type SpecTableData = {
   spec: any;
 };
 
-export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (state) => {
+export const idsSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> = (state) => {
   const { components } = state;
-  const idsService = components.get(IDSService);
+  const idsService = components.get(RuleService);
 
   // Tab State & References
   let activeTab: "list" | "builder" = "list";
@@ -68,7 +68,7 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
 
   specsTable.dataTransform = {
     Check: (_val, row) => {
-      const spec = (row as any).spec as IDSSpecDefinition;
+      const spec = (row as any).spec as RuleSpecDefinition;
       return BUI.html`
         <div style="display: flex; justify-content: center; align-items: center; width: 100%; height: 1.5rem;">
           <bim-button style=${tableButtonStyle} tooltip-title="Check" icon=${appIcons.PLAY} @click=${async (e: Event) => {
@@ -85,7 +85,7 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
     target.loading = true;
     try {
       const type = (reqTypeDropdown?.value[0] || "property") as "property" | "attribute" | "quantity";
-      const specDef: IDSSpecDefinition = {
+      const specDef: RuleSpecDefinition = {
         name: "Custom Spec",
         description: "Custom user-defined specification",
         applicability: {
@@ -123,7 +123,7 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
     const psetName = (type === "property" || type === "quantity") && psetVal ? ` in ${psetVal}` : "";
     const desc = `Check if ${entityVal || "ANY"} has ${propVal}${psetName} and its value ${descCond}`;
 
-    const specDef: IDSSpecDefinition = {
+    const specDef: RuleSpecDefinition = {
       name: `${entityVal || "ANY"} ${propVal}`,
       description: desc,
       applicability: { entity: entityVal },
@@ -145,7 +145,7 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
   };
 
   return BUI.html`
-    <bim-panel-section fixed icon=${appIcons.TASK} label="IDS Check">
+    <bim-panel-section fixed icon=${appIcons.TASK} label="Rule Check">
       <div style="display: flex; gap: 0.25rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--bim-ui_bg-contrast-20);">
         <bim-button ${BUI.ref((e) => { listTabBtn = e as BUI.Button; })} label="Spec. List" icon=${appIcons.TABLE} ?active=${(activeTab as string) === "list"} @click=${() => switchTab("list")}></bim-button>
         <bim-button ${BUI.ref((e) => { builderTabBtn = e as BUI.Button; })} label="Spec. Builder" icon=${appIcons.EDIT} ?active=${(activeTab as string) === "builder"} @click=${() => switchTab("builder")}></bim-button>
@@ -163,21 +163,21 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
           <div style="display: flex; gap: 0.5rem;">
             <bim-dropdown style="flex: 1;" ${BUI.ref((e) => { reqTypeDropdown = e as BUI.Dropdown; })} vertical
               @change=${(e: Event) => {
-                const dropdown = e.target as BUI.Dropdown;
-                const val = dropdown.value[0];
-                if (psetInput) {
-                  if (val === "property") {
-                    psetInput.disabled = false;
-                    psetInput.placeholder = "Pset (e.g. Pset_WallCommon)";
-                  } else if (val === "quantity") {
-                    psetInput.disabled = false;
-                    psetInput.placeholder = "Qto (e.g. Qto_WallBaseQuantities)";
-                  } else if (val === "attribute") {
-                    psetInput.disabled = true;
-                    psetInput.placeholder = "N.A.";
-                  }
-                }
-              }}>
+      const dropdown = e.target as BUI.Dropdown;
+      const val = dropdown.value[0];
+      if (psetInput) {
+        if (val === "property") {
+          psetInput.disabled = false;
+          psetInput.placeholder = "Pset (e.g. Pset_WallCommon)";
+        } else if (val === "quantity") {
+          psetInput.disabled = false;
+          psetInput.placeholder = "Qto (e.g. Qto_WallBaseQuantities)";
+        } else if (val === "attribute") {
+          psetInput.disabled = true;
+          psetInput.placeholder = "N.A.";
+        }
+      }
+    }}>
               <bim-option label="Property" value="property" checked></bim-option>
               <bim-option label="Quantity" value="quantity"></bim-option>
               <bim-option label="Attribute" value="attribute"></bim-option>
@@ -188,18 +188,18 @@ export const idsSpecPanelTemplate: BUI.StatefullComponent<IDSSpecPanelState> = (
           <div style="display: flex; gap: 0.5rem;">
             <bim-dropdown style="flex: 1;" ${BUI.ref((e) => { conditionDropdown = e as BUI.Dropdown; })} vertical
               @change=${(e: Event) => {
-                const dropdown = e.target as BUI.Dropdown;
-                const val = dropdown.value[0];
-                if (propValInput) {
-                  if (val === "exists") {
-                    propValInput.disabled = true;
-                    propValInput.placeholder = "N.A.";
-                  } else if (val === "pattern") {
-                    propValInput.disabled = false;
-                    propValInput.placeholder = "Value";
-                  }
-                }
-              }}>
+      const dropdown = e.target as BUI.Dropdown;
+      const val = dropdown.value[0];
+      if (propValInput) {
+        if (val === "exists") {
+          propValInput.disabled = true;
+          propValInput.placeholder = "N.A.";
+        } else if (val === "pattern") {
+          propValInput.disabled = false;
+          propValInput.placeholder = "Value";
+        }
+      }
+    }}>
               <bim-option label="Exists" value="exists" checked></bim-option>
               <bim-option label="Contains" value="pattern"></bim-option>
             </bim-dropdown>

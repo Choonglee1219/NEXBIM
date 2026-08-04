@@ -2,7 +2,7 @@ import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import * as THREE from "three";
 import { setModelTransparent } from "../../../ui-templates/toolbars/viewer-toolbar";
-import { IDSTableData } from "./types";
+import { RuleTableData } from "./types";
 import { groupResultsBy } from "./data-extractor";
 
 // Standard IFC4 ADD2 TC1 Enum definitions for PredefinedType (buildingSMART Official)
@@ -123,6 +123,10 @@ const PREDEFINED_TYPES: Record<string, Set<string>> = {
 const isNonGeometricEntity = (entity: string): boolean => {
   const e = entity.toUpperCase();
   return (
+    e.includes("TYPE") ||
+    e.includes("REL") ||
+    e.includes("CLASSIFICATION") ||
+    e.includes("GROUP") ||
     e.includes("PROPERTY") ||
     e.includes("QUANTITY") ||
     e.includes("MATERIAL") ||
@@ -132,19 +136,26 @@ const isNonGeometricEntity = (entity: string): boolean => {
     e.includes("UNIT") ||
     e.includes("GRID") ||
     e.includes("SHAPE") ||
-    e.includes("OWNER") ||
-    e.includes("REL")
-  );
+    e.includes("SWEPT") ||
+    e.includes("DIMENSION") ||
+    e.includes("ADDRESS") ||
+    e.includes("OPENING") ||
+    e.includes("PRESENTATION") ||
+    e.includes("ORGANIZATION") ||
+    e.includes("APPLICATION") ||
+    e.includes("PERSON") ||
+    e.includes("ACTOR") ||
+    e.includes("OWNER"));
 };
 
-export const checkIFCSchemaRules = async (components: OBC.Components): Promise<{ resultsData: any[]; rawFlatItems: IDSTableData[]; failMap: OBC.ModelIdMap; message: string }> => {
+export const checkIFCSchemaRules = async (components: OBC.Components): Promise<{ resultsData: any[]; rawFlatItems: RuleTableData[]; failMap: OBC.ModelIdMap; message: string }> => {
   const fragments = components.get(OBC.FragmentsManager);
   if (fragments.list.size === 0) {
     throw new Error("로드된 모델이 없습니다.");
   }
 
   const fail: OBC.ModelIdMap = {};
-  const tableData: IDSTableData[] = [];
+  const tableData: RuleTableData[] = [];
   let schemaIssueCount = 0;
 
   for (const [modelId, model] of fragments.list) {
