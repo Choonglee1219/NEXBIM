@@ -2,7 +2,7 @@ import * as FRAGS from "@thatopen/fragments";
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
 import { ItemsDataState, ItemsDataTableData, ModelIdMap } from "./types";
-import { tableDefaultContentTemplate, onTableCellCreated, onTableRowCreated, appIcons } from "../../../globals";
+import { setupBIMTable, onTableCellCreated, onTableRowCreated, appIcons } from "../../../globals";
 
 let itemsRowsCache: { [modelID: string]: Map<number, BUI.TableGroupData> } = {};
 
@@ -275,8 +275,7 @@ export const itemsDataTemplate = (_state: ItemsDataState) => {
   const onTableCreated = async (e?: Element) => {
     if (!e) return;
     const table = e as BUI.Table<ItemsDataTableData>;
-
-    table.defaultContentTemplate = tableDefaultContentTemplate;
+    setupBIMTable(table);
 
     table.loadFunction = async () => {
       try {

@@ -146,7 +146,7 @@ export const appIcons = {
 };
 
 // 테이블 내 아이콘 버튼들의 공통 컴팩트 스타일
-export const tableButtonStyle = "flex: 0; margin: 0; padding: 0; --bim-button--p: 0.125rem 0.25rem; --bim-icon--fz: 1rem;";
+export const tableButtonStyle = "flex: 0; margin: 0; padding: 0; --bim-button--p: 0.125rem 0.25rem; --bim-icon--fz: 0.85rem; min-height: 1.5rem; height: 1.5rem;";
 
 export const onToggleSection = (e: Event) => {
   const header = e.currentTarget as HTMLElement;
@@ -250,7 +250,7 @@ export const onTableCellCreated = (e: Event) => {
   if (!detail) return;
   const { cell } = detail;
   cell.style.border = `1px solid var(--bim-ui_bg-contrast-20)`;
-  cell.style.padding = "4px 8px";
+  cell.style.padding = "2px 6px";
 
   cell.style.whiteSpace = "nowrap";
   cell.style.overflow = "hidden";
@@ -258,6 +258,9 @@ export const onTableCellCreated = (e: Event) => {
   cell.style.userSelect = "text";
   cell.style.cursor = "copy";
   cell.style.minWidth = "0";
+  cell.style.display = "flex";
+  cell.style.alignItems = "center";
+  cell.style.boxSizing = "border-box";
 
   // 우클릭 시 텍스트를 클립보드에 바로 복사
   cell.addEventListener("contextmenu", async (evt) => {
@@ -283,11 +286,12 @@ export const onTableCellCreated = (e: Event) => {
 
 export const onTableRowCreated = (e: Event) => {
   const customEvent = e as CustomEvent<BUI.RowCreatedEventDetail<any>>;
-  customEvent.stopImmediatePropagation();
   if (!customEvent.detail) return;
   const { row } = customEvent.detail;
-  row.style.minHeight = "2rem";
+  row.style.minHeight = "2.25rem";
+  row.style.height = "2.25rem";
   row.style.margin = "0";
+  row.style.alignItems = "center";
 };
 
 export const setupBIMTable = (table: BUI.Table<any>) => {

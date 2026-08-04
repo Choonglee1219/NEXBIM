@@ -1,7 +1,7 @@
 // eslint-disable-next-line import/no-extraneous-dependencies
 import * as BUI from "@thatopen/ui";
 import { TopicsListState, TopicsListTableData } from "./types";
-import { appIcons, onTableCellCreated, onTableRowCreated } from "../../../globals";
+import { appIcons, setupBIMTable, onTableCellCreated } from "../../../globals";
 import { BCFTopics as EngineBCFTopics } from "../../../bim-components/BCFTopics/src/engine";
 
 export const topicsListTemplate: BUI.StatefullComponent<TopicsListState> = (
@@ -33,8 +33,13 @@ export const topicsListTemplate: BUI.StatefullComponent<TopicsListState> = (
     };
   });
 
+  const onTableCreated = (el?: Element) => {
+    if (!el) return;
+    const table = el as BUI.Table<TopicsListTableData>;
+    setupBIMTable(table);
+  };
+
   const onRowCreated = (e: Event) => {
-    onTableRowCreated(e);
     const table = e.target as BUI.Table<TopicsListTableData>;
     const customEvent = e as CustomEvent<BUI.RowCreatedEventDetail<any>>;
     const { row } = customEvent.detail;
@@ -62,7 +67,7 @@ export const topicsListTemplate: BUI.StatefullComponent<TopicsListState> = (
   };
 
   return BUI.html`
-    <bim-table no-indentation @rowcreated=${onRowCreated} @cellcreated=${onTableCellCreated} .data=${tableData}>
+    <bim-table ${BUI.ref(onTableCreated)} no-indentation @rowcreated=${onRowCreated} @cellcreated=${onTableCellCreated} .data=${tableData}>
       <bim-label slot="missing-data" icon=${appIcons.WARNING} style="--bim-icon--c: gold;">${missingDataMessage}</bim-label>
     </bim-table>
   `;

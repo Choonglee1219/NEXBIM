@@ -136,6 +136,34 @@ bim-panel-section > bim-table {
   flex: 1;
 }
 
+/* 전역 테이블 행 높이 및 테이블 내부 웹 컴포넌트(드롭다운, 버튼) 패딩/여백 컴팩트 통일 */
+bim-table {
+  --bim-table-row--h: 2.25rem;
+}
+
+bim-table bim-dropdown {
+  --bim-dropdown--p: 0.125rem 0.25rem;
+  --bim-button--p: 0.125rem 0.25rem;
+  --bim-input--p: 0.125rem 0.25rem;
+  --bim-icon--fz: 0.85rem;
+  min-height: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  padding: 0;
+  font-size: 0.8rem;
+  box-sizing: border-box;
+}
+
+bim-table bim-button {
+  --bim-button--p: 0.125rem 0.25rem;
+  --bim-icon--fz: 0.85rem;
+  min-height: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  font-size: 0.85rem;
+  box-sizing: border-box;
+}
+
 :not(bim-panel) > bim-panel-section {
   outline: 1px solid var(--bim-ui_bg-contrast-40);
   border-radius: 0.25rem;

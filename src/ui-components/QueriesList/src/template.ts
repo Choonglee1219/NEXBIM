@@ -1,9 +1,8 @@
 import * as OBC from "@thatopen/components";
 import * as BUI from "@thatopen/ui";
 import { QueriesListState } from "./types";
-import { appIcons, tableButtonStyle } from "../../../globals";
+import { appIcons, tableButtonStyle, setupBIMTable, onTableCellCreated, onTableRowCreated } from "../../../globals";
 import { Highlighter } from "../../../bim-components/Highlighter";
-import { tableDefaultContentTemplate, onTableCellCreated, onTableRowCreated } from "../../../globals";
 
 const getQueryBuilderFields = (q: any) => {
   const fields = {
@@ -105,7 +104,7 @@ export const queriesListTemplate: BUI.StatefullComponent<QueriesListState> = (
     table.headersHidden = true;
     table.noIndentation = true;
 
-    table.defaultContentTemplate = tableDefaultContentTemplate;
+    setupBIMTable(table);
 
     table.dataTransform = {
       Actions: (_, rowData) => {

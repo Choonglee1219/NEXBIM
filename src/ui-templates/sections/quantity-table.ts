@@ -3,7 +3,7 @@ import * as OBC from "@thatopen/components";
 import { appIcons } from "../../globals";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { quantityChart } from "../../ui-components/QuantityChart";
-import { setupBIMTable, tableDefaultContentTemplate, onTableCellCreated, onTableRowCreated, createPaginationTemplate, PaginationRefs } from "../../globals";
+import { setupBIMTable, createPaginationTemplate, PaginationRefs } from "../../globals";
 
 export interface QuantitiesPanelState {
   components: OBC.Components;
@@ -200,12 +200,10 @@ export const quantitiesPanelTemplate: BUI.StatefullComponent<QuantitiesPanelStat
   quantityTable.noCarets = true;
 
   // 공통 테이블 템플릿 및 셀 스타일 적용
-  quantityTable.defaultContentTemplate = tableDefaultContentTemplate;
-  quantityTable.addEventListener("cellcreated", onTableCellCreated);
+  setupBIMTable(quantityTable);
 
   // Quantity Table만의 개별 이벤트 (행 클릭 시 이동)
   quantityTable.addEventListener("rowcreated", (e: Event) => {
-    onTableRowCreated(e); // 공통 행 스타일 적용 (stopImmediatePropagation 포함)
     const customEvent = e as CustomEvent<BUI.RowCreatedEventDetail<any>>;
     const { row } = customEvent.detail;
     row.style.cursor = "pointer";

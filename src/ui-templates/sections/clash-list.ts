@@ -3,7 +3,7 @@ import * as OBC from "@thatopen/components";
 import * as THREE from "three";
 import { ClashService, ClashResult, clashMatrix } from "../../bim-components/ClashService";
 import { Highlighter } from "../../bim-components/Highlighter";
-import { tableButtonStyle, appIcons, createPaginationTemplate, PaginationRefs, tableDefaultContentTemplate, onTableCellCreated, onTableRowCreated } from "../../globals";
+import { tableButtonStyle, appIcons, createPaginationTemplate, PaginationRefs, setupBIMTable } from "../../globals";
 import { restoreModelMaterials } from "../toolbars/viewer-toolbar";
 
 export interface ClashListPanelState {
@@ -59,12 +59,9 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
   const clashTable = document.createElement("bim-table") as BUI.Table<any>;
   clashTable.headersHidden = false;
   clashTable.preserveStructureOnFilter = true;
-
-  clashTable.defaultContentTemplate = tableDefaultContentTemplate;
-  clashTable.addEventListener("cellcreated", onTableCellCreated);
+  setupBIMTable(clashTable);
 
   clashTable.addEventListener("rowcreated", (e: Event) => {
-    onTableRowCreated(e);
     const customEvent = e as CustomEvent<BUI.RowCreatedEventDetail<any>>;
     const { row } = customEvent.detail;
     row.style.cursor = "pointer";

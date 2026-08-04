@@ -1,8 +1,7 @@
 import * as BUI from "@thatopen/ui";
 import { ViewTemplatesListState, ViewTemplatesListTableData } from "./types";
 import { ViewTemplater } from "../../../bim-components";
-import { appIcons } from "../../../globals";
-import { onTableCellCreated, onTableRowCreated } from "../../../globals";
+import { appIcons, setupBIMTable, onTableCellCreated, onTableRowCreated } from "../../../globals";
 
 export const viewTemplatesListTemplate = (state: ViewTemplatesListState) => {
   const { components } = state;
@@ -15,6 +14,7 @@ export const viewTemplatesListTemplate = (state: ViewTemplatesListState) => {
   const onCreated = (e?: Element) => {
     if (!e) return;
     const table = e as BUI.Table<ViewTemplatesListTableData>;
+    setupBIMTable(table);
 
     const data: BUI.TableGroupData<ViewTemplatesListTableData>[] = [];
 

@@ -4,7 +4,7 @@ import * as BUI from "@thatopen/ui";
 import { SpatialTreeItem } from "@thatopen/fragments";
 import { SpatialTreeState, SpatialTreeData } from "./types";
 import { Highlighter } from "../../../bim-components/Highlighter";
-import { tableDefaultContentTemplate, onTableCellCreated, onTableRowCreated } from "../../../globals";
+import { setupBIMTable, onTableCellCreated, onTableRowCreated } from "../../../globals";
 
 const getModelTree = (
   model: FRAGS.FragmentsModel,
@@ -161,12 +161,11 @@ export const spatialTreeTemplate = (state: SpatialTreeState) => {
   const onTableCreated = async (element?: Element) => {
     if (!element) return;
     const table = element as BUI.Table<SpatialTreeData>;
+    setupBIMTable(table);
 
     // 열 너비를 제한하여 텍스트 오버플로우 시 말줄임표(...)가 적용되도록 설정
     table.columns = [{ name: "Name", width: "minmax(0, 1fr)" }];
     table.hiddenColumns = ["modelId", "localId", "children", "categoryPrefix"];
-
-    table.defaultContentTemplate = tableDefaultContentTemplate;
 
     table.loadFunction = async () => {
       return new Promise((resolve) => {

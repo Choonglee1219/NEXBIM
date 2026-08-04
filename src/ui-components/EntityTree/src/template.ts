@@ -3,7 +3,7 @@ import * as OBC from "@thatopen/components";
 import * as BUI from "@thatopen/ui";
 import { EntityTreeState, EntityTreeData } from "./types";
 import { Highlighter } from "../../../bim-components/Highlighter";
-import { tableDefaultContentTemplate, onTableCellCreated, onTableRowCreated } from "../../../globals";
+import { setupBIMTable, onTableCellCreated, onTableRowCreated } from "../../../globals";
 
 const computeRowData = async (models: Iterable<FRAGS.FragmentsModel>, components: OBC.Components) => {
   const rows: BUI.TableGroupData[] = [];
@@ -133,9 +133,9 @@ export const entityTreeTemplate = (state: EntityTreeState) => {
   const onTableCreated = async (element?: Element) => {
     if (!element) return;
     const table = element as BUI.Table<EntityTreeData>;
+    setupBIMTable(table);
     table.columns = [{ name: "Name", width: "minmax(0, 1fr)" }];
     table.hiddenColumns = ["modelId", "localId", "children"];
-    table.defaultContentTemplate = tableDefaultContentTemplate;
     table.loadFunction = async () => new Promise((resolve) => setTimeout(() => resolve(computeRowData(models, components))));
     table.loadData(true);
   };
