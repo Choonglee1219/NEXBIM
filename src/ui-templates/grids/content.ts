@@ -43,6 +43,11 @@ type IDSSpecs = {
   state: TEMPLATES.IDSSpecPanelState;
 };
 
+type IDSResults = {
+  name: "idsResults";
+  state: TEMPLATES.IDSResultsPanelState;
+};
+
 type ModelTree = {
   name: "modelTree";
   state: TEMPLATES.ModelTreePanelState;
@@ -111,6 +116,7 @@ export type ContentGridElements = [
   Dashboard,
   ViewPoints,
   IDSSpecs,
+  IDSResults,
   Quantities,
   ClashList,
   DrawingEditor,
@@ -174,6 +180,10 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
       },
       propsManager: {
         template: TEMPLATES.globalPropsPanelTemplate,
+        initialState: { components },
+      },
+      idsResults: {
+        template: TEMPLATES.idsResultsPanelTemplate,
         initialState: { components },
       },
       topicList: {
@@ -257,12 +267,7 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         / var(--left-col-width) 1fr var(--right-col-width)
         `,
       },
-      IDSCheck: {
-        template: `
-          "idsSpecs viewer elementData" 1fr
-          / var(--left-col-width) 1fr var(--right-col-width)
-          `,
-      },
+
       Properties: {
         template: `
         "propsManager viewer" var(--top-row-height, auto)
@@ -270,11 +275,17 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         / var(--half-col-width, 1fr) 1fr
         `,
       },
+      IDSCheck: {
+        template: `
+        "viewer idsSpecs elementData" var(--top-row-height, 1fr)
+        "idsResults idsResults idsResults" 1fr
+        / var(--left-col-width) 1fr var(--right-col-width)
+        `,
+      },
       Quantities: {
         template: `
         "viewer quantities quantities" var(--top-row-height, 1fr)
         "elementData quantities quantities" 1fr
-        "elementData quantities quantities" var(--bottom-row-height, auto)
         / var(--left-col-width) 1fr var(--right-col-width)
         `,
       },

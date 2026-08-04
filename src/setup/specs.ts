@@ -5,43 +5,49 @@ export interface IDSSpecDefinition {
     entity: string;
   };
   requirement: {
-    type: "property" | "attribute" | "quantity";
+    type: "property" | "attribute" | "quantity" | "cross-anomaly" | "completion-rate" | "schema-check";
     propertySet?: string;
     name: string;
-    condition: "exists" | "pattern";
+    condition: "exists" | "pattern" | "anomaly-check" | "completion-check" | "schema-check";
     value?: string;
   };
 }
 
 export const predefinedSpecs: IDSSpecDefinition[] = [
   {
-    name: "Door FireRating",
-    description: "All doors must have FireRating specified in Pset_DoorCommon.",
+    name: "1. IFC 스키마 및 규격 검사",
+    description: "공간 구조(Storey) 소속 여부, PredefinedType Enum 유효성 등 IFC 스키마 규격을 검사한다.",
+    applicability: { entity: "ALL" },
+    requirement: { type: "schema-check", name: "SchemaValidator", condition: "schema-check" }
+  },
+  {
+    name: "2. 중복 GUID 여부 검사",
+    description: "불러져 있는 모든 모델들에 걸쳐 중복 GUID를 검사한다.",
+    applicability: { entity: "ALL" },
+    requirement: { type: "attribute", name: "GlobalId", condition: "exists" }
+  },
+  {
+    name: "3. 프로퍼티 값 이상치 검사",
+    description: "불러져 있는 모든 모델들에 걸쳐 프로퍼티 값의 이상치를 검사한다.",
+    applicability: { entity: "ALL" },
+    requirement: { type: "cross-anomaly", name: "MultiChecker", condition: "anomaly-check" }
+  },
+  {
+    name: "4. 표준 프로퍼티 입력률 검사",
+    description: "불러져 있는 모든 모델들에 걸쳐 프로퍼티 누락 및 미입력(TBD/Null) 항목을 검사한다.",
+    applicability: { entity: "ALL" },
+    requirement: { type: "completion-rate", name: "Completion", condition: "completion-check" }
+  },
+  {
+    name: "5. Door FireRating 여부 검사",
+    description: "모든 Door는 Pset_DoorCommon.FireRating 프로퍼티를 가져야 한다.",
     applicability: { entity: "IFCDOOR" },
     requirement: { type: "property", propertySet: "Pset_DoorCommon", name: "FireRating", condition: "exists" }
   },
   {
-    name: "Wall PredefinedType",
-    description: "All walls must have a PredefinedType attribute.",
+    name: "6. Wall PredefinedType 여부 검사",
+    description: "모든 Wall은 PredefinedType 속성을 가져야 한다.",
     applicability: { entity: "IFCWALL" },
     requirement: { type: "attribute", name: "PredefinedType", condition: "exists" }
   },
-  {
-    name: "Slab IsExternal",
-    description: "Slabs must define IsExternal property.",
-    applicability: { entity: "IFCSLAB" },
-    requirement: { type: "property", propertySet: "Pset_SlabCommon", name: "IsExternal", condition: "exists" }
-  },
-  {
-    name: "Beam Length",
-    description: "All Beams must have Length specified in Qto_BeamBaseQuantities.",
-    applicability: { entity: "IFCBEAM" },
-    requirement: { type: "quantity", propertySet: "Qto_BeamBaseQuantities", name: "Length", condition: "exists" }
-  },
-  {
-    name: "Duplicate GUIDs",
-    description: "Check for duplicate GUIDs across all loaded models.",
-    applicability: { entity: "ALL" },
-    requirement: { type: "attribute", name: "GlobalId", condition: "exists" }
-  }
 ];

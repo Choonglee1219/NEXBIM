@@ -9,6 +9,7 @@ export * from "./bcf-list";
 export * from "./dashboard";
 export * from "./viewpoints";
 export * from "./ids-spec";
+export * from "./ids-results";
 export * from "./quantity-table";
 export * from "./clash-list";
 export * from "./drawing";
