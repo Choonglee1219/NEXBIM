@@ -3,9 +3,11 @@ import * as OBC from "@thatopen/components";
 import { appIcons, setupBIMTable, tableButtonStyle } from "../../globals";
 import { RuleSpecDefinition, predefinedSpecs } from "../../setup/rules";
 import { RuleService } from "../../bim-components/RuleService";
+import { bimChatPanel } from "../../bim-components/BimChat";
 
 export interface RuleSpecPanelState {
   components: OBC.Components;
+  world?: OBC.World;
 }
 
 type SpecTableData = {
@@ -16,24 +18,30 @@ type SpecTableData = {
   spec: any;
 };
 
+export const ruleUIState = {
+  reqTypeDropdown: null as BUI.Dropdown | null,
+  entityInput: null as BUI.TextInput | null,
+  psetInput: null as BUI.TextInput | null,
+  propInput: null as BUI.TextInput | null,
+  conditionDropdown: null as BUI.Dropdown | null,
+  propValInput: null as BUI.TextInput | null,
+  onReviewModel: null as ((btn?: any) => Promise<void>) | null,
+  onSaveSpec: null as (() => void) | null,
+  switchTab: null as ((tabName: "list" | "builder") => void) | null,
+};
+
 export const ruleSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> = (state) => {
-  const { components } = state;
+  const { components, world } = state;
   const ruleService = components.get(RuleService);
 
-  // Tab State & References
-  let activeTab: "list" | "builder" = "list";
-  let specListContainer: HTMLDivElement;
-  let specBuilderContainer: HTMLDivElement;
-  let listTabBtn: BUI.Button;
-  let builderTabBtn: BUI.Button;
+  let tabsElement: BUI.Tabs;
 
-  const switchTab = (tab: "list" | "builder") => {
-    activeTab = tab;
-    if (specListContainer) specListContainer.style.display = tab === "list" ? "flex" : "none";
-    if (specBuilderContainer) specBuilderContainer.style.display = tab === "builder" ? "flex" : "none";
-    if (listTabBtn) listTabBtn.active = tab === "list";
-    if (builderTabBtn) builderTabBtn.active = tab === "builder";
+  const switchTab = (tabName: "list" | "builder") => {
+    if (tabsElement) {
+      tabsElement.tab = tabName;
+    }
   };
+  ruleUIState.switchTab = switchTab;
 
   // UI References for Rule Builder
   let reqTypeDropdown: BUI.Dropdown;
@@ -81,8 +89,9 @@ export const ruleSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> =
     }
   };
 
-  const onReviewModel = async ({ target }: { target: BUI.Button }) => {
-    target.loading = true;
+  const onReviewModel = async (e?: { target: BUI.Button } | any) => {
+    const target = e?.target ? (e.target as BUI.Button) : null;
+    if (target) target.loading = true;
     try {
       const type = (reqTypeDropdown?.value[0] || "property") as "property" | "attribute" | "quantity";
       const specDef: RuleSpecDefinition = {
@@ -104,7 +113,7 @@ export const ruleSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> =
       console.error(e);
       alert("규칙 테스트 중 오류가 발생했습니다.");
     } finally {
-      target.loading = false;
+      if (target) target.loading = false;
     }
   };
 
@@ -144,73 +153,86 @@ export const ruleSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> =
     switchTab("list");
   };
 
+  ruleUIState.onReviewModel = onReviewModel;
+  ruleUIState.onSaveSpec = onSaveSpec;
+
+  const [embeddedChat] = world
+    ? bimChatPanel({ components, world, mode: "rule", embedded: true })
+    : [null];
+
   return BUI.html`
-    <bim-panel-section fixed icon=${appIcons.TASK} label="Rule Check">
-      <div style="display: flex; gap: 0.25rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--bim-ui_bg-contrast-20);">
-        <bim-button ${BUI.ref((e) => { listTabBtn = e as BUI.Button; })} label="Rule List" icon=${appIcons.TABLE} ?active=${(activeTab as string) === "list"} @click=${() => switchTab("list")}></bim-button>
-        <bim-button ${BUI.ref((e) => { builderTabBtn = e as BUI.Button; })} label="Rule Builder" icon=${appIcons.EDIT} ?active=${(activeTab as string) === "builder"} @click=${() => switchTab("builder")}></bim-button>
-      </div>
+    <bim-panel-section fixed icon=${appIcons.TASK} label="Rule Check" style="height: 100%; display: flex; flex-direction: column;">
+      <bim-tabs ${BUI.ref((e) => { tabsElement = e as BUI.Tabs; })} style="flex: 1; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden;">
+        <bim-tab name="list" label="Rule List" icon=${appIcons.TABLE}>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem;">
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              ${specsTable}
+            </div>
+          </div>
+        </bim-tab>
 
-      <div ${BUI.ref((e) => { specListContainer = e as HTMLDivElement; })} style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 0.5rem;">
-        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-          ${specsTable}
-        </div>
-      </div>
-
-      <div ${BUI.ref((e) => { specBuilderContainer = e as HTMLDivElement; })} style="display: none; flex-direction: column; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 0.5rem;">
-        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-          <bim-text-input ${BUI.ref((e) => { entityInput = e as BUI.TextInput; })} placeholder="Entity (e.g. WALL)" vertical></bim-text-input>
-          <div style="display: flex; gap: 0.5rem;">
-            <bim-dropdown style="flex: 1;" ${BUI.ref((e) => { reqTypeDropdown = e as BUI.Dropdown; })} vertical
-              @change=${(e: Event) => {
-      const dropdown = e.target as BUI.Dropdown;
-      const val = dropdown.value[0];
-      if (psetInput) {
-        if (val === "property") {
-          psetInput.disabled = false;
-          psetInput.placeholder = "Pset (e.g. Pset_WallCommon)";
-        } else if (val === "quantity") {
-          psetInput.disabled = false;
-          psetInput.placeholder = "Qto (e.g. Qto_WallBaseQuantities)";
-        } else if (val === "attribute") {
-          psetInput.disabled = true;
-          psetInput.placeholder = "N.A.";
-        }
-      }
-    }}>
-              <bim-option label="Property" value="property" checked></bim-option>
-              <bim-option label="Quantity" value="quantity"></bim-option>
-              <bim-option label="Attribute" value="attribute"></bim-option>
-            </bim-dropdown>
-            <bim-text-input style="flex: 1;" ${BUI.ref((e) => { psetInput = e as BUI.TextInput; })} placeholder="Pset (e.g. Pset_WallCommon)" vertical></bim-text-input>
+        <bim-tab name="builder" label="Rule Builder" icon=${appIcons.EDIT} style="height: 100%; flex: 1; overflow: hidden;">
+          <div style="display: flex; gap: 0.75rem; padding: 0.5rem; height: 100%; max-height: 100%; box-sizing: border-box; overflow: hidden;">
+            <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; padding-right: 0.25rem;">
+              <bim-text-input style="flex: 0 0 auto;" ${BUI.ref((e) => { entityInput = e as BUI.TextInput; ruleUIState.entityInput = entityInput; })} placeholder="Entity (e.g. WALL)" vertical></bim-text-input>
+              <div style="display: flex; gap: 0.5rem; flex: 0 0 auto;">
+                <bim-dropdown style="flex: 1;" ${BUI.ref((e) => { reqTypeDropdown = e as BUI.Dropdown; ruleUIState.reqTypeDropdown = reqTypeDropdown; })} vertical
+                  @change=${(e: Event) => {
+          const dropdown = e.target as BUI.Dropdown;
+          const val = dropdown.value[0];
+          if (psetInput) {
+            if (val === "property") {
+              psetInput.disabled = false;
+              psetInput.placeholder = "Pset (e.g. Pset_WallCommon)";
+            } else if (val === "quantity") {
+              psetInput.disabled = false;
+              psetInput.placeholder = "Qto (e.g. Qto_WallBaseQuantities)";
+            } else if (val === "attribute") {
+              psetInput.disabled = true;
+              psetInput.placeholder = "N.A.";
+            }
+          }
+        }}>
+                  <bim-option label="Property" value="property" checked></bim-option>
+                  <bim-option label="Quantity" value="quantity"></bim-option>
+                  <bim-option label="Attribute" value="attribute"></bim-option>
+                </bim-dropdown>
+                <bim-text-input style="flex: 1;" ${BUI.ref((e) => { psetInput = e as BUI.TextInput; ruleUIState.psetInput = psetInput; })} placeholder="Pset (e.g. Pset_WallCommon)" vertical></bim-text-input>
+              </div>
+              <bim-text-input style="flex: 0 0 auto;" ${BUI.ref((e) => { propInput = e as BUI.TextInput; ruleUIState.propInput = propInput; })} placeholder="Name" vertical></bim-text-input>
+              <div style="display: flex; gap: 0.5rem; flex: 0 0 auto;">
+                <bim-dropdown style="flex: 1;" ${BUI.ref((e) => { conditionDropdown = e as BUI.Dropdown; ruleUIState.conditionDropdown = conditionDropdown; })} vertical
+                  @change=${(e: Event) => {
+          const dropdown = e.target as BUI.Dropdown;
+          const val = dropdown.value[0];
+          if (propValInput) {
+            if (val === "exists") {
+              propValInput.disabled = true;
+              propValInput.placeholder = "N.A.";
+            } else if (val === "pattern") {
+              propValInput.disabled = false;
+              propValInput.placeholder = "Value";
+            }
+          }
+        }}>
+                  <bim-option label="Exists" value="exists" checked></bim-option>
+                  <bim-option label="Contains" value="pattern"></bim-option>
+                </bim-dropdown>
+                <bim-text-input style="flex: 1;" ${BUI.ref((e) => { propValInput = e as BUI.TextInput; ruleUIState.propValInput = propValInput; })} placeholder="N.A." disabled vertical></bim-text-input>
+              </div>
+              <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem; flex: 0 0 auto;">
+                <bim-button style="flex: 1;" label="Check" @click=${onReviewModel} icon=${appIcons.PLAY}></bim-button>
+                <bim-button style="flex: 1;" label="Save" @click=${onSaveSpec} icon=${appIcons.SAVE}></bim-button>
+              </div>
+            </div>
+            ${embeddedChat ? BUI.html`
+              <div style="flex: 1; min-width: 280px; height: 100%; min-height: 0; max-height: 100%; border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
+                ${embeddedChat}
+              </div>
+            ` : ""}
           </div>
-          <bim-text-input ${BUI.ref((e) => { propInput = e as BUI.TextInput; })} placeholder="Name" vertical></bim-text-input>
-          <div style="display: flex; gap: 0.5rem;">
-            <bim-dropdown style="flex: 1;" ${BUI.ref((e) => { conditionDropdown = e as BUI.Dropdown; })} vertical
-              @change=${(e: Event) => {
-      const dropdown = e.target as BUI.Dropdown;
-      const val = dropdown.value[0];
-      if (propValInput) {
-        if (val === "exists") {
-          propValInput.disabled = true;
-          propValInput.placeholder = "N.A.";
-        } else if (val === "pattern") {
-          propValInput.disabled = false;
-          propValInput.placeholder = "Value";
-        }
-      }
-    }}>
-              <bim-option label="Exists" value="exists" checked></bim-option>
-              <bim-option label="Contains" value="pattern"></bim-option>
-            </bim-dropdown>
-            <bim-text-input style="flex: 1;" ${BUI.ref((e) => { propValInput = e as BUI.TextInput; })} placeholder="N.A." disabled vertical></bim-text-input>
-          </div>
-          <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
-            <bim-button style="flex: 1;" label="Check" @click=${onReviewModel} icon=${appIcons.PLAY}></bim-button>
-            <bim-button style="flex: 1;" label="Save" @click=${onSaveSpec} icon=${appIcons.SAVE}></bim-button>
-          </div>
-        </div>
-      </div>
+        </bim-tab>
+      </bim-tabs>
     </bim-panel-section>
   `;
 };

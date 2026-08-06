@@ -1,6 +1,6 @@
 {
   "name": "NEXBIM",
-  "version": "0.1.0",
+  "version": "0.4.61",
   "main": "index.js",
   "type": "module",
   "scripts": {

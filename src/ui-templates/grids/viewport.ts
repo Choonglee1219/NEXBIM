@@ -116,7 +116,7 @@ export const viewportGridTemplate: BUI.StatefullComponent<ViewportGridState> = (
 
     const onToggleChat = () => {
       if ((window as any).toggleBimChat) {
-        (window as any).toggleBimChat();
+        (window as any).toggleBimChat(undefined, "viewport");
       }
       update();
     };

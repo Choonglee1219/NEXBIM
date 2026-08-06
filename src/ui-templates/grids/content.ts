@@ -7,11 +7,13 @@ import {
   MEDIUM_COLUMN_WIDTH,
   appIcons,
 } from "../../globals";
+
 import { BCFTopics } from "../../bim-components/BCFTopics";
 import { DiagramComponent } from "../../bim-components/Diagram";
 
 type Viewer = "viewer";
 type Diagram = "diagram";
+
 
 type IFCList = {
   name: "ifcList";
@@ -119,14 +121,15 @@ export type ContentGridElements = [
   RuleResults,
   Quantities,
   ClashList,
-  DrawingEditor,
   Timeline,
   PhaseManager,
   GISSettings,
+  DrawingEditor,
   Diagram,
 ];
 
-export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "RuleCheck", "FullScreen", "Quantities", "DrawingEditor", "Timeline", "GISMap", "Diagram"];
+export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "RuleCheck", "FullScreen", "Quantities", "Timeline", "GISMap", "DrawingEditor", "Diagram"];
+
 
 export interface ContentGridState {
   components: OBC.Components;
@@ -138,7 +141,7 @@ export interface ContentGridState {
 export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
   state,
 ) => {
-  const { components } = state;
+  const { components, world } = state;
   const fragments = components.get(OBC.FragmentsManager);
   const bcfTopics = components.get(BCFTopics);
 
@@ -156,7 +159,7 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
       },
       queries: {
         template: TEMPLATES.queriesPanelTemplate,
-        initialState: { components, isAdmin: true },
+        initialState: { components, world, isAdmin: true },
       },
       ifcList: {
         template: TEMPLATES.ifcListPanelTemplate,
@@ -176,7 +179,7 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
       },
       idsSpecs: {
         template: TEMPLATES.ruleSpecPanelTemplate,
-        initialState: { components },
+        initialState: { components, world },
       },
       propsManager: {
         template: TEMPLATES.globalPropsPanelTemplate,
@@ -255,9 +258,9 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
       },
       ClashDetection: {
         template: `
-          "ifcList viewer elementData" var(--top-row-height, 1fr)
-          "clashList clashList clashList" 1fr
-          / var(--left-col-width) 1fr var(--right-col-width)
+        "ifcList viewer elementData" var(--top-row-height, 1fr)
+        "clashList clashList clashList" 1fr
+        / var(--left-col-width) 1fr var(--right-col-width)
         `,
       },
       Queries: {
@@ -267,7 +270,6 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         / var(--left-col-width) 1fr var(--right-col-width)
         `,
       },
-
       Properties: {
         template: `
         "propsManager viewer" var(--top-row-height, auto)
@@ -291,6 +293,7 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
       },
       ViewPoints: {
         template: `
+        "viewPoints viewer" var(--top-row-height, auto)
         "viewPoints viewer" 1fr
         / var(--half-col-width, 1fr) 1fr
         `,

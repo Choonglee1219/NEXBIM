@@ -67,7 +67,7 @@ html.bim-ui-dark {
   --bim-ui_bg-contrast-60: var(--bim-ui_gray-6);
   --bim-ui_bg-contrast-80: var(--bim-ui_gray-8);
   --bim-ui_bg-contrast-100: var(--bim-ui_gray-10);
-
+  
   /* Dark Theme Input Colors */
   --bim-input--bgc: var(--bim-ui_gray-2);
   --bim-dropdown--c: var(--bim-ui_bg-contrast-100);
@@ -87,7 +87,7 @@ html.bim-ui-light {
   --bim-ui_accent-base: #00a8e8;
   --bim-ui_main-contrast: #ffffff;
   --bim-ui_accent-contrast: #101620;
-
+  
   /* Light Theme Input Colors */
   --bim-input--bgc: #ffffff;
   --bim-dropdown--c: #101620;
@@ -178,10 +178,10 @@ bim-grid[floating] > bim-toolbar {
 
 /* bim-button 크기 및 배경색(Contrast) 예전 스타일로 강제 복원 */
 bim-button {
-  --bim-button--p: 0.375rem 0.875rem; /* 기존보다 10~15% 정도 패딩을 늘려 크기 키움 */
-  --bim-button--bgc: var(--bim-ui_bg-contrast-20); /* 배경색을 예전처럼 뚜렷하게 복원 */
-  font-size: 1rem; /* 텍스트 크기 조정 */
-  --bim-icon--fz: 1rem; /* 아이콘 크기를 보기 좋게 축소 */
+  --bim-button--p: 0.375rem 0.875rem;
+  --bim-button--bgc: var(--bim-ui_bg-contrast-20);
+  font-size: 1rem;
+  --bim-icon--fz: 1rem;
 }
 
 bim-button[active] {
@@ -190,6 +190,10 @@ bim-button[active] {
   --bim-icon--c: var(--bim-ui_main-contrast);
   --bim-label--c: var(--bim-ui_main-contrast);
   color: var(--bim-ui_main-contrast);
+}
+
+bim-tabs {
+  --bim-ui_bg-contrast-60: var(--bim-ui_main-base);
 }
 
 bim-text-input, bim-dropdown, bim-number-input {
@@ -204,7 +208,6 @@ bim-context-menu {
 
 bim-context-menu bim-button {
   background-color: transparent;
-  --bim-button--bgc: transparent; /* 컨텍스트 메뉴 내 버튼 배경 투명화 유지 */
 }
 
 bim-context-menu bim-button[active] {
@@ -328,4 +331,3 @@ table, th, td {
 .bim-scroll-md::-webkit-scrollbar-thumb:hover {
   background-color: var(--bim-ui_bg-contrast-40);
 }
-

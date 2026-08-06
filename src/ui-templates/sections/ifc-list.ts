@@ -1,6 +1,6 @@
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
-import { appIcons, appState, onToggleSection, setupBIMTable, tableButtonStyle } from "../../globals";
+import { appIcons, appState, setupBIMTable, tableButtonStyle } from "../../globals";
 import { SharedIFC } from '../../bim-components/SharedIFC';
 import { SharedFRAG } from '../../bim-components/SharedFRAG';
 import { BCFTopics } from "../../bim-components/BCFTopics";
@@ -23,6 +23,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
   const sharedFRAG = new SharedFRAG();
   const bcfTopics = components.get(BCFTopics);
 
+
   // --- Grouping 1단계: 사용자 정의 그룹 상태 관리 ---
   const paletteColors = [
     "hsl(0, 65%, 40%)",
@@ -36,8 +37,8 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
   // 현재 선택된 필터용 그룹 상태
   let activeGroupFilter: string | null = null;
-  let sharedModelLabel: BUI.Label;
-  let loadedModelLabel: BUI.Label;
+  let sharedModelTab: BUI.Tab;
+  let loadedModelTab: BUI.Tab;
 
   // 그룹별 아이템 개수를 계산하는 함수
   const getGroupCounts = () => {
@@ -123,13 +124,9 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
         model: model
       }
     }));
-    if (loadedModelLabel) {
-      loadedModelLabel.textContent = `Loaded Model (${models.length})`;
+    if (loadedModelTab) {
+      loadedModelTab.label = `Loaded Model (${models.length})`;
     }
-  };
-
-  (window as any).refreshLoadedModelList = () => {
-    updateLoadedModelsList();
   };
 
   const onDisposeSelectedModels = () => {
@@ -193,7 +190,6 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
   fragments.list.onItemUpdated.add(updateLoadedModelsList);
   fragments.list.onItemDeleted.add(updateLoadedModelsList);
-  fragments.list.onItemSet.add(updateLoadedModelsList);
 
   updateLoadedModelsList();
 
@@ -260,7 +256,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       }
     }
 
-    // 🗺️ Detect georeferencing from raw IFC buffer (before any caching)
+    // Detect georeferencing from raw IFC buffer (before any caching)
     const gisMap = components.get(GISMapComponent);
     gisMap.detectGeorefFromBuffer(bytes);
 
@@ -312,7 +308,6 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       fileToLoad = new File([blob], `${file.name}`, { type: file.type || "application/octet-stream" });
     } catch (err) {
       console.error("Error processing EDB Data:", err);
-      alert("파일 로드 중 오류가 발생했습니다. 콘솔을 확인하세요.\n(API 응답이 없어 일반 모델로 우회하여 로드합니다.)");
     }
 
     await processAndSaveIfc(fileToLoad);
@@ -325,9 +320,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
   const onSharedSearch = (e: Event) => {
     const input = e.target as BUI.TextInput;
-    // FRAG 테이블은 자체 검색 기능을 사용합니다.
     fragTable.queryString = input.value;
-    // IFC 테이블도 자체 검색 기능을 사용합니다.
     ifcTable.queryString = input.value;
   };
 
@@ -360,7 +353,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
         }
       }
 
-      // 🗺️ Detect georeferencing from raw IFC buffer
+      // Detect georeferencing from raw IFC buffer
       const gisMap = components.get(GISMapComponent);
       gisMap.detectGeorefFromBuffer(ifc.content as Uint8Array);
 
@@ -825,16 +818,17 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
         await new Promise((resolve) => setTimeout(resolve, 800));
       }
 
-      // 1. 모델 전체 혹은 특정 객체 줌인
+      // 1. 모델 전체 줌인 혹은 특정 객체 줌인
       const worlds = components.get(OBC.Worlds);
       const world = worlds.list.values().next().value;
-      const cam = world?.camera as any;
+      const cam = world?.camera as any
 
       if (!paramGuid) {
         clearAutomationParams();
         appState.hasExternalLink = false;
         return;
       }
+
 
       // 2. 객체 선택 및 객체 줌인
       try {
@@ -877,8 +871,8 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     sharedFRAG.list = [];
     await waitForProjectInit();
     await sharedFRAG.loadFRAGFiles(appState.currentProject?.id);
-    if (sharedModelLabel) {
-      sharedModelLabel.textContent = `Shared Model (${sharedFRAG.list.length})`;
+    if (sharedModelTab) {
+      sharedModelTab.label = `Shared Model (${sharedFRAG.list.length})`;
     }
     if (refreshBadges) refreshBadges();
     updateFRAGTableData();
@@ -901,62 +895,54 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
   return BUI.html`
     <bim-panel-section icon=${appIcons.MODEL} label="IFC List">
-      <div slot="header-end" style="display: flex; gap: 0.375rem; align-items: center; margin-right: 0.5rem;">
-        <bim-button @click=${(e: Event) => { e.stopPropagation(); onAddIfcModel(e); }} icon=${appIcons.ADD} title="Import Model" style="flex: 0;"></bim-button>
-        <bim-button @click=${(e: Event) => { e.stopPropagation(); onProcessEdbData(e); }} icon=${appIcons.ADDBOX} title="Import Model with EDB data" style="flex: 0;"></bim-button>
-      </div>
-      <div data-flex="false" style="display: flex; flex-direction: column; gap: 0.25rem;">
-        <div @click=${onToggleSection} style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-          <div style="display: flex; align-items: center; gap: 0.5rem; pointer-events: none;">
-          <bim-label style="font-weight: bold;" ${BUI.ref((e) => {
-    loadedModelLabel = e as BUI.Label;
-    loadedModelLabel.textContent = `Loaded Model (${fragments.list.size})`;
-  })}>Loaded Model</bim-label>
-          <bim-label class="toggle-icon" icon=${appIcons.MINOR} style="--bim-icon--fz: 1.25rem;"></bim-label>
-          </div>
-          <div style="display: flex; gap: 0.25rem;">
-            <bim-button @click=${(e: Event) => { e.stopPropagation(); onSelectAllLoadedModels(); }} label="Select All" style="flex: 0;"></bim-button>
-            <bim-button @click=${(e: Event) => { e.stopPropagation(); onDisposeSelectedModels(); }} label="Dispose" style="flex: 0;"></bim-button>
-          </div>
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 0.25rem; overflow-y: auto; height: 8.5rem; min-height: 8.5rem; flex-shrink: 0;">
-          <div style="display: flex; gap: 0.375rem; align-items: center;">
-            <bim-text-input @input=${onLoadedSearch} vertical placeholder="Search..." debounce="200" style="flex: 1;"></bim-text-input>
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 0.25rem; color: var(--bim-ui_gray-10); border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; padding: 0rem; overflow-y: auto; flex: 1; min-height: 0;">
-            ${loadedTable}
-          </div>
-        </div>
-      </div>
-      
-      <div data-flex="true" style="display: flex; flex-direction: column; gap: 0.25rem; flex: 1; min-height: 0; overflow: hidden;">
-        <div @click=${onToggleSection} style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; flex-shrink: 0;">
-          <div style="display: flex; align-items: center; gap: 0.5rem; pointer-events: none;">
-          <bim-label style="font-weight: bold;" ${BUI.ref((e) => {
-    sharedModelLabel = e as BUI.Label;
-    sharedModelLabel.textContent = `Shared Model (${sharedFRAG.list.length})`;
-  })}>Shared Model</bim-label>
-          <bim-label class="toggle-icon" icon=${appIcons.MINOR} style="--bim-icon--fz: 1.25rem;"></bim-label>
-          </div>
-          <div style="display: flex; gap: 0.25rem;">
-            <bim-button @click=${(e: Event) => { e.stopPropagation(); onSelectAllFragModels(); }} label="Select All" style="flex: 0;"></bim-button>
-            <bim-button @click=${(e: Event) => {
+      <bim-tabs>
+        <bim-tab name="shared" label="Shared Model" icon=${appIcons.MODEL} ${BUI.ref((e) => {
+    sharedModelTab = e as BUI.Tab;
+    if (sharedModelTab) sharedModelTab.label = `Shared Model (${sharedFRAG.list.length})`;
+  })}>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem; flex: 1; overflow: hidden;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.25rem;">
+              <div style="display: flex; gap: 0.25rem;">
+                <bim-button @click=${(e: Event) => { e.stopPropagation(); onAddIfcModel(e); }} icon=${appIcons.ADD} title="Import Model" style="flex: 0;"></bim-button>
+                <bim-button @click=${(e: Event) => { e.stopPropagation(); onProcessEdbData(e); }} icon=${appIcons.ADDBOX} title="Import Model with EDB data" style="flex: 0;"></bim-button>
+              </div>
+              <div style="display: flex; gap: 0.25rem;">
+                <bim-button @click=${(e: Event) => { e.stopPropagation(); onSelectAllFragModels(); }} label="Select All" style="flex: 0;"></bim-button>
+                <bim-button @click=${(e: Event) => {
       e.stopPropagation();
       const target = (e.target as HTMLElement).closest("bim-button") as BUI.Button;
       if (target) onLoadSelectedFragModels(target);
     }} label="Load" icon=${appIcons.OPEN} style="flex: 0;"></bim-button>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.375rem; align-items: center;">
+              <bim-text-input @input=${onSharedSearch} vertical placeholder="Search..." debounce="200" style="flex: 1;"></bim-text-input>
+            </div>
+            ${groupBadges}
+            <div style="display: flex; flex-direction: column; gap: 0.25rem; color: var(--bim-ui_gray-10); border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; padding: 0rem; overflow-y: auto; flex: 1;">
+              ${fragTable}
+            </div>
           </div>
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 0.25rem; overflow-y: auto; flex: 1; min-height: 0;">
-          <div style="display: flex; gap: 0.375rem; align-items: center;">
-            <bim-text-input @input=${onSharedSearch} vertical placeholder="Search..." debounce="200" style="flex: 1;"></bim-text-input>
+        </bim-tab>
+
+        <bim-tab name="loaded" label="Loaded Model" icon=${appIcons.MODEL} ${BUI.ref((e) => {
+      loadedModelTab = e as BUI.Tab;
+      if (loadedModelTab) loadedModelTab.label = `Loaded Model (${fragments.list.size})`;
+    })}>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem; flex: 1; overflow: hidden;">
+            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 0.25rem;">
+              <bim-button @click=${(e: Event) => { e.stopPropagation(); onSelectAllLoadedModels(); }} label="Select All" style="flex: 0;"></bim-button>
+              <bim-button @click=${(e: Event) => { e.stopPropagation(); onDisposeSelectedModels(); }} label="Dispose" style="flex: 0;"></bim-button>
+            </div>
+            <div style="display: flex; gap: 0.375rem; align-items: center;">
+              <bim-text-input @input=${onLoadedSearch} vertical placeholder="Search..." debounce="200" style="flex: 1;"></bim-text-input>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.25rem; color: var(--bim-ui_gray-10); border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; padding: 0rem; overflow-y: auto; flex: 1;">
+              ${loadedTable}
+            </div>
           </div>
-          ${groupBadges}
-          <div style="display: flex; flex-direction: column; gap: 0.25rem; color: var(--bim-ui_gray-10); border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; padding: 0rem; overflow-y: auto; flex: 1;">
-            ${fragTable}
-          </div>
-        </div>
-      </div>
-    </bim-panel-section> 
+        </bim-tab>
+      </bim-tabs>
+    </bim-panel-section>
   `;
 };

@@ -48,10 +48,10 @@ export const ruleResultsPanelTemplate: BUI.StatefullComponent<RuleResultsPanelSt
       resultsTable.columns = [
         { name: "Model", width: "1.5fr" },
         { name: "Name", width: "2fr" },
-        { name: "GUID", width: "1.8fr" },
-        { name: "Entity", width: "1.2fr" },
-        { name: "Value", width: "2fr" },
-        { name: "Count", width: "0.8fr" },
+        { name: "GUID", width: "1.5fr" },
+        { name: "Entity", width: "1fr" },
+        { name: "Value", width: "2.5fr" },
+        { name: "Count", width: "0.5fr" },
         { name: "Status", width: "1fr" },
       ];
       resultsTable.hiddenColumns = ["id", "ModelID", "ExpressID", "isGroup", "rawGroup"];

@@ -1,12 +1,12 @@
 import MarkdownIt from "markdown-it";
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
-import { BimChatState, ChatMessage } from "./types";
+import { BimChatState, ChatMessage, BimChatMode } from "./types";
 import { appIcons } from "../../../globals";
 import { Highlighter } from "../../../bim-components/Highlighter";
 import { clashUIState } from "../../../ui-templates/sections/clash-list";
 import { queriesUIState } from "../../../ui-templates/sections/queries";
-
+import { ruleUIState } from "../../../ui-templates/sections/rule-spec";
 
 const md = new MarkdownIt({
   html: true,
@@ -15,15 +15,140 @@ const md = new MarkdownIt({
   breaks: true,
 });
 
-// Chat history store (persists across redraws of this StatefullComponent)
-const chatHistory: ChatMessage[] = [
-  {
-    role: "model",
-    parts: [{ text: "안녕하세요! 저는 BIM AI Assistant입니다. 무엇을 도와드릴까요? 로드되어 있는 모델에 대해서만 질의할 수 있습니다.\n\n* 이 모델의 Wall 요소는 몇 개야?\n* 이 객체의 모든 속성을 알려줘.\n* 이 객체를 숨겨줘. " }]
-  }
-];
+interface ModeChatStore {
+  history: ChatMessage[];
+  isGenerating: boolean;
+}
 
-let isGenerating = false;
+const chatStores: Record<BimChatMode, ModeChatStore> = {
+  viewport: {
+    history: [
+      {
+        role: "model",
+        parts: [{ text: "*이 모델의 Wall, Slab, Covering 요소들을 숨겨줘.\n*벽체(Wall) 객체를 뷰어에서 하이라이트해줘.\n*간섭 검사를 실행해줘." }]
+      }
+    ],
+    isGenerating: false,
+  },
+  query: {
+    history: [
+      {
+        role: "model",
+        parts: [{ text: "*Wall 중 IsExternal 속성이 true인 객체를 찾는 쿼리 작성해줘.\n*Slab 중 PredefinedType 속성이 BASESLAB인 객체를 찾는 쿼리 작성해줘." }]
+      }
+    ],
+    isGenerating: false,
+  },
+  rule: {
+    history: [
+      {
+        role: "model",
+        parts: [{ text: "*모든 Door에 FireRating 속성이 존재하는지 검사하는 규칙 작성해줘.\n*모든 Column의 Length 수량이 존재하는지 검사하는 규칙 생성해줘." }]
+      }
+    ],
+    isGenerating: false,
+  },
+};
+
+// ==========================================
+// 🛠️ Context & Selection Parser Helpers
+// ==========================================
+
+const extractRawValue = (val: any): any => {
+  if (val === null || val === undefined) return null;
+  if (typeof val === "object" && "value" in val) {
+    return extractRawValue(val.value);
+  }
+  return val;
+};
+
+const processPropSet = (set: any, result: any) => {
+  const setName = extractRawValue(set.Name) || extractRawValue(set._category) || "UnnamedSet";
+  const setCategory = extractRawValue(set._category);
+  const properties: any = {};
+
+  const items = [];
+  if (set.HasProperties) {
+    const p = Array.isArray(set.HasProperties) ? set.HasProperties : [set.HasProperties];
+    items.push(...p);
+  }
+  if (set.Quantities) {
+    const q = Array.isArray(set.Quantities) ? set.Quantities : [set.Quantities];
+    items.push(...q);
+  }
+
+  for (const prop of items) {
+    const propName = extractRawValue(prop.Name);
+    if (!propName) continue;
+
+    let propValue = null;
+    if (prop.NominalValue !== undefined) {
+      propValue = extractRawValue(prop.NominalValue);
+    } else {
+      for (const k in prop) {
+        if (k.endsWith("Value") && k !== "NominalValue") {
+          propValue = extractRawValue(prop[k]);
+          break;
+        }
+      }
+    }
+    properties[propName] = propValue;
+  }
+
+  if (setCategory === "IFCELEMENTQUANTITY") {
+    result.quantities[setName] = properties;
+  } else {
+    result.propertySets[setName] = properties;
+  }
+};
+
+const parseElementItem = (item: any) => {
+  if (!item) return null;
+  const result: any = {
+    expressId: extractRawValue(item._localId),
+    category: extractRawValue(item._category),
+    name: extractRawValue(item.Name),
+    attributes: {},
+    propertySets: {},
+    quantities: {}
+  };
+
+  for (const key in item) {
+    if (key.startsWith("_") || key === "Name") continue;
+    const val = item[key];
+    if (val === null || val === undefined) continue;
+
+    const isRelation = Array.isArray(val) || (typeof val === "object" && !("value" in val));
+    if (!isRelation) {
+      result.attributes[key] = extractRawValue(val);
+    } else {
+      if (key === "IsDefinedBy") {
+        const defines = Array.isArray(val) ? val : [val];
+        for (const def of defines) {
+          if (def.RelatingPropertyDefinition) {
+            const relDefs = Array.isArray(def.RelatingPropertyDefinition)
+              ? def.RelatingPropertyDefinition
+              : [def.RelatingPropertyDefinition];
+            for (const relDef of relDefs) {
+              processPropSet(relDef, result);
+            }
+          }
+        }
+      } else if (key === "ContainedInStructure") {
+        const cont = Array.isArray(val) ? val[0] : val;
+        if (cont) {
+          result.attributes["ContainedIn"] = extractRawValue(cont.Name) || extractRawValue(cont._category);
+        }
+      }
+    }
+  }
+
+  if (Object.keys(result.attributes).length === 0) delete result.attributes;
+  if (Object.keys(result.propertySets).length === 0) delete result.propertySets;
+  if (Object.keys(result.quantities).length === 0) delete result.quantities;
+
+  return result;
+};
 
 const getModelContext = async (components: OBC.Components) => {
   const fragments = components.get(OBC.FragmentsManager);
@@ -89,105 +214,7 @@ const getModelContext = async (components: OBC.Components) => {
           }
         });
         if (itemsData && itemsData.length > 0) {
-          const extractRawValue = (val: any): any => {
-            if (val === null || val === undefined) return null;
-            if (typeof val === "object") {
-              if ("value" in val) {
-                return extractRawValue(val.value);
-              }
-            }
-            return val;
-          };
-
-          const parseItem = (item: any) => {
-            if (!item) return null;
-            const result: any = {
-              expressId: extractRawValue(item._localId),
-              category: extractRawValue(item._category),
-              name: extractRawValue(item.Name),
-              attributes: {},
-              propertySets: {},
-              quantities: {}
-            };
-
-            const processPropSet = (set: any) => {
-              const setName = extractRawValue(set.Name) || extractRawValue(set._category) || "UnnamedSet";
-              const setCategory = extractRawValue(set._category);
-              const properties: any = {};
-
-              const items = [];
-              if (set.HasProperties) {
-                const p = Array.isArray(set.HasProperties) ? set.HasProperties : [set.HasProperties];
-                items.push(...p);
-              }
-              if (set.Quantities) {
-                const q = Array.isArray(set.Quantities) ? set.Quantities : [set.Quantities];
-                items.push(...q);
-              }
-
-              for (const prop of items) {
-                const propName = extractRawValue(prop.Name);
-                if (!propName) continue;
-                
-                let propValue = null;
-                if (prop.NominalValue !== undefined) {
-                  propValue = extractRawValue(prop.NominalValue);
-                } else {
-                  for (const k in prop) {
-                    if (k.endsWith("Value") && k !== "NominalValue") {
-                      propValue = extractRawValue(prop[k]);
-                      break;
-                    }
-                  }
-                }
-                properties[propName] = propValue;
-              }
-
-              if (setCategory === "IFCELEMENTQUANTITY") {
-                result.quantities[setName] = properties;
-              } else {
-                result.propertySets[setName] = properties;
-              }
-            };
-
-            for (const key in item) {
-              if (key.startsWith("_") || key === "Name") continue;
-              const val = item[key];
-              if (val === null || val === undefined) continue;
-
-              const isRelation = Array.isArray(val) || (typeof val === "object" && !("value" in val));
-              if (!isRelation) {
-                result.attributes[key] = extractRawValue(val);
-              } else {
-                if (key === "IsDefinedBy") {
-                  const defines = Array.isArray(val) ? val : [val];
-                  for (const def of defines) {
-                    if (def.RelatingPropertyDefinition) {
-                      const relDefs = Array.isArray(def.RelatingPropertyDefinition)
-                        ? def.RelatingPropertyDefinition
-                        : [def.RelatingPropertyDefinition];
-                      for (const relDef of relDefs) {
-                        processPropSet(relDef);
-                      }
-                    }
-                  }
-                } else if (key === "ContainedInStructure") {
-                  const cont = Array.isArray(val) ? val[0] : val;
-                  if (cont) {
-                    result.attributes["ContainedIn"] = extractRawValue(cont.Name) || extractRawValue(cont._category);
-                  }
-                }
-              }
-            }
-
-            if (Object.keys(result.attributes).length === 0) delete result.attributes;
-            if (Object.keys(result.propertySets).length === 0) delete result.propertySets;
-            if (Object.keys(result.quantities).length === 0) delete result.quantities;
-
-            return result;
-          };
-
-          selectedElementProps = parseItem(itemsData[0]);
+          selectedElementProps = parseElementItem(itemsData[0]);
         }
       } catch (err) {
         console.error("Failed to get selected items data:", err);
@@ -205,6 +232,58 @@ const getModelContext = async (components: OBC.Components) => {
     filteredClashCount: filteredClashCount,
     currentSelection: selectedElementProps
   });
+};
+
+// ==========================================
+// 🕹️ Layout & Action Processors
+// ==========================================
+
+const switchLayoutAndTab = async (layoutName: string, switchTabFn?: ((tab: "list" | "builder") => void) | null) => {
+  const contentGrid = document.getElementById("app-content") as any;
+  if (contentGrid && contentGrid.layout !== layoutName) {
+    contentGrid.layout = layoutName;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  if (switchTabFn) switchTabFn("builder");
+};
+
+const processQueryBuilderAction = async (action: any) => {
+  if (queriesUIState.nameInput) queriesUIState.nameInput.value = action.name || "AI_Query";
+  if (queriesUIState.entityInput) queriesUIState.entityInput.value = action.entity || "";
+  if (queriesUIState.attrNameInput) queriesUIState.attrNameInput.value = action.attrName || "";
+  if (queriesUIState.attrValInput) queriesUIState.attrValInput.value = action.attrVal || "";
+  if (queriesUIState.psetNameInput) queriesUIState.psetNameInput.value = action.psetName || "";
+  if (queriesUIState.propNameInput) queriesUIState.propNameInput.value = action.propName || "";
+  if (queriesUIState.propValInput) queriesUIState.propValInput.value = action.propVal || "";
+  if (queriesUIState.containedInInput) queriesUIState.containedInInput.value = action.containedIn || "";
+  if (queriesUIState.structureNameInput) queriesUIState.structureNameInput.value = action.structureName || "";
+
+  await switchLayoutAndTab("Queries", queriesUIState.switchTab);
+
+  if (action.autoExecute && queriesUIState.onCreateQuery) {
+    await queriesUIState.onCreateQuery();
+  }
+};
+
+const processRuleBuilderAction = async (action: any) => {
+  if (ruleUIState.entityInput) ruleUIState.entityInput.value = action.entity || "";
+  if (ruleUIState.reqTypeDropdown) ruleUIState.reqTypeDropdown.value = [action.reqType || "property"];
+  if (ruleUIState.psetInput) {
+    ruleUIState.psetInput.value = action.pset || "";
+    ruleUIState.psetInput.disabled = action.reqType === "attribute";
+  }
+  if (ruleUIState.propInput) ruleUIState.propInput.value = action.name || "";
+  if (ruleUIState.conditionDropdown) ruleUIState.conditionDropdown.value = [action.condition || "exists"];
+  if (ruleUIState.propValInput) {
+    ruleUIState.propValInput.value = action.value || "";
+    ruleUIState.propValInput.disabled = action.condition === "exists";
+  }
+
+  await switchLayoutAndTab("RuleCheck", ruleUIState.switchTab);
+
+  if (action.autoExecute && ruleUIState.onReviewModel) {
+    await ruleUIState.onReviewModel();
+  }
 };
 
 const executeViewerAction = async (components: OBC.Components, world: OBC.World, action: any) => {
@@ -235,11 +314,7 @@ const executeViewerAction = async (components: OBC.Components, world: OBC.World,
     }
 
     if (type === "runClash") {
-      const contentGrid = document.getElementById("app-content") as any;
-      if (contentGrid && contentGrid.layout !== "ClashDetection") {
-        contentGrid.layout = "ClashDetection";
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
+      await switchLayoutAndTab("ClashDetection");
       if (clashUIState.runClash) {
         await clashUIState.runClash();
         return "Clash detection ran via UI.";
@@ -248,11 +323,7 @@ const executeViewerAction = async (components: OBC.Components, world: OBC.World,
     }
 
     if (type === "filterClash") {
-      const contentGrid = document.getElementById("app-content") as any;
-      if (contentGrid && contentGrid.layout !== "ClashDetection") {
-        contentGrid.layout = "ClashDetection";
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
+      await switchLayoutAndTab("ClashDetection");
       if (typeof value === "string") {
         clashUIState.searchQuery = value;
         return `Filtered clash list by: ${value}`;
@@ -260,19 +331,14 @@ const executeViewerAction = async (components: OBC.Components, world: OBC.World,
     }
 
     if (type === "switchTab") {
-      const contentGrid = document.getElementById("app-content") as any;
-      if (contentGrid && typeof value === "string") {
-        contentGrid.layout = value;
+      if (typeof value === "string") {
+        await switchLayoutAndTab(value);
         return `Switched tab to: ${value}`;
       }
     }
 
     if (type === "queryModel" && value && typeof value === "object") {
-      const contentGrid = document.getElementById("app-content") as any;
-      if (contentGrid && contentGrid.layout !== "Queries") {
-        contentGrid.layout = "Queries";
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
+      await switchLayoutAndTab("Queries");
 
       if (queriesUIState.onClear) {
         queriesUIState.onClear();
@@ -302,10 +368,8 @@ const executeViewerAction = async (components: OBC.Components, world: OBC.World,
         }
       }
 
-      // Switch layout tab if layout is specified in the query value (e.g., "Quantities")
-      if (value.layout && contentGrid && contentGrid.layout !== value.layout) {
-        contentGrid.layout = value.layout;
-        await new Promise((resolve) => setTimeout(resolve, 200));
+      if (value.layout) {
+        await switchLayoutAndTab(value.layout);
       }
 
       return String(count);
@@ -357,15 +421,16 @@ const executeViewerAction = async (components: OBC.Components, world: OBC.World,
   }
 };
 
-const renderMessages = () => {
-  return chatHistory.map(msg => {
+// ==========================================
+// 🎨 Rendering & Main Component Template
+// ==========================================
+
+const renderMessages = (messages: ChatMessage[]) => {
+  return messages.map((msg) => {
     const isUser = msg.role === "user";
     const text = msg.parts[0].text;
 
-    // strip the JSON block from text when rendering
-    let displayText = text;
-    const jsonBlockRegex = /```json([\s\S]*?)```/g;
-    displayText = text.replace(jsonBlockRegex, "").trim();
+    let displayText = text.replace(/```json([\s\S]*?)```/g, "").trim();
 
     if (!displayText) {
       displayText = "*[Viewer action executed]*";
@@ -389,7 +454,7 @@ const renderMessages = () => {
           line-height: 1.4;
           box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         ">
-          <div ${BUI.ref(el => { if (el) el.innerHTML = renderedHtml; })} class="markdown-body" style="word-break: break-word;"></div>
+          <div ${BUI.ref((el) => { if (el) el.innerHTML = renderedHtml; })} class="markdown-body" style="word-break: break-word;"></div>
         </div>
         <span style="font-size: 0.65rem; color: var(--bim-ui_gray-8); align-self: ${isUser ? "flex-end" : "flex-start"}; margin-top: 0.15rem; margin-right: 0.25rem;">
           ${isUser ? "You" : "AI Assistant"}
@@ -403,36 +468,59 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
   state,
   update,
 ) => {
-  const { components, world } = state;
+  const { components, world, embedded = false } = state;
+  const currentMode: BimChatMode = state.mode || "viewport";
+  const store = chatStores[currentMode] || chatStores.viewport;
+
   let textInput: HTMLTextAreaElement | undefined;
   let messageListContainer: HTMLDivElement | undefined;
 
+  (window as any).setBimChatMode = (mode: BimChatMode) => {
+    if (chatStores[mode]) {
+      update();
+    }
+  };
+
+  const getHeaderTitle = () => {
+    if (currentMode === "query") return "AI Assistant (Query Builder)";
+    if (currentMode === "rule") return "AI Assistant (Rule Builder)";
+    return "AI Assistant (Viewer)";
+  };
+
+  const getPlaceholder = () => {
+    if (currentMode === "query") return "자연어로 쿼리 조건 작성 요청";
+    if (currentMode === "rule") return "자연어로 규칙 조건 작성 요청";
+    return "3D 뷰어 조작 및 모델 탐색 요청";
+  };
+
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      if (messageListContainer) messageListContainer.scrollTop = messageListContainer.scrollHeight;
+    }, 50);
+  };
+
   const onSend = async () => {
-    if (!textInput || isGenerating) return;
+    if (!textInput || store.isGenerating) return;
     const text = textInput.value.trim();
     if (!text) return;
 
     textInput.value = "";
-    chatHistory.push({ role: "user", parts: [{ text }] });
-    isGenerating = true;
+    store.history.push({ role: "user", parts: [{ text }] });
+    store.isGenerating = true;
     update();
-
-    setTimeout(() => {
-      if (messageListContainer) messageListContainer.scrollTop = messageListContainer.scrollHeight;
-    }, 50);
+    scrollToBottom();
 
     try {
       const context = await getModelContext(components);
 
       const response = await fetch("/api/chat/assistant", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text,
-          history: chatHistory.slice(0, -1),
+          history: store.history.slice(0, -1),
           context,
+          mode: currentMode,
         }),
       });
 
@@ -444,38 +532,40 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
       const data = await response.json();
       const reply = data.reply || "";
 
-      chatHistory.push({ role: "model", parts: [{ text: reply }] });
+      store.history.push({ role: "model", parts: [{ text: reply }] });
 
-      const jsonBlockRegex = /```json([\s\S]*?)```/;
-      const match = reply.match(jsonBlockRegex);
-      if (match && match[1]) {
+      const jsonMatch = reply.match(/```json([\s\S]*?)```/);
+      if (jsonMatch && jsonMatch[1]) {
         try {
-          const actionObj = JSON.parse(match[1].trim());
-          if (actionObj.viewerAction) {
+          const actionObj = JSON.parse(jsonMatch[1].trim());
+
+          if (currentMode === "query" && actionObj.queryBuilderAction) {
+            await processQueryBuilderAction(actionObj.queryBuilderAction);
+          } else if (currentMode === "rule" && actionObj.ruleBuilderAction) {
+            await processRuleBuilderAction(actionObj.ruleBuilderAction);
+          } else if (currentMode === "viewport" && actionObj.viewerAction) {
             const actionResult = await executeViewerAction(components, world, actionObj.viewerAction);
             if (actionObj.viewerAction.type === "queryModel" && actionResult !== undefined) {
-              chatHistory.push({
+              store.history.push({
                 role: "model",
                 parts: [{ text: `🔍 **조회 결과**: 총 **${actionResult}개**의 객체가 검색되었으며, 뷰어에 하이라이트 표시되었습니다.` }]
               });
             }
           }
         } catch (jsonErr) {
-          console.error("Failed to parse viewer action JSON:", jsonErr);
+          console.error("Failed to parse action JSON:", jsonErr);
         }
       }
     } catch (err: any) {
       console.error(err);
-      chatHistory.push({
+      store.history.push({
         role: "model",
         parts: [{ text: `⚠️ **오류 발생**: ${err.message || "서버와 통신하는 중 오류가 발생했습니다."}` }]
       });
     } finally {
-      isGenerating = false;
+      store.isGenerating = false;
       update();
-      setTimeout(() => {
-        if (messageListContainer) messageListContainer.scrollTop = messageListContainer.scrollHeight;
-      }, 50);
+      scrollToBottom();
     }
   };
 
@@ -485,9 +575,7 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
         e.preventDefault();
         return;
       }
-      if (e.shiftKey) {
-        // Shift+Enter allows standard newline behavior
-      } else {
+      if (!e.shiftKey) {
         e.preventDefault();
         onSend();
       }
@@ -495,6 +583,7 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
   };
 
   const onStartDragHeader = (e: MouseEvent) => {
+    if (embedded) return;
     const target = e.target as HTMLElement;
     if (target.tagName.toLowerCase() === "bim-button" || target.closest("bim-button")) return;
 
@@ -510,7 +599,6 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
       let newLeft = moveEvent.clientX - offsetX;
       let newTop = moveEvent.clientY - offsetY;
 
-      // Keep within screen bounds
       newLeft = Math.max(10, Math.min(window.innerWidth - rect.width - 10, newLeft));
       newTop = Math.max(10, Math.min(window.innerHeight - rect.height - 10, newTop));
 
@@ -538,9 +626,11 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
       display: flex;
       flex-direction: column;
       height: 100%;
+      min-height: 0;
+      max-height: 100%;
       background: var(--bim-ui_bg-base);
       overflow: hidden;
-      border-radius: 12px;
+      border-radius: ${embedded ? "8px" : "12px"};
     ">
       <style>
         .custom-scrollbar::-webkit-scrollbar {
@@ -559,52 +649,55 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
         }
       </style>
 
-      <!-- Header (Draggable) -->
+      <!-- Header -->
       <div
         @mousedown=${onStartDragHeader}
         style="
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 0.75rem 1rem;
+          padding: 0.6rem 0.85rem;
           background: var(--bim-ui_bg-contrast-10);
           border-bottom: 1px solid var(--bim-ui_bg-contrast-20);
-          cursor: move;
+          cursor: ${embedded ? "default" : "move"};
           user-select: none;
           flex-shrink: 0;
         "
-        title="Drag header to move floating window"
+        title=${embedded ? "" : "Drag header to move floating window"}
       >
         <div style="display: flex; align-items: center; gap: 0.5rem; pointer-events: none;">
           <div style="width: 8px; height: 8px; background: #00ffaa; border-radius: 50%; box-shadow: 0 0 8px #00ffaa;"></div>
-          <span style="font-weight: bold; font-size: 0.9rem; color: var(--bim-ui_bg-contrast-100);">AI Assistant</span>
+          <span style="font-weight: bold; font-size: 0.85rem; color: var(--bim-ui_bg-contrast-100);">${getHeaderTitle()}</span>
         </div>
-        <bim-button @click=${() => {
-          if ((window as any).toggleBimChat) {
-            (window as any).toggleBimChat(false);
-          } else {
-            const chatPanel = document.getElementById("bim-chat-panel");
-            if (chatPanel) {
-              chatPanel.style.display = "none";
-              const chatBtn = document.getElementById("bim-chat-toggle-btn") as any;
-              if (chatBtn) chatBtn.active = false;
-            }
+        ${!embedded ? BUI.html`
+          <bim-button @click=${() => {
+        if ((window as any).toggleBimChat) {
+          (window as any).toggleBimChat(false);
+        } else {
+          const chatPanel = document.getElementById("bim-chat-panel");
+          if (chatPanel) {
+            chatPanel.style.display = "none";
+            const chatBtn = document.getElementById("bim-chat-toggle-btn") as any;
+            if (chatBtn) chatBtn.active = false;
           }
-        }} icon=${appIcons.CLEAR} style="flex: 0; --bim-button--bgc: transparent;"></bim-button>
+        }
+      }} icon=${appIcons.CLEAR} style="flex: 0; --bim-button--bgc: transparent;"></bim-button>
+        ` : ""}
       </div>
 
       <!-- Message Area -->
-      <div ${BUI.ref(el => messageListContainer = el as HTMLDivElement)} class="custom-scrollbar" style="
+      <div ${BUI.ref((el) => (messageListContainer = el as HTMLDivElement))} class="custom-scrollbar" style="
         flex: 1;
+        min-height: 0;
         overflow-y: auto;
         padding: 1rem;
         display: flex;
         flex-direction: column;
       ">
-        ${renderMessages()}
+        ${renderMessages(store.history)}
         
         <!-- Generating Loader -->
-        ${isGenerating ? BUI.html`
+        ${store.isGenerating ? BUI.html`
           <div style="align-self: flex-start; display: flex; align-items: center; gap: 0.5rem; background: var(--bim-ui_bg-contrast-20); padding: 0.5rem 0.75rem; border-radius: 12px 12px 12px 0; margin-bottom: 0.75rem;">
             <div style="display: flex; gap: 4px;">
               <div style="width: 6px; height: 6px; background: var(--bim-ui_accent-base); border-radius: 50%; animation: pulse 1.2s infinite ease-in-out;"></div>
@@ -631,10 +724,10 @@ export const bimChatTemplate: BUI.StatefullComponent<BimChatState> = (
         align-items: center;
       ">
         <textarea 
-          ${BUI.ref(el => textInput = el as HTMLTextAreaElement)}
+          ${BUI.ref((el) => (textInput = el as HTMLTextAreaElement))}
           @keydown=${onKeydown}
           class="custom-scrollbar"
-          placeholder="Ask something about the BIM model..."
+          placeholder=${getPlaceholder()}
           rows="1"
           style="
             flex: 1;

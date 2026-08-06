@@ -187,23 +187,7 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
    */
   detectGeorefFromBuffer(buffer: Uint8Array): boolean {
     try {
-      // Decode initial 5MB chunk where IFC meta-entities (IfcMapConversion/IfcProjectedCRS) reside,
-      // avoiding massive JS string allocations (hundreds of MBs) for large IFC buffers.
-      const initialChunkSize = Math.min(buffer.length, 5 * 1024 * 1024);
-      let text = new TextDecoder().decode(buffer.subarray(0, initialChunkSize));
-
-      let mcBlockMatch = text.match(
-        /#\d+=\s*IFCMAPCONVERSION\s*\(([^)]+)\)/i
-      );
-
-      // Fallback: If IFCMAPCONVERSION isn't in first 5MB, attempt up to 20MB
-      if (!mcBlockMatch && buffer.length > initialChunkSize) {
-        const fallbackSize = Math.min(buffer.length, 20 * 1024 * 1024);
-        text = new TextDecoder().decode(buffer.subarray(0, fallbackSize));
-        mcBlockMatch = text.match(
-          /#\d+=\s*IFCMAPCONVERSION\s*\(([^)]+)\)/i
-        );
-      }
+      const text = new TextDecoder().decode(buffer);
 
       // ── IfcProjectedCRS: first parameter is the CRS name string ──────────────
       // Format: #NNN= IFCPROJECTEDCRS('CRS_NAME', ...);
@@ -214,6 +198,9 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
       // Format: #NNN= IFCMAPCONVERSION(#src, #tgt, eastings, northings, height, xAbs, xOrd, scale);
       // Values may be integers, floats, or scientific notation; nulls are '$'
       const paramRe = /[-\d.E+]+|\$/gi;
+      const mcBlockMatch = text.match(
+        /#\d+=\s*IFCMAPCONVERSION\s*\(([^)]+)\)/i
+      );
 
       if (!mcBlockMatch) return false;
 
@@ -317,18 +304,10 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
    * Clear and dispose of loaded tile resources
    */
   clearMap() {
-    let post: any = null;
-    if (this._world && this._world.renderer && "postproduction" in this._world.renderer) {
-      post = (this._world.renderer as any).postproduction;
-    }
-
     this._tileCache.forEach((mesh) => {
       this.mapGroup.remove(mesh);
-      const material = mesh.material as THREE.MeshBasicMaterial;
-      if (post && post.excludedObjectsPass) {
-        post.excludedObjectsPass.removeExcludedMaterial(material);
-      }
       mesh.geometry.dispose();
+      const material = mesh.material as THREE.MeshBasicMaterial;
       if (material.map) material.map.dispose();
       material.dispose();
     });
@@ -471,13 +450,5 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
     mesh.name = `Map_Tile_${tileKey}`;
     this.mapGroup.add(mesh);
     this._tileCache.set(tileKey, mesh);
-
-    // Exclude this specific mesh material from postproduction outlines
-    if (this._world && this._world.renderer && "postproduction" in this._world.renderer) {
-      const post = (this._world.renderer as any).postproduction;
-      if (post && post.excludedObjectsPass) {
-        post.excludedObjectsPass.addExcludedMaterial(material);
-      }
-    }
   }
 }

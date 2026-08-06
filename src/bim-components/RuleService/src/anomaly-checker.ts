@@ -331,7 +331,7 @@ export const checkPropertyCompletionRate = async (components: OBC.Components): P
             Entity: entity,
             Value: `${exp.psetName}.${exp.propName} missing (Coverage: ${exp.coveragePct}%)`,
             Count: 1,
-            Status: `Missing(${100 - exp.coveragePct}%)`,
+            Status: `Fail (${100 - exp.coveragePct}% missing)`,
           });
         }
       }

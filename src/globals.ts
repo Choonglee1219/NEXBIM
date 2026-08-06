@@ -249,9 +249,8 @@ export const onTableCellCreated = (e: Event) => {
   const { detail } = e as CustomEvent<BUI.CellCreatedEventDetail<any>>;
   if (!detail) return;
   const { cell } = detail;
-  cell.style.border = `1px solid var(--bim-ui_bg-contrast-20)`;
+  cell.style.border = "none";
   cell.style.padding = "2px 6px";
-
   cell.style.whiteSpace = "nowrap";
   cell.style.overflow = "hidden";
   cell.style.textOverflow = "ellipsis";
