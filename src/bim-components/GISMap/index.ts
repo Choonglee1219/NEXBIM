@@ -49,7 +49,7 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
   manualData: GISMapData = {
     eastings: -634016.937824,
     northings: -1168325.998753,
-    orthogonalHeight: 200,
+    orthogonalHeight: 389,
     xAxisAbscissa: 0.878091, // cos(331.4129 deg)
     xAxisOrdinate: -0.478494, // sin(331.4129 deg)
     scale: 1.0,

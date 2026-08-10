@@ -5,7 +5,7 @@ import { BimChatState, ChatMessage, BimChatMode } from "./types";
 import { appIcons } from "../../../globals";
 import { Highlighter } from "../../../bim-components/Highlighter";
 import { clashUIState } from "../../../ui-templates/sections/clash-list";
-import { queriesUIState } from "../../../ui-templates/sections/queries";
+import { queriesUIState, sanitizeRegexString } from "../../../ui-templates/sections/queries";
 import { ruleUIState } from "../../../ui-templates/sections/rule-spec";
 
 const md = new MarkdownIt({
@@ -249,14 +249,14 @@ const switchLayoutAndTab = async (layoutName: string, switchTabFn?: ((tab: "list
 
 const processQueryBuilderAction = async (action: any) => {
   if (queriesUIState.nameInput) queriesUIState.nameInput.value = action.name || "AI_Query";
-  if (queriesUIState.entityInput) queriesUIState.entityInput.value = action.entity || "";
-  if (queriesUIState.attrNameInput) queriesUIState.attrNameInput.value = action.attrName || "";
-  if (queriesUIState.attrValInput) queriesUIState.attrValInput.value = action.attrVal || "";
-  if (queriesUIState.psetNameInput) queriesUIState.psetNameInput.value = action.psetName || "";
-  if (queriesUIState.propNameInput) queriesUIState.propNameInput.value = action.propName || "";
-  if (queriesUIState.propValInput) queriesUIState.propValInput.value = action.propVal || "";
-  if (queriesUIState.containedInInput) queriesUIState.containedInInput.value = action.containedIn || "";
-  if (queriesUIState.structureNameInput) queriesUIState.structureNameInput.value = action.structureName || "";
+  if (queriesUIState.entityInput) queriesUIState.entityInput.value = sanitizeRegexString(action.entity || "");
+  if (queriesUIState.attrNameInput) queriesUIState.attrNameInput.value = sanitizeRegexString(action.attrName || "");
+  if (queriesUIState.attrValInput) queriesUIState.attrValInput.value = sanitizeRegexString(action.attrVal || "");
+  if (queriesUIState.psetNameInput) queriesUIState.psetNameInput.value = sanitizeRegexString(action.psetName || "");
+  if (queriesUIState.propNameInput) queriesUIState.propNameInput.value = sanitizeRegexString(action.propName || "");
+  if (queriesUIState.propValInput) queriesUIState.propValInput.value = sanitizeRegexString(action.propVal || "");
+  if (queriesUIState.containedInInput) queriesUIState.containedInInput.value = sanitizeRegexString(action.containedIn || "");
+  if (queriesUIState.structureNameInput) queriesUIState.structureNameInput.value = sanitizeRegexString(action.structureName || "");
 
   await switchLayoutAndTab("Queries", queriesUIState.switchTab);
 
@@ -375,12 +375,18 @@ const executeViewerAction = async (components: OBC.Components, world: OBC.World,
       return String(count);
     }
 
-    // Category or specific ID highlight/isolate/hide
+    if (type === "showAll") {
+      await hider.set(true);
+      return "Showed all elements.";
+    }
+
+    // Category, specific ID, or selection highlight/isolate/hide
     let modelIdMap: OBC.ModelIdMap = {};
 
     if (target === "category" && typeof value === "string") {
+      const cleanCat = sanitizeRegexString(value);
       for (const [modelId, model] of fragments.list) {
-        const items = await model.getItemsOfCategories([new RegExp(`^${value}$`, "i")]);
+        const items = await model.getItemsOfCategories([new RegExp(`^${cleanCat}$`, "i")]);
         const localIds = Object.values(items).flat();
         if (localIds.length > 0) {
           modelIdMap[modelId] = new Set(localIds);
@@ -392,12 +398,13 @@ const executeViewerAction = async (components: OBC.Components, world: OBC.World,
       if (firstModelId) {
         modelIdMap[firstModelId] = new Set(ids);
       }
-    } else if (target === "selection") {
+    } else {
+      // Default to current selection if target is "selection", empty, or unspecified
       modelIdMap = highlighter.selection.select;
     }
 
     if (OBC.ModelIdMapUtils.isEmpty(modelIdMap)) {
-      return "No matching elements found to execute action.";
+      return "No matching elements or selected elements found to execute action.";
     }
 
     if (type === "highlight") {
@@ -408,6 +415,7 @@ const executeViewerAction = async (components: OBC.Components, world: OBC.World,
       return `Isolated elements.`;
     } else if (type === "hide") {
       await hider.set(false, modelIdMap);
+      highlighter.clear("select");
       return `Hidden elements.`;
     } else if (type === "focus") {
       if (world.camera instanceof OBC.SimpleCamera) {

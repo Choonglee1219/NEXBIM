@@ -5,6 +5,21 @@ import { queriesList } from "../../ui-components";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { bimChatPanel } from "../../bim-components/BimChat";
 
+export const sanitizeRegexString = (raw: string): string => {
+  if (!raw) return "";
+  let str = raw.trim();
+  const regexMatch = str.match(/^\/(.*)\/[gimuy]*$/);
+  if (regexMatch) {
+    str = regexMatch[1];
+  }
+  if (str.startsWith("^")) str = str.slice(1);
+  if (str.endsWith("$")) str = str.slice(0, -1);
+  if (str.startsWith("(") && str.endsWith(")")) {
+    str = str.slice(1, -1);
+  }
+  return str.trim();
+};
+
 export interface QueriesPanelState {
   components: OBC.Components;
   world?: OBC.World;
@@ -75,29 +90,38 @@ export const queriesPanelTemplate: BUI.StatefullComponent<QueriesPanelState> = (
 
   const onQueryFind = async () => {
     try {
+      const rawEntity = sanitizeRegexString(entityInput.value || "");
+      const rawAttrName = sanitizeRegexString(attrNameInput.value || "");
+      const rawAttrVal = sanitizeRegexString(attrValInput.value || "");
+      const rawPsetName = sanitizeRegexString(psetNameInput.value || "");
+      const rawPropName = sanitizeRegexString(propNameInput.value || "");
+      const rawPropVal = sanitizeRegexString(propValInput.value || "");
+      const rawContainedIn = sanitizeRegexString(containedInInput.value || "");
+      const rawStructureName = sanitizeRegexString(structureNameInput.value || "");
+
       const query: any = {
-        categories: [entityInput.value ? new RegExp(entityInput.value, "i") : /.*/],
+        categories: [rawEntity ? new RegExp(rawEntity, "i") : /.*/],
       };
-      if (attrNameInput.value || attrValInput.value) {
+      if (rawAttrName || rawAttrVal) {
         query.attributes = {
           queries: [
             {
-              name: attrNameInput.value ? new RegExp(attrNameInput.value, "i") : /.*/,
-              value: attrValInput.value ? new RegExp(attrValInput.value, "i") : /.*/,
+              name: rawAttrName ? new RegExp(rawAttrName, "i") : /.*/,
+              value: rawAttrVal ? new RegExp(rawAttrVal, "i") : /.*/,
             },
           ],
         };
       }
-      if (psetNameInput.value || propNameInput.value || propValInput.value) {
+      if (rawPsetName || rawPropName || rawPropVal) {
         let propValueQuery: any = /.*/;
-        if (propValInput.value) {
-          const lowerValue = propValInput.value.toLowerCase();
+        if (rawPropVal) {
+          const lowerValue = rawPropVal.toLowerCase();
           if (['true', 't', 'yes', 'y', '1'].includes(lowerValue)) {
             propValueQuery = true;
           } else if (['false', 'f', 'no', 'n', '0'].includes(lowerValue)) {
             propValueQuery = false;
           } else {
-            propValueQuery = new RegExp(propValInput.value, "i");
+            propValueQuery = new RegExp(rawPropVal, "i");
           }
         }
 
@@ -109,7 +133,7 @@ export const queriesPanelTemplate: BUI.StatefullComponent<QueriesPanelState> = (
               queries: [
                 {
                   name: /Name/,
-                  value: psetNameInput.value ? new RegExp(psetNameInput.value, "i") : /.*/,
+                  value: rawPsetName ? new RegExp(rawPsetName, "i") : /.*/,
                 },
               ],
             },
@@ -121,7 +145,7 @@ export const queriesPanelTemplate: BUI.StatefullComponent<QueriesPanelState> = (
                   queries: [
                     {
                       name: /Name/,
-                      value: propNameInput.value ? new RegExp(propNameInput.value, "i") : /.*/,
+                      value: rawPropName ? new RegExp(rawPropName, "i") : /.*/,
                     },
                     {
                       name: /NominalValue/,
@@ -134,18 +158,18 @@ export const queriesPanelTemplate: BUI.StatefullComponent<QueriesPanelState> = (
           },
         };
       }
-      if (containedInInput.value || structureNameInput.value) {
+      if (rawContainedIn || rawStructureName) {
         query.relation = {
           name: "ContainedInStructure",
           query: {
             categories: [
-              containedInInput.value ? new RegExp(containedInInput.value, "i") : /.*/,
+              rawContainedIn ? new RegExp(rawContainedIn, "i") : /.*/,
             ],
             attributes: {
               queries: [
                 {
                   name: /Name/,
-                  value: structureNameInput.value ? new RegExp(structureNameInput.value, "i") : /.*/,
+                  value: rawStructureName ? new RegExp(rawStructureName, "i") : /.*/,
                 },
               ],
             },

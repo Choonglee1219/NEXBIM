@@ -448,10 +448,14 @@ chatPanel.style.resize = "both";
 document.body.appendChild(chatPanel);
 
 // Define toggle function globally
-(window as any).toggleBimChat = (force?: boolean) => {
+(window as any).toggleBimChat = (force?: boolean, mode: "viewport" | "query" | "rule" = "viewport") => {
   const panel = document.getElementById("bim-chat-panel") as HTMLElement;
   const toggleBtn = document.getElementById("bim-chat-toggle-btn") as any;
   if (!panel) return;
+
+  if ((window as any).setBimChatMode) {
+    (window as any).setBimChatMode(mode);
+  }
 
   const show = force !== undefined ? force : (panel.style.display === "none");
   if (show) {

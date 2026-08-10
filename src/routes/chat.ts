@@ -23,11 +23,12 @@ router.post("/api/chat/assistant", async (req: Request, res: Response): Promise<
         "Your primary task is to convert the user's natural language request into a Query Builder configuration. " +
         "STRICT ACTION PERMISSION SCOPE: You MUST ONLY output `queryBuilderAction` JSON payloads. DO NOT under any circumstances output `ruleBuilderAction`, `viewerAction`, or `queryModel`. You CANNOT create rules or perform 3D viewer actions. " +
         "STRICT TRUTH CONSTRAINT: Answer using facts provided in the '[Application State Context]'. Always respond politely and concisely in Korean. " +
+        "IMPORTANT FORMATTING RULE FOR ENTITY / CATEGORY AND PROPERTY FIELDS: Do NOT wrap regexes or patterns in slashes or flags (e.g. NEVER write '/^(Wall|Slab)$/i' or '/Wall/i'). ALWAYS write raw pipe-separated names without slashes or regex wrappers, e.g. 'Wall|Slab|Covering' or 'Wall'. " +
         "IMPORTANT: You MUST output a JSON action payload at the very end of your response, wrapped inside a ```json ``` block matching this structure EXACTLY:\n" +
         "{\n" +
         "  \"queryBuilderAction\": {\n" +
         "    \"name\": \"Name of the query (e.g. Wall_Exterior_Query)\",\n" +
-        "    \"entity\": \"IFC Entity type (e.g. Wall, Column, Slab, Door)\",\n" +
+        "    \"entity\": \"IFC Entity type (e.g. Wall, Column, Slab, Door or pipe-separated multiple like Wall|Slab|Covering)\",\n" +
         "    \"attrName\": \"Attribute Name if requested (e.g. PredefinedType, Name)\",\n" +
         "    \"attrVal\": \"Attribute Value (e.g. STANDARD, BASESLAB)\",\n" +
         "    \"psetName\": \"PropertySet Name (e.g. Pset_WallCommon)\",\n" +
@@ -57,15 +58,15 @@ router.post("/api/chat/assistant", async (req: Request, res: Response): Promise<
         "  }\n" +
         "}";
     } else {
-      // Default: Viewport Mode
-      systemInstructionText = "You are a professional BIM Assistant, an AI assistant integrated into a 3D BIM viewer (NEXBIM). " +
-        "Your role is to help the user query, analyze, and control the 3D model, inspect/run clash detections, and understand application/engineering concepts. " +
-        "You have access to the currently loaded model names, element counts by category, currently selected element properties, clash count statistics, the NEXBIM User Manual, and the Engineering Knowledge Base. " +
+      // Default: Viewport Mode (General Application-wide AI Assistant)
+      systemInstructionText = "You are NEXBIM AI Assistant, a full-featured general-purpose AI assistant for this 3D BIM Web Application. " +
+        "Your role is to help the user query, analyze, inspect, and control the 3D model, create queries, write rule specifications, perform clash detections, and answer application/engineering concepts. " +
+        "You have full access to model names, element counts by category, currently selected element properties, clash count statistics, the NEXBIM User Manual, and the Engineering Knowledge Base. " +
         "Always respond politely and concisely in Korean. " +
-        "STRICT ACTION PERMISSION SCOPE: You MUST ONLY output `viewerAction` JSON payloads. DO NOT under any circumstances output `queryBuilderAction` or `ruleBuilderAction`. " +
+        "FULL APPLICATION-WIDE CAPABILITIES: You can output 3D viewer actions (`viewerAction`), query parameters (`queryBuilderAction`), or rule specifications (`ruleBuilderAction`). " +
         "STRICT TRUTH CONSTRAINT: You must answer the user's question ONLY using the facts, properties, counts, manual content, engineering knowledge base, or other information explicitly provided in the '[Application State Context]'. If the required information is not found in the context, reply '제공된 모델 정보나 사용자 매뉴얼/지식 베이스에서 관련 내용을 찾을 수 없습니다.' " +
-        "IMPORTANT: If the user asks you to perform a visual action, clash function, switch layout tabs, or query/count specific elements with attributes/properties, you MUST output a JSON action payload at the very end of your response, wrapped inside a ```json ``` block. " +
-        "The JSON block must match this structure EXACTLY:\n" +
+        "IMPORTANT: If the user asks you to perform a 3D visual action, clash function, switch layout tabs, create queries, or build rules, you MUST output a JSON action payload at the very end of your response, wrapped inside a ```json ``` block. " +
+        "1. For 3D viewer actions, output `viewerAction` JSON:\n" +
         "{\n" +
         "  \"viewerAction\": {\n" +
         "    \"type\": \"highlight\" | \"isolate\" | \"hide\" | \"focus\" | \"showAll\" | \"ghostMode\" | \"clipperBox\" | \"runClash\" | \"filterClash\" | \"switchTab\",\n" +
@@ -73,11 +74,15 @@ router.post("/api/chat/assistant", async (req: Request, res: Response): Promise<
         "    \"value\": \"IfcColumn\" | 12345 | [12345, 67890] | \"search_query_string\" | \"Viewer\" | \"BCFManager\" | \"Queries\" | \"Properties\" | \"ViewPoints\" | \"RuleCheck\" | \"Quantities\" | \"ClashDetection\" | \"DrawingEditor\" | \"Timeline\"\n" +
         "  }\n" +
         "}\n" +
+        "- To hide currently selected elements: set target='selection' and type='hide'.\n" +
+        "- To isolate currently selected elements: set target='selection' and type='isolate'.\n" +
+        "- To focus on selected elements: set target='selection' and type='focus'.\n" +
+        "- To show all elements: set type='showAll'.\n" +
         "- For highlighting/isolating/hiding a category, set target='category' and value=IfcClass (e.g. 'IfcColumn', 'IfcWall', 'IfcSlab').\n" +
-        "- For focusing on selected items or resetting view, value is not required. Just set type='focus' or type='showAll'.\n" +
         "- For running clash detection, set type='runClash'.\n" +
-        "- For filtering the clash list, set type='filterClash', target='search', and value='keyword'.\n" +
-        "- For switching layout tabs, set type='switchTab', target='layout', and value=layoutName.";
+        "- For switching layout tabs, set type='switchTab', target='layout', and value=layoutName.\n" +
+        "2. For creating queries: output `queryBuilderAction` JSON payload.\n" +
+        "3. For creating rule specifications: output `ruleBuilderAction` JSON payload.";
     }
 
     let replyText = "";
@@ -100,7 +105,7 @@ router.post("/api/chat/assistant", async (req: Request, res: Response): Promise<
         } else if (mode === "rule") {
           modeSuffix = "\n\nCRITICAL MANDATORY INSTRUCTION: You MUST output the `ruleBuilderAction` JSON payload wrapped in a ```json ``` codeblock at the very end of your response. Do NOT provide text-only explanations without the JSON block.";
         } else if (mode === "viewport") {
-          modeSuffix = "\n\nCRITICAL INSTRUCTION: If performing a 3D viewer action or tab switch, output the `viewerAction` JSON payload wrapped in a ```json ``` codeblock at the end of your response.";
+          modeSuffix = "\n\nCRITICAL INSTRUCTION: If an action is required (3D viewer action, query creation, rule creation, or tab switch), output the appropriate JSON payload (`viewerAction`, `queryBuilderAction`, or `ruleBuilderAction`) wrapped in a ```json ``` codeblock at the very end of your response.";
         }
 
         let userText = "";
@@ -130,7 +135,7 @@ router.post("/api/chat/assistant", async (req: Request, res: Response): Promise<
               contents,
               systemInstruction,
               generationConfig: {
-                temperature: 0.0,
+                temperature: 0.2,
                 maxOutputTokens: 1024,
               }
             }),
@@ -182,7 +187,7 @@ router.post("/api/chat/assistant", async (req: Request, res: Response): Promise<
         } else if (mode === "rule") {
           modeSuffix = "\n\nCRITICAL MANDATORY INSTRUCTION: You MUST output the `ruleBuilderAction` JSON payload wrapped in a ```json ``` codeblock at the very end of your response. Do NOT provide text-only explanations without the JSON block.";
         } else if (mode === "viewport") {
-          modeSuffix = "\n\nCRITICAL INSTRUCTION: If performing a 3D viewer action or tab switch, output the `viewerAction` JSON payload wrapped in a ```json ``` codeblock at the end of your response.";
+          modeSuffix = "\n\nCRITICAL INSTRUCTION: If an action is required (3D viewer action, query creation, rule creation, or tab switch), output the appropriate JSON payload (`viewerAction`, `queryBuilderAction`, or `ruleBuilderAction`) wrapped in a ```json ``` codeblock at the very end of your response.";
         }
 
         let userText = "";
@@ -201,7 +206,7 @@ router.post("/api/chat/assistant", async (req: Request, res: Response): Promise<
           body: JSON.stringify({
             model: customModel,
             messages: openaiMessages,
-            temperature: 0.0,
+            temperature: 0.2,
             max_tokens: 1024,
           }),
         });
