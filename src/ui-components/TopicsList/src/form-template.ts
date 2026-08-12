@@ -413,7 +413,7 @@ export const topicFormTemplate = (state: TopicFormUI, _update?: (state: Partial<
           <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--bim-ui_bg-contrast-20); padding-left: 0.5rem; box-sizing: border-box;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; flex-shrink: 0;">
               <bim-label style="font-weight: bold;">Comments</bim-label>
-              <bim-button icon=${appIcons.RIGHT} title="Collapse Comments" @click=${state.onToggleComments} style="margin: 0;"></bim-button>
+              <bim-button icon=${appIcons.RIGHT} title="Collapse Comments" @click=${state.onToggleComments} style="margin: 0; flex: 0 0 auto;"></bim-button>
             </div>
             <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
               ${state.commentsUI ? state.commentsUI : (!topic ? BUI.html`
@@ -426,7 +426,7 @@ export const topicFormTemplate = (state: TopicFormUI, _update?: (state: Partial<
           </div>
         ` : BUI.html`
           <div style="width: 2.5rem; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; border-left: 1px solid var(--bim-ui_bg-contrast-20); padding-left: 0.25rem; gap: 0.75rem; box-sizing: border-box; padding-top: 0.5rem;">
-            <bim-button icon=${appIcons.LEFT} title="Expand Comments" @click=${state.onToggleComments} style="margin: 0; width: 100%; box-sizing: border-box;"></bim-button>
+            <bim-button icon=${appIcons.LEFT} title="Expand Comments" @click=${state.onToggleComments} style="margin: 0; flex: 0 0 auto;"></bim-button>
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; margin-top: 0.5rem; cursor: pointer; width: 100%;" title="Comments (Click to Expand)" @click=${state.onToggleComments}>
               <bim-label icon=${appIcons.COMMENT} style="--bim-icon--fz: 1.5rem; margin: 0; opacity: 0.7;"></bim-label>
               ${viewpointsCount > 0 ? BUI.html`

@@ -25,6 +25,44 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
 
   // --- Grouping 1단계: 사용자 정의 그룹 상태 관리 ---
+  const savedFragGroups = localStorage.getItem("app_frag_groups");
+  const parsedFragGroups = savedFragGroups ? JSON.parse(savedFragGroups) : [];
+  const fragGroups = new Map<number, string>(); // 파일 ID를 키로 하여 그룹명을 저장
+  for (const [id, group] of parsedFragGroups) {
+    fragGroups.set(id, group);
+  }
+
+  const saveGroupsToBackend = async (): Promise<boolean> => {
+    const fragEntries = Array.from(fragGroups.entries());
+
+    localStorage.setItem("app_frag_groups", JSON.stringify(fragEntries));
+
+    try {
+      const res = await fetch("/api/groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fragGroups: fragEntries }),
+      });
+      return res.ok;
+    } catch (err) {
+      console.error("Failed to save groups to setup/groups.json:", err);
+      return false;
+    }
+  };
+
+  const saveFragGroupsToStorage = () => {
+    localStorage.setItem("app_frag_groups", JSON.stringify(Array.from(fragGroups.entries())));
+  };
+
+  const onSaveGroupConfig = async () => {
+    const success = await saveGroupsToBackend();
+    if (success) {
+      alert("그룹핑 설정이 setup/groups.json 파일에 저장되었습니다.");
+    } else {
+      alert("그룹핑 설정 저장에 실패하였습니다.");
+    }
+  };
+
   const paletteColors = [
     "hsl(0, 65%, 40%)",
     "hsl(45, 65%, 40%)",
@@ -60,15 +98,22 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     // 같은 그룹을 다시 클릭하면 필터 해제, 아니면 해당 그룹으로 필터링
     activeGroupFilter = activeGroupFilter === groupName ? null : groupName;
     if (refreshBadges) refreshBadges();
-    updateIFCTableData();
     updateFRAGTableData();
   };
 
-  // 그룹 뱃지 UI 컴포넌트 생성
+  // 그룹 뱃지 UI 컴포넌트 생성 (가장 좌측에 아이콘 전용 Save Group 버튼 배치)
   type CustomGroupsState = { groups: string[], activeFilter: string | null, counts: Record<string, number> };
   const groupsCreator: BUI.StatefullComponent<CustomGroupsState> = (state) => {
     return BUI.html`
-      <div style="display: flex; gap: 0.375rem; width: 100%;">
+      <div style="display: flex; gap: 0.375rem; width: 100%; align-items: center;">
+        <div 
+          @click=${(e: Event) => { e.stopPropagation(); onSaveGroupConfig(); }} 
+          title="Save Grouping to setup/groups.json" 
+          style="flex: 0 0 auto; height: 1.25rem; padding: 0 0.4rem; background: var(--bim-ui_bg-contrast-20); border: 1px solid var(--bim-ui_bg-contrast-40); border-radius: 0.25rem; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; box-sizing: border-box;" 
+          onmouseover="this.style.filter='brightness(1.2)'" 
+          onmouseout="this.style.filter='none'">
+          <span style="font-size: 0.75rem; color: var(--bim-ui_bg-contrast-100, var(--bim-label--c, #ffffff)); font-weight: 600;">Save</span>
+        </div>
         ${state.groups.map(g => {
       const isActive = state.activeFilter === g;
       const isNone = g === "None";
@@ -81,7 +126,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
             <div 
               @click=${() => onBadgeClick(g)} 
               style="flex: 1; height: 1.25rem; padding: 0 0.25rem; background: ${bg}; border: ${border}; border-radius: 0.25rem; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; box-sizing: border-box;" onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter='none'">
-              <span style="font-size: 0.75rem;">${state.counts[g] || 0} EA</span>
+              <span style="font-size: 0.75rem; color: var(--bim-ui_bg-contrast-100, var(--bim-label--c, #ffffff)); font-weight: 600;">${state.counts[g] || 0} EA</span>
             </div>
           `;
     })}
@@ -225,67 +270,81 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
   };
 
   // 공통 로직 분리: IFC 파일을 로드, FRAG 변환 및 데이터베이스에 저장
-  const processAndSaveIfc = async (file: File) => {
+  const processAndSaveIfc = async (
+    file: File,
+    showAlert = true,
+    refreshLists = true,
+  ): Promise<"success" | "skipped" | "failed"> => {
     const newModelName = file.name.replace(/\.ifc$/i, "");
 
     // 중복 로드 방지: 이미 동일한 이름의 모델이 있는지 확인
     for (const [, model] of fragments.list) {
       if ((model as any).name === newModelName) {
-        alert(`"${newModelName}" 모델은 이미 로드되어 있습니다.`);
-        return;
+        if (showAlert) alert(`"${newModelName}" 모델은 이미 로드되어 있습니다.`);
+        return "skipped";
       }
     }
 
-    const buffer = await file.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    const model = await ifcLoader.load(bytes, false, newModelName, {
-      instanceCallback: (importer: any) => {
-        importer.includeUniqueAttributes = true;
-        importer.includeRelationNames = true;
-      },
-    }); // 좌표 원점 조정 해제
-    (model as any).name = newModelName;
-    updateLoadedModelsList();
-    let modelId = (model as any).uuid;
-    if (!modelId) {
-      for (const [id, m] of fragments.list) {
-        if (m === model) {
-          modelId = id;
-          break;
+    try {
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      const model = await ifcLoader.load(bytes, false, newModelName, {
+        instanceCallback: (importer: any) => {
+          importer.includeUniqueAttributes = true;
+          importer.includeRelationNames = true;
+        },
+      }); // 좌표 원점 조정 해제
+      (model as any).name = newModelName;
+      updateLoadedModelsList();
+      let modelId = (model as any).uuid;
+      if (!modelId) {
+        for (const [id, m] of fragments.list) {
+          if (m === model) {
+            modelId = id;
+            break;
+          }
         }
       }
-    }
 
-    // Detect georeferencing from raw IFC buffer (before any caching)
-    const gisMap = components.get(GISMapComponent);
-    gisMap.detectGeorefFromBuffer(bytes);
+      // Detect georeferencing from raw IFC buffer (before any caching)
+      const gisMap = components.get(GISMapComponent);
+      gisMap.detectGeorefFromBuffer(bytes);
 
-    // 파일 로드 시 원본 버퍼를 ClashService에 캐싱 (정밀 간섭 검토용)
-    if (modelId) {
-      const clashService = components.get(ClashService);
-      clashService.addIfcBuffer(modelId, bytes);
-    }
+      // 파일 로드 시 원본 버퍼를 ClashService에 캐싱 (정밀 간섭 검토용)
+      if (modelId) {
+        const clashService = components.get(ClashService);
+        clashService.addIfcBuffer(modelId, bytes);
+      }
 
-    const fragData = await (model as any).getBuffer(false);
-    const fragFile = new File([fragData], file.name.replace(".ifc", ".frag"));
+      const fragData = await (model as any).getBuffer(false);
+      const fragFile = new File([fragData], file.name.replace(".ifc", ".frag"));
 
-    const activeProjectId = appState.currentProject?.id;
-    const ifcid = await sharedIFC.saveIFC(file, activeProjectId);
-    let fragid = null;
-    if (ifcid) {
-      fragid = await sharedFRAG.saveFRAG(fragFile, activeProjectId);
-    }
+      const activeProjectId = appState.currentProject?.id;
+      const ifcid = await sharedIFC.saveIFC(file, activeProjectId);
+      let fragid = null;
+      if (ifcid) {
+        fragid = await sharedFRAG.saveFRAG(fragFile, activeProjectId);
+      }
 
-    if (ifcid && fragid) {
-      alert("IFC 및 FRAG 파일이 데이터베이스에 저장되었습니다.");
-      (model as any).dbId = ifcid;
-      sharedIFC.addModelUUID(ifcid, modelId);
-      sharedFRAG.addModelUUID(fragid, modelId);
-      bcfTopics.onRefresh.trigger();
-      await refreshSharedIFCList();
-      await refreshSharedFRAGList();
-    } else {
-      alert("DB 저장 중 오류가 발생하였습니다.");
+      if (ifcid && fragid) {
+        if (showAlert) alert("IFC 및 FRAG 파일이 데이터베이스에 저장되었습니다.");
+        (model as any).dbId = ifcid;
+        sharedIFC.addModelUUID(ifcid, modelId);
+        sharedFRAG.addModelUUID(fragid, modelId);
+        if (refreshLists) {
+          bcfTopics.onRefresh.trigger();
+          await refreshSharedIFCList();
+          await refreshSharedFRAGList();
+        }
+        return "success";
+      } else {
+        if (showAlert) alert("DB 저장 중 오류가 발생하였습니다.");
+        return "failed";
+      }
+    } catch (err) {
+      console.error(`Error processing IFC file (${file.name}):`, err);
+      if (showAlert) alert(`"${file.name}" 모델 로드 중 오류가 발생했습니다.`);
+      return "failed";
     }
   };
 
@@ -293,6 +352,113 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
   const onAddIfcModel = createFileInputHandler(".ifc", true, async (file) => {
     await processAndSaveIfc(file);
   });
+
+  // 폴더 탐색 및 .ifc 파일 수집 (File System Access API 우선 사용, 구버전/폐쇄망 webkitdirectory 폴백)
+  const getIfcFilesFromFolder = async (): Promise<File[] | null> => {
+    if ("showDirectoryPicker" in window && typeof (window as any).showDirectoryPicker === "function") {
+      try {
+        const dirHandle = await (window as any).showDirectoryPicker();
+        const files: File[] = [];
+        const readDirectory = async (handle: any) => {
+          for await (const entry of handle.values()) {
+            if (entry.kind === "file") {
+              if (entry.name.toLowerCase().endsWith(".ifc")) {
+                const file = await entry.getFile();
+                files.push(file);
+              }
+            } else if (entry.kind === "directory") {
+              await readDirectory(entry);
+            }
+          }
+        };
+        await readDirectory(dirHandle);
+        return files;
+      } catch (err: any) {
+        if (err && err.name === "AbortError") {
+          return null; // 사용자가 취소한 경우
+        }
+        console.warn("showDirectoryPicker 사용 불가/오류 발생, webkitdirectory 폴백 시도:", err);
+      }
+    }
+
+    // 폐쇄망 및 구버전 브라우저 지원용 webkitdirectory 폴백
+    return new Promise((resolve) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      (input as any).webkitdirectory = true;
+      input.setAttribute("webkitdirectory", "");
+      input.setAttribute("directory", "");
+      input.setAttribute("multiple", "");
+
+      input.addEventListener("change", () => {
+        if (!input.files || input.files.length === 0) {
+          resolve(null);
+          return;
+        }
+        const files: File[] = [];
+        for (let i = 0; i < input.files.length; i++) {
+          const file = input.files[i];
+          if (file.name.toLowerCase().endsWith(".ifc")) {
+            files.push(file);
+          }
+        }
+        resolve(files);
+      });
+
+      input.addEventListener("cancel", () => {
+        resolve(null);
+      });
+
+      input.click();
+    });
+  };
+
+  const onAddIfcFolder = async (e: Event) => {
+    const target = (e.target as HTMLElement).closest("bim-button") as BUI.Button | null;
+    try {
+      const files = await getIfcFilesFromFolder();
+      if (!files) return;
+
+      if (files.length === 0) {
+        alert("선택한 폴더 내에 .ifc 파일이 존재하지 않습니다.");
+        return;
+      }
+
+      if (target) target.loading = true;
+
+      // 파일명 오름차순 순차 처리
+      files.sort((a, b) => a.name.localeCompare(b.name));
+
+      let successCount = 0;
+      let skipCount = 0;
+      let failCount = 0;
+
+      for (const file of files) {
+        // 일괄 처리 시 불필요한 반복 목록 갱신을 방지하기 위해 refreshLists=false 전달
+        const res = await processAndSaveIfc(file, false, false);
+        if (res === "success") successCount++;
+        else if (res === "skipped") skipCount++;
+        else failCount++;
+      }
+
+      // 배치 완료 후 목록 및 주제 1회 일괄 갱신
+      if (successCount > 0) {
+        bcfTopics.onRefresh.trigger();
+        await refreshSharedIFCList();
+        await refreshSharedFRAGList();
+      }
+
+      alert(`폴더 가져오기 완료: 총 ${files.length}개 IFC 파일 중 ${successCount}개 로드/저장 성공` +
+        (skipCount > 0 ? `, ${skipCount}개 중복 생략` : "") +
+        (failCount > 0 ? `, ${failCount}개 실패` : ""));
+    } catch (error) {
+      console.error("Error importing folder:", error);
+      alert("폴더 로드 중 오류가 발생했습니다. 콘솔을 확인하세요.");
+    } finally {
+      if (target) target.loading = false;
+      BUI.ContextMenu.removeMenus();
+    }
+  };
 
   // EDB 데이터 추가 처리를 위한 핸들러
   const onProcessEdbData = createFileInputHandler(".ifc", false, async (file) => {
@@ -493,6 +659,9 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
     const success = await sharedFRAG.deleteFRAG(fragid);
     if (success) {
+      fragGroups.delete(fragid);
+      saveGroupsToBackend();
+
       for (const [, model] of fragments.list) {
         if ((model as any).dbId === fragid) {
           model.dispose();
@@ -504,18 +673,6 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     } else {
       alert("FRAG 파일 삭제에 실패하였습니다.");
     }
-  };
-
-  // --- Grouping 2단계: FRAG 모델 테이블 및 상태 정의 ---
-  const savedFragGroups = localStorage.getItem("app_frag_groups");
-  const parsedFragGroups = savedFragGroups ? JSON.parse(savedFragGroups) : [];
-  const fragGroups = new Map<number, string>(); // 파일 ID를 키로 하여 그룹명을 저장
-  for (const [id, group] of parsedFragGroups) {
-    fragGroups.set(id, group);
-  }
-
-  const saveFragGroupsToStorage = () => {
-    localStorage.setItem("app_frag_groups", JSON.stringify(Array.from(fragGroups.entries())));
   };
 
   type FRAGTableData = {
@@ -658,29 +815,34 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     }
   };
 
-  // --- Grouping 2단계: IFC 모델 테이블 및 상태 정의 ---
-  const savedIfcGroups = localStorage.getItem("app_ifc_groups");
-  const parsedIfcGroups = savedIfcGroups ? JSON.parse(savedIfcGroups) : [];
-  const ifcGroups = new Map<number, string>(); // 파일 ID를 키로 하여 그룹명을 저장
-  for (const [id, group] of parsedIfcGroups) {
-    ifcGroups.set(id, group);
-  }
-
-  const saveIfcGroupsToStorage = () => {
-    localStorage.setItem("app_ifc_groups", JSON.stringify(Array.from(ifcGroups.entries())));
+  const loadGroupsFromBackend = async () => {
+    try {
+      const res = await fetch("/api/groups");
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.fragGroups)) {
+          fragGroups.clear();
+          for (const [id, group] of data.fragGroups) {
+            fragGroups.set(Number(id), group);
+          }
+          localStorage.setItem("app_frag_groups", JSON.stringify(data.fragGroups));
+        }
+        updateFRAGTableData();
+        if (refreshBadges) refreshBadges();
+      }
+    } catch (err) {
+      console.error("Failed to load groups from setup/groups.json:", err);
+    }
   };
 
   type IFCTableData = {
     id: number;
     Name: string;
-    Group: string;
-    _isComputedGroup?: boolean;
-    groupedBy?: string[];
     [key: string]: any;
   };
 
   const ifcTable = document.createElement("bim-table") as BUI.Table<IFCTableData>;
-  ifcTable.hiddenColumns = ["id", "Group"];
+  ifcTable.hiddenColumns = ["id"];
   ifcTable.headersHidden = true;
   ifcTable.expanded = true;
   ifcTable.noIndentation = true;
@@ -692,33 +854,20 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
   const selectedIfcModels = new Set<number>();
 
   const updateIFCTableData = () => {
-    const filteredList = activeGroupFilter
-      ? sharedIFC.list.filter(file => {
-        let groupName = ifcGroups.get(file.id) || "None";
-        if (!customGroups.includes(groupName)) groupName = "None";
-        return groupName === activeGroupFilter;
-      })
-      : [...sharedIFC.list]; // 원본 배열 보호를 위해 복사
+    const list = [...sharedIFC.list];
+    list.sort((a, b) => a.name.localeCompare(b.name));
 
-    filteredList.sort((a, b) => a.name.localeCompare(b.name));
-
-    ifcTable.data = filteredList.map(file => {
-      let groupName = ifcGroups.get(file.id) || "None";
-      if (!customGroups.includes(groupName)) groupName = "None";
-      return {
-        data: {
-          id: file.id,
-          Name: file.name,
-          Group: groupName,
-        }
-      };
-    });
+    ifcTable.data = list.map(file => ({
+      data: {
+        id: file.id,
+        Name: file.name,
+      }
+    }));
   };
 
   ifcTable.dataTransform = {
     Name: (value, rowData) => {
       const id = rowData.id as number;
-      const currentGroup = rowData.Group as string;
       const name = value as string;
       const isChecked = selectedIfcModels.has(id);
 
@@ -734,17 +883,6 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
           <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; padding: 0;" title=${name}>
             <bim-label style="margin: 0; padding: 0;">${name}</bim-label>
           </div>
-          <div style="flex: 0 0 auto; margin: 0; padding: 0;">
-            <select @change=${(e: Event) => {
-          const select = e.target as HTMLSelectElement;
-          ifcGroups.set(id, select.value);
-          saveIfcGroupsToStorage();
-          updateIFCTableData();
-          if (refreshBadges) refreshBadges();
-        }} style="padding: 0 0.25rem; margin: 0; border-radius: 4px; background: ${currentGroup === 'None' ? 'var(--bim-ui_bg-contrast-20)' : currentGroup}; border: none; outline: none; cursor: pointer; width: 2.5rem; height: 1.5rem;" title="${currentGroup}">
-              ${customGroups.map(g => BUI.html`<option value="${g}" style="background: ${g === 'None' ? 'var(--bim-ui_bg-base)' : g};" title="${g}" ?selected=${g === currentGroup}>&nbsp;&nbsp;&nbsp;&nbsp;</option>`)}
-            </select>
-          </div>
           <div style="flex: 0 0 auto; display: flex; gap: 0.25rem; margin: 0; padding: 0;">
           <bim-button @click=${() => loadIFCModel(id)} icon=${appIcons.OPEN} style=${tableButtonStyle} title="Load Model"></bim-button>
           <bim-button @click=${() => downloadIFCModel(id)} icon=${appIcons.DOWNLOAD} style=${tableButtonStyle} title="Download Model"></bim-button>
@@ -752,12 +890,6 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
           </div>
         </div>
       `;
-    },
-    Group: (value, _rowData, group) => {
-      if (group && ((group as any)._isComputedGroup || (group.data as any)?._isComputedGroup)) {
-        return BUI.html`<bim-label icon=${appIcons.FOLDEROPEN} style="font-weight: bold;">${value}</bim-label>`;
-      }
-      return value;
     }
   };
 
@@ -884,6 +1016,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
   (window as any).refreshSharedModelLists = async () => {
     await refreshSharedIFCList();
     await refreshSharedFRAGList();
+    await loadGroupsFromBackend();
   };
 
   (window as any).refreshLoadedModelList = () => {
@@ -892,6 +1025,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
   refreshSharedIFCList();
   refreshSharedFRAGList();
+  loadGroupsFromBackend();
 
   return BUI.html`
     <bim-panel-section icon=${appIcons.MODEL} label="IFC List">
@@ -904,6 +1038,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.25rem;">
               <div style="display: flex; gap: 0.25rem;">
                 <bim-button @click=${(e: Event) => { e.stopPropagation(); onAddIfcModel(e); }} icon=${appIcons.ADD} title="Import Model" style="flex: 0;"></bim-button>
+                <bim-button @click=${(e: Event) => { e.stopPropagation(); onAddIfcFolder(e); }} icon=${appIcons.FOLDEROPEN} title="Import Folder" style="flex: 0;"></bim-button>
                 <bim-button @click=${(e: Event) => { e.stopPropagation(); onProcessEdbData(e); }} icon=${appIcons.ADDBOX} title="Import Model with EDB data" style="flex: 0;"></bim-button>
               </div>
               <div style="display: flex; gap: 0.25rem;">

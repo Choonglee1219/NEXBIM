@@ -7,6 +7,7 @@ import propertiesRouter from "./properties.js";
 import chatRouter from "./chat.js";
 import mapRouter from "./map.js";
 import spatialRouter from "./spatial.js";
+import groupsRouter from "./groups.js";
 
 
 const router = express.Router();
@@ -30,6 +31,7 @@ router.use(propertiesRouter);
 router.use(chatRouter);
 router.use(mapRouter);
 router.use(spatialRouter);
+router.use(groupsRouter);
 
 
 export default router;
