@@ -122,6 +122,7 @@
 ### 4.2. IFC List 섹션으로 모델 DB 저장 및 모델 애플리케이션에 로드하기
 * **모델 가져오기 및 DB 저장 (Header Action)**
   * **Import Model 버튼 (`+` 아이콘)**: 로컬의 `.ifc` 파일을 업로드하여 최적화된 `.frag` 형식으로 자동 변환하고, Oracle DB에 저장함과 동시에 모델을 뷰어 화면에 로드함.
+  * **Import Folder 버튼 (열린 폴더 아이콘)**: 로컬 PC의 지정한 폴더 및 모든 하위 경로를 재귀적으로 순회하여 `.ifc` 파일들을 자동 수집한 후, 순차적으로 변환/DB 저장 및 뷰어 로드를 일괄 처리함. 최신 브라우저의 `showDirectoryPicker` API를 우선 활용하며, 구버전 브라우저 및 폐쇄망 환경에서도 정상 동작하도록 `webkitdirectory` 방식으로 자동 폴백(Fallback) 처리됨.
   * **Import Model with EDB data 버튼 (상자 안 `+` 아이콘)**: 로컬 `.ifc` 파일을 업로드하고 백엔드 API(`/api/add-edb-data`)를 통해 EDB 데이터를 결합(Enrich)한 후, DB 저장 및 로드를 처리함.
 * **Loaded Model (로드된 모델 관리 리스트)**
   * **메모리 로드 현황**: 현재 뷰어 내 3D 공간 상에 로드되어 있는 활성 모델 목록 및 개수를 실시간 표시함.
@@ -134,6 +135,9 @@
   * **그룹(Group) 지정 및 필터링**:
     * 개별 모델 단위로 7가지 HSL 색상 그룹(Red, Yellow, Green, Light Blue, Dark Blue, Purple, None) 지정 드롭다운 제공.
     * 리스트 상단에 각 그룹별 할당된 모델 수(EA)가 뱃지로 표시되며, 특정 색상 뱃지 클릭 시 해당 그룹의 모델만 간편하게 필터링할 수 있음.
+  * **그룹핑 설정 영구 저장 API (`Save` 뱃지 버튼)**:
+    * 그룹 뱃지 바 최좌측의 **`Save`** 뱃지 버튼을 통해 사용자가 설정한 모델별 HSL 색상 그룹 지정 현황을 백엔드 REST API(`/api/groups`) 및 서버 설정 파일(`src/setup/groups.json`)에 수동으로 안전하게 영구 저장할 수 있음.
+    * 애플리케이션 시작 및 패널 진입 시 서버의 `src/setup/groups.json` 파일에서 그룹핑 데이터를 자동으로 불러와 동기화하므로, 페이지 새로고침, 프로젝트 전환, 사용자 계정 재접속(Admin/Viewer 스위칭) 시에도 커스텀 그룹 설정 정보가 초기화되거나 유실되지 않고 안전하게 보존됨.
   * **개별 제어**: 목록 우측 아이콘을 클릭하여 원하는 모델을 즉시 애플리케이션에 로딩(`Load`), 로컬 PC로 파일 다운로드(`Download`), 또는 DB에서 영구 삭제(`Delete`)할 수 있음.
   * **일괄 로드**: 체크박스로 여러 모델을 다중 선택한 후 `Load` 버튼을 통해 한 번에 뷰어로 로드할 수 있음.
 
@@ -416,10 +420,12 @@
 * **아코디언 토글 제어**:
   * 좌측 칼럼의 각 하부 패널은 아코디언 타이틀을 클릭하여 접거나 펼쳐서 사용 가능하며, 칼럼 경계를 드래그하여 패널 너비를 최적화할 수 있음.
 
-### 8.2. RuleService 엔진 및 6대 사전 정의 검사 규칙
+### 8.2. RuleService 엔진 및 10대 사전 정의 검사 규칙
 * **통합 BIM 규칙 검증 엔진 (RuleService)**:
   * 본 엔진은 빌딩스마트(buildingSMART)의 IDS 표준 사양뿐만 아니라, 대용량 멀티 모델 환경에서의 데이터 정합성, 공간 구조 소속 관계, PredefinedType Enum 유효성 및 GUID 무결성을 종합 검증함.
-* **사전 정의된 6대 품질 검사 룰 (Predefined Specs)**:
+  * **6대 IDSFacetType 완전 지원**: Property, Quantity, Attribute 외에도 **Classification**(분류 체계 코드/시스템), **Material**(재질 연관 관계), **PartOf**(상위 공간 구조 및 조립 관계)를 완전 확장 지원함.
+  * **5가지 IDSRestrictionParameter 지원**: `exists`(존재 여부), `pattern`(정규식 패턴), `simple`(단순 값 일치), `enumeration`(열거 허용 목록), `bounds`/`length`(범위/길이 조건) 지원.
+* **사전 정의된 10대 품질 검사 룰 (Predefined Specs)**:
   1. **1. IFC 스키마 및 규격 검사 (SchemaValidator)**:
      - **공간 구조 소속 관계 검사 (Spatial Containment)**: 모든 3D 물리 부재가 건물 공간 구조(`Site`, `Building`, `BuildingStorey`)에 정상적으로 속해 있는지 검사하여 고립된(Orphaned) 부재를 결함으로 탐지함.
      - **PredefinedType Enum 유효성 검사**: buildingSMART 공식 IFC4 ADD2 TC1 명세를 기반으로 건축, 구조, 설비(MEP), 소방, 전기, 센서, 밸브 등 전체 IFC 엔티티의 PredefinedType Enum 값을 정수/문자 규격으로 정밀 검증함.
@@ -432,31 +438,47 @@
      - 로드된 모든 모델들에 걸쳐 프로퍼티 수치 값의 이상치, 이격 오류 및 단위 불일치를 통계적으로 탐지함.
   4. **4. 표준 프로퍼티 입력률 검사 (CompletionChecker)**:
      - 표준 Pset 속성 항목의 누락 및 미입력(`TBD`/`Null`) 비율을 종합 계산하여 프로퍼티 입력 완성도를 산출함.
-  5. **5. Door FireRating 여부 검사**:
+  5. **5. Door FireRating 여부 검사 (Property Exists)**:
      - 모든 `IfcDoor` 객체가 `Pset_DoorCommon.FireRating` 프로퍼티를 보유하고 있는지 검증함.
-  6. **6. Wall PredefinedType 여부 검사**:
+  6. **6. Wall PredefinedType 여부 검사 (Attribute Exists)**:
      - 모든 `IfcWall` 객체가 `PredefinedType` 속성을 올바르게 할당받았는지 확인함.
+  7. **7. Wall PredefinedType Enum 검사 (Attribute Enum)**:
+     - 모든 `IfcWall` 객체의 `PredefinedType` 값이 표준 Enum 허용 목록(`STANDARD`, `POLYWAL`, `SHEAR`, `PARTY`, `NOTDEFINED` 등) 중 하나인지 검증함.
+  8. **8. Material 재질 존재 여부 검사 (Material Exists)**:
+     - 모델 내 모든 물리 부재에 재질(`IfcRelAssociatesMaterial`)이 할당되어 있는지 전수 검사함.
+  9. **9. Door FireRating Enum 검사 (Property Enum)**:
+     - `IfcDoor` 객체의 FireRating 프로퍼티 값이 허용 목록(`20 Minute`, `1hr`, `2hr`, `90min`, `120min`, `60/60`) 중 하나인지 검사함.
+  10. **10. Storey 공간 소속 여부 검사 (PartOf Exists)**:
+      - 모든 물리 객체가 `IfcBuildingStorey`(층 공간 구조) 상위 관계(`IfcRelContainedInSpatialStructure`)를 가지고 있는지 검사함.
 
 ### 8.3. Spec. List (검사 기준 목록)
-* 모델 분석에 사용할 사전 정의된 6대 종합 검사 사양 및 사용자가 새롭게 빌드하여 추가한 규칙 목록을 관리함.
+* 모델 분석에 사용할 사전 정의된 10대 종합 검사 사양 및 사용자가 새롭게 빌드하여 추가한 규칙 목록을 관리함.
 * **구성과 동작**:
   * 각 행마다 스펙의 고유 명칭(`Name`)과 적용되는 상세 검증 조건(`Description`)이 출력됨.
   * **검사 실행 (플레이 버튼)**: 우측의 플레이 아이콘 클릭 시 `RuleService` 엔진이 구동되어 활성화된 모든 모델을 분석하고 결과를 리포트함.
 
-### 8.4. Spec. Builder (사양 규칙 빌더)
-* 사용자가 납품 기준에 적합한 신규 속성 검증 규격 조건을 직접 구성하고 즉시 구동 및 리스트에 반영하는 도구 모음임.
-* **규격 조건 생성 입력**:
-  * **Entity**: 타겟 IFC 부재 유형(예: WALL, SLAB, PIPESEGMENT 등)을 입력함 (정규식 패턴 자동 적용).
-  * **Requirement Type (Property / Quantity / Attribute)**:
-    * **Property**: Pset 속성 세트 하위의 속성 명칭과 값을 검증할 때 선택함.
-    * **Quantity**: Qto 물량 세트 하위의 수치 값 유무를 검증할 때 선택함.
-    * **Attribute**: IFC Entity 본체의 고유 데이터 항목(Name, GlobalId 등)을 검증할 때 선택함.
-  * **Pset / Qto 명칭**: Property 또는 Quantity 선택 시 입력창이 활성화되며 검사할 그룹 세트 명칭을 기입함.
-  * **Name**: 확인 대상 속성/어트리뷰트의 이름(Name)을 기입함.
-  * **Condition (Exists / Contains)**:
-    * **Exists**: 대상 속성/물량 항목이 객체 내에 존재(누락되지 않음)하는지만 판정함.
-    * **Contains**: 속성 항목이 존재해야 할 뿐만 아니라 특정 값 조건을 만족해야 함을 지정함.
-  * **Value**: Contains 선택 시 활성화되며 타겟 문자 패턴 또는 텍스트를 기입함.
+### 8.4. Spec. Builder (사양 규칙 빌더) 및 AI Assistant 연동
+* 사용자가 납품 기준에 적합한 신규 속성 검증 규격 조건을 직접 구성하거나 **자연어 AI Assistant (`BimChat`)**를 통해 대화형으로 규칙을 자동 작성할 수 있는 도구 모음임.
+* **규격 조건 생성 입력 (6대 Facet 지원)**:
+  * **Entity**: 타겟 IFC 부재 유형(예: WALL, SLAB, IFCDOOR 또는 ALL)을 입력함 (`IFC` 접두사 자동 처리 및 정규식 매칭 적용).
+  * **Requirement Type (6가지 Facet 지원)**:
+    * **Property**: Pset 속성 세트 하위 속성 명칭 및 값 검증.
+    * **Quantity**: Qto 물량 세트 하위 수치 값 검증.
+    * **Attribute**: IFC Entity 본체의 고유 어트리뷰트(PredefinedType, Name 등) 검증.
+    * **Classification**: buildingSMART IDS 규격 기반 분류 체계명(System) 및 분류 코드(Notation/Code) 독립 및 동시 검증.
+    * **Material**: 재질 할당 여부 및 재질 명칭(Concrete, Wood 등) 검증.
+    * **PartOf (Parent)**: 상위 층(IfcBuildingStorey) 공간 소속 및 상위 조립 부재(IfcStair 등) 구조 관계 검증.
+  * **Pset / System / Relation 명칭 (`psetInput`)**: 선택한 Type에 맞춰 Pset 세트명, 분류 체계명(`Uniformat`), 또는 공간 관계명(`IFCRELCONTAINEDINSPATIALSTRUCTURE` 등)을 기입함 (Attribute, Material 선택 시 `N.A.` 비활성화).
+  * **Name / Parent Entity (`propInput`)**: 확인 대상 속성/어트리뷰트명(`FireRating`, `PredefinedType`), 또는 상위 개체 타입(`BuildingStorey`) 기입 (Material 및 Classification 선택 시 `N.A.` 비활성화).
+  * **Condition (5가지 Restriction Parameter 지원)**:
+    * **Exists**: 대상 속성/재질/분류체계/상위 공간이 존재하는지 검사함 (Value 입력란 `N.A.` 비활성화).
+    * **Contains (Pattern)**: 정규식 패턴과 매칭되는지 지정함.
+    * **Exact (Simple)**: 단순 문자열 또는 수치 완벽 일치 조건.
+    * **Enumeration**: 쉼표로 구분된 허용 목록 항목 중 하나인지 지정함.
+    * **Bounds / Length**: 수치 범위 또는 문자열 길이를 지정함.
+  * **Value / Regex (`propValInput`)**: 속성 일치 값/정규식, 분류 코드 패턴(`^A10.*`), 분류 코드(`A1010130`), 재질 명칭(`Concrete`), 상위 명칭(`02 - Floor`), 열거 목록 또는 범위를 기입함.
+* **자연어 AI Assistant 연동 자동 작성**:
+  * AI Chat 패널에서 *"02 - Floor 층 공간 구조에 속한 Slab 부재 검사 규칙 만들어줘"*, *"Wall 요소에 Concrete 재질 검사 규칙 작성해줘"* 등 자연어로 요청하면, AI가 6대 Facet 및 Condition을 자동 해석하여 Rule Builder 입력 폼을 채우고 검사를 실행함.
 * **빌더 도구 모음 제어 버튼**:
   * **`Check` 버튼 (실행 아이콘)**: 현재 설정된 빌더 규칙대로 활성 모델 내 검증을 즉각 구동함.
   * **`Save` 버튼 (디스크 아이콘)**: 설계한 검증 규칙을 새 스펙으로 최종 패키징하여 상단의 Spec. List 목록에 정식 등록함.
@@ -474,6 +496,9 @@
   * **Value**: 검사 조건 대상 속성에 기입된 실시간 값 또는 위배 사유 텍스트.
   * **Count**: 검출된 개수.
   * **Status (Pass / Fail)**: 합격/불합격 판정 뱃지 (Pass: 초록색, Fail: 빨간색).
+* **Status 필터링 드롭다운 및 실시간 개수 카운터**:
+  * **Status 드롭다운 (`[All, Pass, Fail]`)**: `Group By:` 우측의 `Status:` 드롭다운을 통해 검사 결과 테이블을 **전체(All)**, **통과 객체(Pass)**, **위배 객체(Fail)** 조건으로 자유롭게 필터링할 수 있음 (트리 및 그룹화 구조 유지).
+  * **실시간 Pass / Fail 카운터 뱃지**: 툴바 및 섹션 헤더 타이틀에 `Rule Check Results ( Total(N) = Pass(XX) + Fail(YY) )` 형태로 검사 결과의 전체, 합격(Pass: 초록색), 불합격(Fail: 빨간색) 개수가 실시간 집계되어 표시됨.
 * **Group By (결과 그룹화 기능 및 UI 최적화)**:
   * **다양한 그룹화 옵션**: `None (Flat)`, `GUID`, `Model`, `Entity`, `Status` 드롭다운 옵션을 통해 결과를 원하는 범주별 트리 계층으로 그룹화하여 조회 가능함.
   * **드롭다운 자동 닫힘**: `Group By:` 드롭다운 옵션 클릭 즉시 팝업 메뉴가 자동으로 닫히도록 편의성 개선.

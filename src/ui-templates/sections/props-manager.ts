@@ -1,6 +1,6 @@
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
-import { appIcons, onToggleSection, appState } from "../../globals";
+import { appIcons, appState, onToggleSection } from "../../globals";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { SharedIFC } from "../../bim-components/SharedIFC";
 import { SharedFRAG } from "../../bim-components/SharedFRAG";
@@ -49,11 +49,7 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
     const fQuery = finder.list.get(queryName);
     let results: OBC.ModelIdMap = {};
     if (fQuery) {
-      try {
-        results = await fQuery.test({ modelIds: [/.*/] });
-      } catch (err) {
-        console.warn(`Category query failed for ${category}:`, err);
-      }
+      results = await fQuery.test({ modelIds: [/.*/] });
     }
     finder.list.delete(queryName);
     return results;
@@ -92,7 +88,7 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
 
   // 다중 Pset & Property 폼 상태
   const initialPsets: PsetDef[] = [{ name: "Custom_Pset", props: [{ name: "", value: "" }] }];
-  
+
   // Express ID 수동 입력을 위한 참조
   let manualInput: BUI.TextInput;
 
@@ -105,45 +101,45 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
   const onObjectSelectionChange = ({ target }: { target: BUI.Dropdown }) => {
     const selectedIds = target.value;
     if (manualInput) {
-        manualInput.value = selectedIds.join(", ");
+      manualInput.value = selectedIds.join(", ");
     }
   };
 
   const onCategoryChange = async ({ target }: { target: BUI.Dropdown }) => {
     const selectedCategory = target.value[0];
     if (objectDropdown) {
-        objectDropdown.value = [];
-        if ((objectDropdown as any).elements) (objectDropdown as any).elements.clear();
-        objectDropdown.replaceChildren();
+      objectDropdown.value = [];
+      if ((objectDropdown as any).elements) (objectDropdown as any).elements.clear();
+      objectDropdown.replaceChildren();
     }
     if (manualInput) manualInput.value = "";
 
     if (!selectedCategory) {
-        return;
+      return;
     }
 
     const modelIdMap = await executeCategoryQuery("get", selectedCategory);
     const options: HTMLElement[] = [];
 
     for (const modelId in modelIdMap) {
-        const model = fragments.list.get(modelId);
-        if (!model) continue;
-        const ids = Array.from(modelIdMap[modelId]);
-        const itemsData = await model.getItemsData(ids, { 
-            attributesDefault: true,
-            relationsDefault: { attributes: false, relations: false }
-        });
-        
-        for (let i = 0; i < itemsData.length; i++) {
-            const item = itemsData[i];
-            const expressId = extractValue((item as any).expressID ?? (item as any).id ?? (item as any)._localId) ?? ids[i];
-            const nameVal = extractValue((item as any).Name);
-            const name = nameVal ? String(nameVal) : "Unnamed";
-            const option = document.createElement("bim-option") as BUI.Option;
-            option.value = String(expressId);
-            option.label = `${expressId}: ${name}`;
-            options.push(option);
-        }
+      const model = fragments.list.get(modelId);
+      if (!model) continue;
+      const ids = Array.from(modelIdMap[modelId]);
+      const itemsData = await model.getItemsData(ids, {
+        attributesDefault: true,
+        relationsDefault: { attributes: false, relations: false }
+      });
+
+      for (let i = 0; i < itemsData.length; i++) {
+        const item = itemsData[i];
+        const expressId = extractValue((item as any).expressID ?? (item as any).id ?? (item as any)._localId) ?? ids[i];
+        const nameVal = extractValue((item as any).Name);
+        const name = nameVal ? String(nameVal) : "Unnamed";
+        const option = document.createElement("bim-option") as BUI.Option;
+        option.value = String(expressId);
+        option.label = `${expressId}: ${name}`;
+        options.push(option);
+      }
     }
     if (objectDropdown) objectDropdown.replaceChildren(...options);
   };
@@ -151,14 +147,19 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
   const updateCategories = async () => {
     const availableCategories = new Set<string>();
 
-    for (const cat of targetCategories) {
+    try {
+      for (const cat of targetCategories) {
         const results = await executeCategoryQuery("check", cat);
         for (const modelId in results) {
-            if (results[modelId].size > 0) {
-                availableCategories.add(cat);
-                break;
-            }
+          if (results[modelId].size > 0) {
+            availableCategories.add(cat);
+            break;
+          }
         }
+      }
+    } catch (err) {
+      setTimeout(updateCategories, 500);
+      return;
     }
 
     if (!categoryDropdown) return;
@@ -167,10 +168,10 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
     const options: HTMLElement[] = [];
     const sortedCategories = Array.from(availableCategories).sort();
     for (const category of sortedCategories) {
-        const option = document.createElement("bim-option") as BUI.Option;
-        option.value = category;
-        option.label = category.replace(/^IFC/i, "");
-        options.push(option);
+      const option = document.createElement("bim-option") as BUI.Option;
+      option.value = category;
+      option.label = category.replace(/^IFC/i, "");
+      options.push(option);
     }
     categoryDropdown.replaceChildren(...options);
   };
@@ -252,13 +253,9 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
   );
 
   // 모델 로드/언로드 시 카테고리 목록 갱신
-  const debouncedUpdateCategories = () => {
-    setTimeout(updateCategories, 100);
-  };
-
   setTimeout(updateCategories, 500);
-  fragments.list.onItemSet.add(debouncedUpdateCategories);
-  fragments.list.onItemDeleted.add(debouncedUpdateCategories);
+  fragments.list.onItemSet.add(() => setTimeout(updateCategories, 500));
+  fragments.list.onItemDeleted.add(updateCategories);
 
   const processProperties = async (target: BUI.Button, action: string, successMsg: string) => {
     const activeModel = getActiveModel();
@@ -306,7 +303,7 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
     }
 
     target.loading = true;
-    
+
     try {
       // 로컬 캐시된 수정 버퍼가 있는지 확인하고, 없으면 DB에서 원본 IFC 다운로드
       let ifcBuffer = modifiedBufferCache.get(targetModelId);
@@ -341,26 +338,27 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
       // 뷰어 및 선택 초기화
       await highlighter.clear("select");
       highlighter.events.select.onClear.trigger();
-      
+
       // 모델을 지우기 전에 선택 해제 상태를 워커에 확실히 동기화하여 참조 에러(Not found) 방지
       await fragments.core.update(true);
-      
+
       const modelName = (targetModel as any).name;
       targetModel.dispose();
-      
+
       // main.ts의 전역 onItemDeleted 비동기 이벤트가 워커를 정리할 시간을 충분히 확보 (데드락 방지)
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      // 새 IFC 로드 (IFC -> FRAG 변환 및 로딩)
       const reloadedModel = await ifcLoader.load(modifiedBuffer, false, modelName, {
         instanceCallback: (importer: any) => {
+          if (typeof importer.addAllAttributes === "function") importer.addAllAttributes();
+          if (typeof importer.addAllRelations === "function") importer.addAllRelations();
           importer.includeUniqueAttributes = true;
           importer.includeRelationNames = true;
         },
       });
       (reloadedModel as any).name = modelName;
       (reloadedModel as any).dbId = dbId; // DB ID 유지
-      
+
       // 새 모델 로드 후 최종 렌더러/워커 상태 동기화
       await fragments.core.update(true);
 
@@ -411,7 +409,7 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
     }
 
     const { id: targetModelId, model: targetModel } = activeModel;
-    
+
     if (!targetModel) {
       alert("선택된 객체의 모델을 찾을 수 없습니다.");
       return null;
@@ -469,26 +467,18 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
 
     try {
       const sharedFRAG = new SharedFRAG();
-      
+      const activeProjectId = appState.currentProject?.id;
       const ifcFile = new File([modifiedBuffer as any], `${baseName}.ifc`, { type: "application/octet-stream" });
       const fragData = await (targetModel as any).getBuffer(false);
       const fragFile = new File([fragData as any], `${baseName}.frag`, { type: "application/octet-stream" });
 
-      const activeProjectId = appState.currentProject?.id;
       const ifcid = await sharedIFC.saveIFC(ifcFile, activeProjectId);
       if (ifcid) {
         const fragid = await sharedFRAG.saveFRAG(fragFile, activeProjectId);
         if (fragid) {
           alert(`성공적으로 데이터베이스에 저장되었습니다!\n- 모델명: ${baseName}\n- IFC ID: ${ifcid}\n- FRAG ID: ${fragid}`);
-          (targetModel as any).dbId = ifcid; 
+          (targetModel as any).dbId = ifcid;
           (targetModel as any).name = baseName;
-
-          if ((window as any).refreshLoadedModelList) {
-            (window as any).refreshLoadedModelList();
-          }
-          if ((window as any).refreshModelTree) {
-            (window as any).refreshModelTree();
-          }
         } else alert("FRAG 파일 저장에 실패했습니다.");
       } else alert("IFC 파일 저장에 실패했습니다.");
     } catch (err) {

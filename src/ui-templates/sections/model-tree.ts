@@ -167,6 +167,8 @@ export const modelTreePanelTemplate: BUI.StatefullComponent<
 
       const newModel = await ifcLoader.load(bytes, false, newModelName, {
         instanceCallback: (importer: any) => {
+          if (typeof importer.addAllAttributes === "function") importer.addAllAttributes();
+          if (typeof importer.addAllRelations === "function") importer.addAllRelations();
           importer.includeUniqueAttributes = true;
           importer.includeRelationNames = true;
         },

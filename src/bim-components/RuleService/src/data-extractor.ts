@@ -1,6 +1,7 @@
 import * as OBC from "@thatopen/components";
 import { RuleSpecDefinition } from "../../../setup/rules";
 import { RuleTableData, RuleGroupByOption } from "./types";
+import { extractMaterialValue, extractClassificationValue, extractParentInfo, buildModelClassificationMap } from "./helpers";
 
 export const getFlatData = (nodes: any[]): RuleTableData[] => {
   let result: RuleTableData[] = [];
@@ -69,79 +70,28 @@ export const groupResultsBy = (flatItems: RuleTableData[], groupByColumn: RuleGr
   for (const [key, items] of groups.entries()) {
     const status = getGroupStatus(items);
 
-    if (groupByColumn === "GUID") {
-      if (items.length > 1 && key && key !== "Unknown" && key !== "Null") {
-        const groupRowData: RuleTableData = {
-          id: `group-guid-${key}-${groupCounter++}`,
-          isGroup: true,
-          Model: formatGroupColValue(items, "Model", false),
-          Name: formatGroupColValue(items, "Name", false, `GUID: ${key}`),
-          GUID: key,
-          Entity: formatGroupColValue(items, "Entity", false),
-          Value: formatGroupColValue(items, "Value", false),
-          Count: items.length,
-          Status: status,
-          rawGroup: items,
-        };
-        treeData.push({
-          data: groupRowData,
-          children: items.map(i => ({ data: { ...i, Count: 1 } }))
-        });
-      } else {
-        treeData.push(...items.map(i => ({ data: { ...i, Count: 1 } })));
-      }
-    } else if (groupByColumn === "Model") {
-      const groupRowData: RuleTableData = {
-        id: `group-model-${key}-${groupCounter++}`,
-        isGroup: true,
-        Model: key,
-        Name: formatGroupColValue(items, "Name", false),
-        GUID: formatGroupColValue(items, "GUID", false),
-        Entity: formatGroupColValue(items, "Entity", false),
-        Value: formatGroupColValue(items, "Value", false),
-        Count: items.length,
-        Status: status,
-        rawGroup: items,
-      };
-      treeData.push({
-        data: groupRowData,
-        children: items.map(i => ({ data: { ...i, Count: 1 } }))
-      });
-    } else if (groupByColumn === "Entity") {
-      const groupRowData: RuleTableData = {
-        id: `group-entity-${key}-${groupCounter++}`,
-        isGroup: true,
-        Model: formatGroupColValue(items, "Model", false),
-        Name: formatGroupColValue(items, "Name", false),
-        GUID: formatGroupColValue(items, "GUID", false),
-        Entity: key,
-        Value: formatGroupColValue(items, "Value", false),
-        Count: items.length,
-        Status: status,
-        rawGroup: items,
-      };
-      treeData.push({
-        data: groupRowData,
-        children: items.map(i => ({ data: { ...i, Count: 1 } }))
-      });
-    } else if (groupByColumn === "Status") {
-      const groupRowData: RuleTableData = {
-        id: `group-status-${key}-${groupCounter++}`,
-        isGroup: true,
-        Model: formatGroupColValue(items, "Model", false),
-        Name: formatGroupColValue(items, "Name", false),
-        GUID: formatGroupColValue(items, "GUID", false),
-        Entity: formatGroupColValue(items, "Entity", false),
-        Value: formatGroupColValue(items, "Value", false),
-        Count: items.length,
-        Status: status,
-        rawGroup: items,
-      };
-      treeData.push({
-        data: groupRowData,
-        children: items.map(i => ({ data: { ...i, Count: 1 } }))
-      });
+    if (groupByColumn === "GUID" && (items.length <= 1 || !key || key === "Unknown" || key === "Null")) {
+      treeData.push(...items.map(i => ({ data: { ...i, Count: 1 } })));
+      continue;
     }
+
+    const groupRowData: RuleTableData = {
+      id: `group-${groupByColumn.toLowerCase()}-${key}-${groupCounter++}`,
+      isGroup: true,
+      Model: groupByColumn === "Model" ? key : formatGroupColValue(items, "Model", false),
+      Name: formatGroupColValue(items, "Name", false, groupByColumn === "GUID" ? `GUID: ${key}` : "-"),
+      GUID: groupByColumn === "GUID" ? key : formatGroupColValue(items, "GUID", false),
+      Entity: groupByColumn === "Entity" ? key : formatGroupColValue(items, "Entity", false),
+      Value: formatGroupColValue(items, "Value", false),
+      Count: items.length,
+      Status: groupByColumn === "Status" ? key : status,
+      rawGroup: items,
+    };
+
+    treeData.push({
+      data: groupRowData,
+      children: items.map(i => ({ data: { ...i, Count: 1 } }))
+    });
   }
 
   return treeData;
@@ -164,6 +114,7 @@ export const extractData = async (fragments: OBC.FragmentsManager, allIds: OBC.M
     const model = fragments.list.get(modelId);
     if (!model) continue;
 
+    const classMap = specDef.requirement.type === "classification" ? await buildModelClassificationMap(null, model) : undefined;
     itemPropsMap[modelId] = {};
     const idsArray = Array.from(allIds[modelId]);
     const itemsData = await model.getItemsData(idsArray, {
@@ -171,6 +122,10 @@ export const extractData = async (fragments: OBC.FragmentsManager, allIds: OBC.M
       relationsDefault: { attributes: false, relations: false },
       relations: {
         IsDefinedBy: { attributes: true, relations: true },
+        HasAssociations: { attributes: true, relations: true },
+        IsTypedBy: { attributes: true, relations: true },
+        ContainedInStructure: { attributes: true, relations: true },
+        Decomposes: { attributes: true, relations: true },
       },
     });
 
@@ -198,7 +153,8 @@ export const extractData = async (fragments: OBC.FragmentsManager, allIds: OBC.M
 
       let val: any = "Null";
 
-      if (specDef.requirement.type === "attribute") {
+      const reqType = specDef.requirement.type;
+      if (reqType === "attribute") {
         const matchingKey = Object.keys(itemAny).find(k => attrRegex.test(k));
         if (matchingKey) {
           const attrVal = itemAny[matchingKey];
@@ -206,6 +162,15 @@ export const extractData = async (fragments: OBC.FragmentsManager, allIds: OBC.M
             val = typeof attrVal === "object" && attrVal.value !== undefined ? attrVal.value : attrVal;
           }
         }
+      } else if (reqType === "classification") {
+        const { classVal, hasClassRel } = extractClassificationValue(itemAny, classMap, expressId);
+        val = classVal || (hasClassRel ? "Classification Assigned" : "Null");
+      } else if (reqType === "material") {
+        const { matVal, hasMatRel } = extractMaterialValue(itemAny);
+        val = matVal || (hasMatRel ? "Material Assigned" : "Null");
+      } else if (reqType === "partof") {
+        const { parentNames } = extractParentInfo(itemAny);
+        val = parentNames.length > 0 ? parentNames[0] : "Null";
       } else {
         const rels = itemAny.IsDefinedBy || [];
         for (const rel of rels) {

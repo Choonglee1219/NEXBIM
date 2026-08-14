@@ -126,7 +126,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
             <div 
               @click=${() => onBadgeClick(g)} 
               style="flex: 1; height: 1.25rem; padding: 0 0.25rem; background: ${bg}; border: ${border}; border-radius: 0.25rem; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; box-sizing: border-box;" onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter='none'">
-              <span style="font-size: 0.75rem; color: var(--bim-ui_bg-contrast-100, var(--bim-label--c, #ffffff)); font-weight: 600;">${state.counts[g] || 0} EA</span>
+              <span style="font-size: 0.75rem; color: var(--bim-ui_bg-contrast-100, var(--bim-label--c, #ffffff)); font-weight: 600;">${state.counts[g] || 0}</span>
             </div>
           `;
     })}
@@ -290,6 +290,8 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       const bytes = new Uint8Array(buffer);
       const model = await ifcLoader.load(bytes, false, newModelName, {
         instanceCallback: (importer: any) => {
+          if (typeof importer.addAllAttributes === "function") importer.addAllAttributes();
+          if (typeof importer.addAllRelations === "function") importer.addAllRelations();
           importer.includeUniqueAttributes = true;
           importer.includeRelationNames = true;
         },
@@ -502,6 +504,8 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     if (ifc && ifc.content) {
       const model = await ifcLoader.load(ifc.content, false, ifc.name, {
         instanceCallback: (importer: any) => {
+          if (typeof importer.addAllAttributes === "function") importer.addAllAttributes();
+          if (typeof importer.addAllRelations === "function") importer.addAllRelations();
           importer.includeUniqueAttributes = true;
           importer.includeRelationNames = true;
         },

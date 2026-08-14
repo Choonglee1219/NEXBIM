@@ -1,12 +1,10 @@
 /* eslint-disable import/no-extraneous-dependencies */
 import { defineConfig } from "vite";
-import mkcert from "vite-plugin-mkcert";
+// import mkcert from "vite-plugin-mkcert";
 
 export default defineConfig({
   base: "./",
-  plugins: [
-    mkcert()
-  ],
+  plugins: [],
   esbuild: {
     supported: {
       "top-level-await": true,

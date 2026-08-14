@@ -80,20 +80,119 @@ export const ruleSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> =
       return BUI.html`
         <div style="display: flex; justify-content: center; align-items: center; width: 100%; height: 1.5rem;">
           <bim-button style=${tableButtonStyle} tooltip-title="Check" icon=${appIcons.PLAY} @click=${async (e: Event) => {
-          const btn = e.target as BUI.Button;
-          btn.loading = true;
-          try { await ruleService.testSpec(spec); } catch (err) { console.error(err); alert("테스트 중 오류가 발생했습니다."); } finally { btn.loading = false; }
-        }}></bim-button>
+            const btn = e.target as BUI.Button;
+            btn.loading = true;
+            try { await ruleService.testSpec(spec); } catch (err) { console.error(err); alert("테스트 중 오류가 발생했습니다."); } finally { btn.loading = false; }
+          }}></bim-button>
         </div>
       `;
+    }
+  };
+
+  const updateFormInputStates = () => {
+    if (!reqTypeDropdown || !conditionDropdown) return;
+    const type = reqTypeDropdown.value[0] || "property";
+    const cond = conditionDropdown.value[0] || "exists";
+
+    // 1. PsetInput state
+    if (psetInput) {
+      if (type === "property") {
+        psetInput.disabled = false;
+        psetInput.placeholder = "Pset (e.g. Pset_WallCommon)";
+      } else if (type === "quantity") {
+        psetInput.disabled = false;
+        psetInput.placeholder = "Qto (e.g. Qto_WallBaseQuantities)";
+      } else if (type === "classification") {
+        psetInput.disabled = false;
+        psetInput.placeholder = "System (e.g. Uniclass 2015)";
+      } else if (type === "partof") {
+        psetInput.disabled = false;
+        psetInput.placeholder = "Relation (e.g. IFCRELCONTAINEDINSPATIALSTRUCTURE)";
+      } else {
+        psetInput.disabled = true;
+        psetInput.placeholder = "N.A.";
+      }
+    }
+
+    // 2. PropInput state
+    if (propInput) {
+      if (type === "property") {
+        propInput.disabled = false;
+        propInput.placeholder = "Property Name (e.g. FireRating)";
+      } else if (type === "quantity") {
+        propInput.disabled = false;
+        propInput.placeholder = "Quantity Name (e.g. Height)";
+      } else if (type === "attribute") {
+        propInput.disabled = false;
+        propInput.placeholder = "Attribute Name (e.g. PredefinedType)";
+      } else if (type === "partof") {
+        propInput.disabled = false;
+        propInput.placeholder = "Parent Entity (e.g. BuildingStorey)";
+      } else {
+        // material, classification
+        propInput.disabled = true;
+        propInput.placeholder = "N.A.";
+      }
+    }
+
+    // 3. PropValInput state
+    if (propValInput) {
+      if (cond === "exists") {
+        propValInput.disabled = true;
+        propValInput.placeholder = "N.A.";
+      } else if (type === "material") {
+        propValInput.disabled = false;
+        if (cond === "pattern") propValInput.placeholder = "Material Pattern (e.g. ^CONCRETE.*)";
+        else if (cond === "enumeration") propValInput.placeholder = "Material List (e.g. Concrete, Steel)";
+        else propValInput.placeholder = "Material Name (e.g. Concrete)";
+      } else if (type === "classification") {
+        propValInput.disabled = false;
+        if (cond === "pattern") propValInput.placeholder = "Code Pattern (e.g. ^A10.*)";
+        else if (cond === "enumeration") propValInput.placeholder = "Code List (e.g. A1010130, A1020130)";
+        else propValInput.placeholder = "Code / Notation (e.g. A1010130)";
+      } else if (type === "partof") {
+        propValInput.disabled = false;
+        if (cond === "pattern") propValInput.placeholder = "Parent Name Pattern (e.g. 02 - Floor)";
+        else if (cond === "enumeration") propValInput.placeholder = "Parent Name List (e.g. 01 - Floor, 02 - Floor)";
+        else propValInput.placeholder = "Parent Name (e.g. 02 - Floor)";
+      } else if (cond === "pattern") {
+        propValInput.disabled = false;
+        propValInput.placeholder = "Regex (e.g. ^FIRE_.*)";
+      } else if (cond === "simple") {
+        propValInput.disabled = false;
+        propValInput.placeholder = "Exact Value (e.g. 2hr)";
+      } else if (cond === "enumeration") {
+        propValInput.disabled = false;
+        propValInput.placeholder = "List (e.g. 1hr, 2hr, 90min)";
+      } else if (cond === "bounds") {
+        propValInput.disabled = false;
+        propValInput.placeholder = "min,max (e.g. 10,100)";
+      } else if (cond === "length") {
+        propValInput.disabled = false;
+        propValInput.placeholder = "min,max (e.g. 2,20)";
+      } else {
+        propValInput.disabled = false;
+        propValInput.placeholder = "Value / Regex";
+      }
     }
   };
 
   const onReviewModel = async (e?: { target: BUI.Button } | any) => {
     const target = e?.target ? (e.target as BUI.Button) : null;
     if (target) target.loading = true;
+
     try {
-      const type = (reqTypeDropdown?.value[0] || "property") as "property" | "attribute" | "quantity";
+      const type = (reqTypeDropdown?.value[0] || "property") as any;
+      const condition = (conditionDropdown?.value[0] || "exists") as any;
+      const psetVal = psetInput?.value || "";
+      const propVal = propInput?.value || "";
+      const valStr = propValInput?.value || "";
+      const reqName = type === "material"
+        ? (valStr || "Material")
+        : type === "classification"
+        ? (valStr || psetVal || "Classification")
+        : propVal;
+
       const specDef: RuleSpecDefinition = {
         name: "Custom Spec",
         description: "Custom user-defined specification",
@@ -102,10 +201,12 @@ export const ruleSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> =
         },
         requirement: {
           type,
-          propertySet: psetInput?.value || "",
-          name: propInput?.value || "",
-          condition: (conditionDropdown?.value[0] || "exists") as "exists" | "pattern",
-          value: propValInput?.value || ""
+          propertySet: (type === "property" || type === "quantity") ? psetVal : undefined,
+          system: type === "classification" ? psetVal : undefined,
+          relation: type === "partof" ? psetVal : undefined,
+          name: reqName,
+          condition,
+          value: valStr
         }
       };
       await ruleService.testSpec(specDef);
@@ -118,25 +219,42 @@ export const ruleSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> =
   };
 
   const onSaveSpec = () => {
-    const type = (reqTypeDropdown?.value[0] || "property") as "property" | "attribute" | "quantity";
+    const type = (reqTypeDropdown?.value[0] || "property") as any;
+    const condition = (conditionDropdown?.value[0] || "exists") as any;
     const entityVal = entityInput?.value || "";
     const psetVal = psetInput?.value || "";
     const propVal = propInput?.value || "";
-    const condVal = (conditionDropdown?.value[0] || "exists") as "exists" | "pattern";
     const valStr = propValInput?.value || "";
+    const reqName = type === "material"
+      ? (valStr || "Material")
+      : type === "classification"
+      ? (valStr || psetVal || "Classification")
+      : propVal;
 
-    let descCond = "exists";
-    if (valStr && condVal === "pattern") {
-      descCond = `matches '${valStr}'`;
+    let descCond = condition;
+    if (valStr) {
+      descCond = `${condition} '${valStr}'`;
     }
     const psetName = (type === "property" || type === "quantity") && psetVal ? ` in ${psetVal}` : "";
-    const desc = `Check if ${entityVal || "ANY"} has ${propVal}${psetName} and its value ${descCond}`;
+    const desc = `Check if ${entityVal || "ANY"} has ${type}:${reqName}${psetName} condition ${descCond}`;
 
     const specDef: RuleSpecDefinition = {
-      name: `${entityVal || "ANY"} ${propVal}`,
+      name: type === "material"
+        ? `${entityVal || "ANY"} Material (${valStr || condition})`
+        : type === "classification"
+        ? `${entityVal || "ANY"} Classification (${psetVal || valStr || condition})`
+        : `${entityVal || "ANY"} ${propVal || type}`,
       description: desc,
       applicability: { entity: entityVal },
-      requirement: { type, propertySet: psetVal, name: propVal, condition: condVal, value: valStr }
+      requirement: {
+        type,
+        propertySet: (type === "property" || type === "quantity") ? psetVal : undefined,
+        system: type === "classification" ? psetVal : undefined,
+        relation: type === "partof" ? psetVal : undefined,
+        name: reqName,
+        condition,
+        value: valStr
+      }
     };
 
     specsTable.data = [...specsTable.data, {
@@ -173,50 +291,30 @@ export const ruleSpecPanelTemplate: BUI.StatefullComponent<RuleSpecPanelState> =
 
         <bim-tab name="builder" label="Rule Builder" icon=${appIcons.EDIT} style="height: 100%; flex: 1; overflow: hidden;">
           <div style="display: flex; gap: 0.75rem; padding: 0.5rem; height: 100%; max-height: 100%; box-sizing: border-box; overflow: hidden;">
-            <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; padding-right: 0.25rem;">
+            <div class="bim-scroll" style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; padding-right: 0.25rem;">
               <bim-text-input style="flex: 0 0 auto;" ${BUI.ref((e) => { entityInput = e as BUI.TextInput; ruleUIState.entityInput = entityInput; })} placeholder="Entity (e.g. WALL)" vertical></bim-text-input>
               <div style="display: flex; gap: 0.5rem; flex: 0 0 auto;">
                 <bim-dropdown style="flex: 1;" ${BUI.ref((e) => { reqTypeDropdown = e as BUI.Dropdown; ruleUIState.reqTypeDropdown = reqTypeDropdown; })} vertical
-                  @change=${(e: Event) => {
-          const dropdown = e.target as BUI.Dropdown;
-          const val = dropdown.value[0];
-          if (psetInput) {
-            if (val === "property") {
-              psetInput.disabled = false;
-              psetInput.placeholder = "Pset (e.g. Pset_WallCommon)";
-            } else if (val === "quantity") {
-              psetInput.disabled = false;
-              psetInput.placeholder = "Qto (e.g. Qto_WallBaseQuantities)";
-            } else if (val === "attribute") {
-              psetInput.disabled = true;
-              psetInput.placeholder = "N.A.";
-            }
-          }
-        }}>
+                  @change=${() => updateFormInputStates()}>
                   <bim-option label="Property" value="property" checked></bim-option>
                   <bim-option label="Quantity" value="quantity"></bim-option>
                   <bim-option label="Attribute" value="attribute"></bim-option>
+                  <bim-option label="Classification" value="classification"></bim-option>
+                  <bim-option label="Material" value="material"></bim-option>
+                  <bim-option label="PartOf (Parent)" value="partof"></bim-option>
                 </bim-dropdown>
                 <bim-text-input style="flex: 1;" ${BUI.ref((e) => { psetInput = e as BUI.TextInput; ruleUIState.psetInput = psetInput; })} placeholder="Pset (e.g. Pset_WallCommon)" vertical></bim-text-input>
               </div>
-              <bim-text-input style="flex: 0 0 auto;" ${BUI.ref((e) => { propInput = e as BUI.TextInput; ruleUIState.propInput = propInput; })} placeholder="Name" vertical></bim-text-input>
+              <bim-text-input style="flex: 0 0 auto;" ${BUI.ref((e) => { propInput = e as BUI.TextInput; ruleUIState.propInput = propInput; })} placeholder="Property Name (e.g. FireRating)" vertical></bim-text-input>
               <div style="display: flex; gap: 0.5rem; flex: 0 0 auto;">
                 <bim-dropdown style="flex: 1;" ${BUI.ref((e) => { conditionDropdown = e as BUI.Dropdown; ruleUIState.conditionDropdown = conditionDropdown; })} vertical
-                  @change=${(e: Event) => {
-          const dropdown = e.target as BUI.Dropdown;
-          const val = dropdown.value[0];
-          if (propValInput) {
-            if (val === "exists") {
-              propValInput.disabled = true;
-              propValInput.placeholder = "N.A.";
-            } else if (val === "pattern") {
-              propValInput.disabled = false;
-              propValInput.placeholder = "Value";
-            }
-          }
-        }}>
+                  @change=${() => updateFormInputStates()}>
                   <bim-option label="Exists" value="exists" checked></bim-option>
-                  <bim-option label="Contains" value="pattern"></bim-option>
+                  <bim-option label="Contains (Pattern)" value="pattern"></bim-option>
+                  <bim-option label="Exact (Simple)" value="simple"></bim-option>
+                  <bim-option label="Enumeration (List)" value="enumeration"></bim-option>
+                  <bim-option label="Bounds (Numeric)" value="bounds"></bim-option>
+                  <bim-option label="Text Length" value="length"></bim-option>
                 </bim-dropdown>
                 <bim-text-input style="flex: 1;" ${BUI.ref((e) => { propValInput = e as BUI.TextInput; ruleUIState.propValInput = propValInput; })} placeholder="N.A." disabled vertical></bim-text-input>
               </div>

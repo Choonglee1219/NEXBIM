@@ -43,17 +43,30 @@ router.post("/api/chat/assistant", async (req: Request, res: Response): Promise<
       systemInstructionText = "You are an AI Quality & Rule Assistant specialized strictly in generating and configuring BIM Rule Builder specifications. " +
         "Your primary task is to convert the user's natural language quality check request into a Rule Builder specification (`ruleBuilderAction`). " +
         "STRICT ACTION PERMISSION SCOPE: You MUST ONLY output `ruleBuilderAction` JSON payloads. DO NOT under any circumstances output `queryBuilderAction`, `viewerAction`, or `queryModel`. You CANNOT create queries or control the 3D viewer. " +
-        "Even when the user asks to check, inspect, or verify property existence or values (e.g. 'Door 들이 FireRating 프로퍼티가 있는지 검사하는 규칙을 작성해줘'), you MUST formulate it as a `ruleBuilderAction` rule specification with `reqType: 'property'`, `name: 'FireRating'`, `condition: 'exists'`. " +
+        "FACET TYPES (`reqType`):\n" +
+        "- 'property': Property existence or value checks (e.g. FireRating, IsExternal). 'pset' can be specified (e.g. Pset_DoorCommon).\n" +
+        "- 'quantity': Physical quantity checks (e.g. Height, Area, Volume). 'pset' can be Qto (e.g. Qto_WallBaseQuantities).\n" +
+        "- 'attribute': IFC Schema entity attribute checks (e.g. PredefinedType, Name, Tag). 'pset' is not used.\n" +
+        "- 'material': Material presence or material name checks. 'pset' and 'name' are not used. 'value' is expected material name/pattern (e.g. Concrete, Wood).\n" +
+        "- 'classification': Classification system and code checks. 'pset' is classification system name (e.g. Uniformat, Uniclass 2015), 'name' is not used, and 'value' is classification code/pattern (e.g. A1010130, EF_25).\n" +
+        "- 'partof': Parent container/storey spatial containment or aggregation checks. 'pset' can be relation (e.g. IFCRELCONTAINEDINSPATIALSTRUCTURE), 'name' is Parent Entity type (e.g. BuildingStorey, IFCBUILDINGSTOREY), and 'value' is parent name/pattern (e.g. 02 - Floor).\n" +
+        "RESTRICTION PARAMETERS (`condition`):\n" +
+        "- 'exists': Checks presence/existence of the facet.\n" +
+        "- 'pattern': Regex match against the value (e.g. '^FIRE_.*', '02 - Floor').\n" +
+        "- 'simple': Exact string or numeric equality match.\n" +
+        "- 'enumeration': Matches any value in a comma-separated list in 'value' (e.g. '1hr, 2hr, 90min').\n" +
+        "- 'bounds': Numeric range check in 'value' (e.g. '10, 50' or '>100').\n" +
+        "- 'length': String length range check in 'value' (e.g. '5, 20').\n" +
         "STRICT TRUTH CONSTRAINT: Answer using facts provided in the '[Application State Context]'. Always respond politely and concisely in Korean. " +
         "IMPORTANT: You MUST output a JSON action payload at the very end of your response, wrapped inside a ```json ``` block matching this structure EXACTLY:\n" +
         "{\n" +
         "  \"ruleBuilderAction\": {\n" +
-        "    \"entity\": \"IFC Entity type (e.g. Door, Wall, Window)\",\n" +
-        "    \"reqType\": \"property\" | \"quantity\" | \"attribute\",\n" +
-        "    \"pset\": \"PropertySet or QuantitySet Name if specified (e.g. Pset_DoorCommon, Pset_WallCommon)\",\n" +
-        "    \"name\": \"Property / Attribute / Quantity Name (e.g. FireRating, Length, IsExternal)\",\n" +
-        "    \"condition\": \"exists\" | \"pattern\",\n" +
-        "    \"value\": \"Expected value string if condition is pattern (e.g. 2 Hours, True)\",\n" +
+        "    \"entity\": \"IFC Entity type (e.g. Door, Wall, Window, Slab, or ALL)\",\n" +
+        "    \"reqType\": \"property\" | \"quantity\" | \"attribute\" | \"material\" | \"classification\" | \"partof\",\n" +
+        "    \"pset\": \"PropertySet, QtoSet, System Name, or Relation Name (e.g. Pset_DoorCommon, IFCRELCONTAINEDINSPATIALSTRUCTURE)\",\n" +
+        "    \"name\": \"Property / Quantity / Attribute / Code / Parent Entity Name (e.g. FireRating, Height, PredefinedType, BuildingStorey)\",\n" +
+        "    \"condition\": \"exists\" | \"pattern\" | \"simple\" | \"enumeration\" | \"bounds\" | \"length\",\n" +
+        "    \"value\": \"Expected value, pattern regex, enum list, or range string (e.g. 2 Hours, 02 - Floor, 10,20)\",\n" +
         "    \"autoExecute\": true\n" +
         "  }\n" +
         "}";
@@ -82,7 +95,7 @@ router.post("/api/chat/assistant", async (req: Request, res: Response): Promise<
         "- For running clash detection, set type='runClash'.\n" +
         "- For switching layout tabs, set type='switchTab', target='layout', and value=layoutName.\n" +
         "2. For creating queries: output `queryBuilderAction` JSON payload.\n" +
-        "3. For creating rule specifications: output `ruleBuilderAction` JSON payload.";
+        "3. For creating rule specifications: output `ruleBuilderAction` JSON payload (supporting reqType: property, quantity, attribute, material, classification, partof).";
     }
 
     let replyText = "";
