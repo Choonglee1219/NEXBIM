@@ -3,6 +3,7 @@ import * as BUI from "@thatopen/ui";
 import { QueriesListState } from "./types";
 import { appIcons, tableButtonStyle, setupBIMTable, onTableCellCreated, onTableRowCreated } from "../../../globals";
 import { Highlighter } from "../../../bim-components/Highlighter";
+import { hiddenQueries } from "../../../setup/finders";
 
 const getQueryBuilderFields = (q: any) => {
   const fields = {
@@ -81,6 +82,9 @@ export const queriesListTemplate: BUI.StatefullComponent<QueriesListState> = (
 
   const tableData = [...finder.list.keys()]
     .filter((key) => {
+      if (hiddenQueries.has(key)) {
+        return false;
+      }
       if (key.startsWith("IFC") || key.startsWith("dash_")) {
         return false;
       }
