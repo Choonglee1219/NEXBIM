@@ -266,7 +266,7 @@ async function resolveEntityLabel(
       entityLabelCache.set(cacheKey, label);
       return label;
     }
-  } catch (e) {}
+  } catch (e) { }
 
   const fallback = `IFCELEMENT  ||  #${numId}`;
   entityLabelCache.set(cacheKey, fallback);
@@ -302,7 +302,7 @@ const computeTableData = async (
           ((model as any).uuid ? relService.getRelationsByModelKey((model as any).uuid) : undefined) ||
           (await relService.getModelRelations(model));
       }
-    } catch (e) {}
+    } catch (e) { }
 
     for (const localId of localIds) {
       let elementRow = modelProcessings.get(localId);
@@ -480,6 +480,9 @@ const computeTableData = async (
   return rows;
 };
 
+
+
+
 export const itemsDataTemplate = (_state: ItemsDataState) => {
   const state: Required<ItemsDataState> = {
     emptySelectionWarning: true,
@@ -559,7 +562,7 @@ export const itemsDataTemplate = (_state: ItemsDataState) => {
   ) => {
     onTableRowCreated(e);
     const { row } = e.detail;
-    
+
     row.onclick = async () => {
       const { modelId, localId } = row.data;
       if (!modelId || localId === undefined) return;
@@ -570,24 +573,24 @@ export const itemsDataTemplate = (_state: ItemsDataState) => {
 
       const worlds = components.get(OBC.Worlds);
       const world = worlds.list.values().next().value;
-      
+
       if (world && world.camera && "fitToItems" in world.camera) {
         await (world.camera as any).fitToItems(customModelIdMap);
       }
     };
+
   };
 
   return BUI.html`
     <bim-table @rowcreated=${onRowCreated} @cellcreated=${onCellCreated} ${BUI.ref(onTableCreated)}>
-      ${
-        emptySelectionWarning
-          ? BUI.html`
+      ${emptySelectionWarning
+      ? BUI.html`
             <bim-label slot="missing-data" style="--bim-icon--c: gold" icon=${appIcons.WARNING}>
               Select some elements to display its properties
             </bim-label>
             `
-          : null
-      }
+      : null
+    }
       <bim-label slot="error-loading" style="--bim-icon--c: #e72e2e" icon=${appIcons.ERRORALT}>
         Something went wrong with the properties
       </bim-label>

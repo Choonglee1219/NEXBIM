@@ -542,3 +542,4 @@ export const extractParentInfo = (
 
   return { parentCategories, parentNames };
 };
+

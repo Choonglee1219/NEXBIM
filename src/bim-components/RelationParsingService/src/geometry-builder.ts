@@ -221,7 +221,7 @@ export async function buildModelGeometries(
               hasDirectMesh = true;
             }
           }
-        } catch (err) {}
+        } catch (err) { }
 
         // 직접 메쉬가 없고 참조 부재들이 있는 경우, Bounding Box 기반 볼륨 박스 구성
         if (!hasDirectMesh && zoneData.referencedElementIds.length > 0) {
@@ -244,7 +244,7 @@ export async function buildModelGeometries(
                   count++;
                 }
               }
-            } catch (err) {}
+            } catch (err) { }
           }
 
 
@@ -289,7 +289,7 @@ export async function buildModelGeometries(
     if (modelID !== null) {
       try {
         api.CloseModel(modelID);
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 

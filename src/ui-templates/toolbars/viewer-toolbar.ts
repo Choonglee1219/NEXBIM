@@ -343,6 +343,8 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
     target.loading = false;
   };
 
+
+
   let focusBtn: BUI.TemplateResult | undefined;
   if (world.camera instanceof OBC.SimpleCamera) {
     const onFocus = async ({ target }: { target: BUI.Button }) => {
@@ -506,6 +508,7 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
         <bim-button ${BUI.ref((e) => { clipperBoxBtn = e as BUI.Button; })} ?active=${clipperBox.enabled} tooltip-title="Clipper Box (C)" tooltip-text="Toggle clipping box around the selection or whole model." icon=${appIcons.CLIPPER_BOX} @click=${onClipperBox}></bim-button>
         ${Colorize(components)}
       </bim-toolbar-section> 
+
       <bim-toolbar-section style="overflow: visible;">
         <bim-button ${BUI.ref(setupFlyModeBtn)} tooltip-title=${tooltips.FLY.TITLE} tooltip-text=${tooltips.FLY.TEXT} icon=${appIcons.FLY} @click=${onToggleFlyMode}></bim-button>
         <div style="position: relative;">
@@ -526,4 +529,3 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
     </bim-toolbar>
   `;
 };
-

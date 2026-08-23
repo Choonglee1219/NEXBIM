@@ -247,3 +247,4 @@ export const spatialTreeTemplate = (state: SpatialTreeState) => {
     </bim-table>
   `;
 };
+

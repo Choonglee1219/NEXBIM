@@ -294,7 +294,7 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
           return { name: modelName || "model.ifc", content: memBuf };
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 3. SharedIFC DB 조회 (네트워크)
     const sharedIFC = new SharedIFC();
@@ -308,7 +308,7 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
     if (dbId) {
       try {
         ifcData = await sharedIFC.loadIFC(dbId);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     if (!ifcData && modelName) {
@@ -320,7 +320,7 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
         if (matched) {
           ifcData = await sharedIFC.loadIFC(matched.id);
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return ifcData;

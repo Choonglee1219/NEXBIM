@@ -11,8 +11,7 @@ import { RelationParsingService } from "../RelationParsingService";
  */
 export class Highlighter
   extends OBC.Component
-  implements OBC.Disposable, OBC.Eventable
-{
+  implements OBC.Disposable, OBC.Eventable {
   /**
    * A unique identifier for the component.
    * This UUID is used to register the component within the Components system.
@@ -222,7 +221,7 @@ export class Highlighter
           distance: typeof result.distance === "number" ? result.distance : Infinity,
         };
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 2. Raycast against custom opening & spatial zone meshes
     let customHit: { modelId: string; localId: number; distance: number } | null = null;
@@ -266,7 +265,7 @@ export class Highlighter
           }
         }
       }
-    } catch (err) {}
+    } catch (err) { }
 
     if (customHit && fragmentHit) {
       return customHit.distance <= fragmentHit.distance ? customHit : fragmentHit;
@@ -326,6 +325,8 @@ export class Highlighter
       true,
     );
   }
+
+
 
   private _fromHighlight = false;
 
@@ -439,7 +440,7 @@ export class Highlighter
         const definition = this.styles.get(name);
         relService.applySelectionHighlight(name, this.selection[name], definition);
       }
-    } catch (err) {}
+    } catch (err) { }
 
     this.events[name].onHighlight.trigger(this.selection[name]);
 
@@ -450,6 +451,7 @@ export class Highlighter
     await this.updateColors();
     if (zoomToSelection) await this.zoomSelection(map);
   }
+
 
   /**
    * Updates the colors of highlighted fragments based on the current selection and styles.
@@ -617,12 +619,13 @@ export class Highlighter
       if (relService) {
         relService.clearSelectionHighlight();
       }
-    } catch (err) {}
+    } catch (err) { }
 
     if (!this._fromHighlight) {
       await this.updateColors();
     }
   }
+
 
   /**
    * Sets up the Highlighter with the provided configuration.
@@ -812,7 +815,7 @@ export class Highlighter
             if (relService) {
               relService.applySelectionHighlight(selectName, this.selection[selectName]);
             }
-          } catch (e) {}
+          } catch (e) { }
           await this.updateColors();
           this.events[selectName].onHighlight.trigger(this.selection[selectName]);
         }
@@ -831,6 +834,7 @@ export class Highlighter
       await this.highlightByID(selectName, found, mult, this.zoomToSelection, null, true);
     }
   };
+
 
   private onMouseMove = async (e: MouseEvent) => {
     if (!this.enabled) return;
