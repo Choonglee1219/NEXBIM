@@ -4,6 +4,7 @@ import * as BUI from "@thatopen/ui";
 import { SpatialTreeItem } from "@thatopen/fragments";
 import { SpatialTreeState, SpatialTreeData } from "./types";
 import { Highlighter } from "../../../bim-components/Highlighter";
+import { RelationParsingService } from "../../../bim-components/RelationParsingService";
 import { setupBIMTable, onTableCellCreated, onTableRowCreated } from "../../../globals";
 
 const getModelTree = (
@@ -48,7 +49,7 @@ const getModelTree = (
   return [];
 };
 
-const computeRowData = async (models: Iterable<FRAGS.FragmentsModel>) => {
+const computeRowData = async (models: Iterable<FRAGS.FragmentsModel>, components?: OBC.Components) => {
   const rows: BUI.TableGroupData[] = [];
   for (const model of models) {
     const structure = await model.getSpatialStructure();
@@ -61,7 +62,29 @@ const computeRowData = async (models: Iterable<FRAGS.FragmentsModel>) => {
     };
     traverse(structure);
 
-    // 2. 수집된 ID들의 속성 데이터를 한 번에 조회 (Bulk Fetch)
+    // 2. RelationParsingService에서 SpatialZones 및 Openings 관계 수집
+    let relData: any = null;
+    if (components) {
+      try {
+        const relService = components.get(RelationParsingService);
+        relData = await relService.getModelRelations(model);
+        if (relData) {
+          for (const zone of relData.spatialZones.values()) {
+            allLocalIds.add(zone.expressId);
+            for (const refId of zone.referencedElementIds) {
+              allLocalIds.add(refId);
+            }
+          }
+          for (const op of relData.openings.values()) {
+            allLocalIds.add(op.expressId);
+          }
+        }
+      } catch (err) {
+        console.warn("[SpatialTree] Failed to fetch model relations:", err);
+      }
+    }
+
+    // 3. 수집된 ID들의 속성 데이터를 한 번에 조회 (Bulk Fetch)
     const nameMap = new Map<number, string>();
     if (allLocalIds.size > 0) {
       const itemsData = await model.getItemsData(Array.from(allLocalIds), {
@@ -79,8 +102,46 @@ const computeRowData = async (models: Iterable<FRAGS.FragmentsModel>) => {
       }
     }
 
-    // 3. Map 데이터를 참조하여 동기식으로 빠르게 트리 구성
+    // 4. Map 데이터를 참조하여 기본 계층 트리 구성
     const tree = getModelTree(model, structure, nameMap);
+
+    // 5. SpatialZone 비계층 구조 그룹 추가 (IFC4 IfcSpatialZone)
+    if (relData && relData.spatialZones && relData.spatialZones.size > 0) {
+      const zoneRows: BUI.TableGroupData<SpatialTreeData>[] = [];
+      for (const [zoneId, zone] of relData.spatialZones.entries()) {
+        const zName = zone.name || zone.longName || (zone.objectType ? `Zone (${zone.objectType})` : `Zone #${zoneId}`);
+        const refChildren: BUI.TableGroupData<SpatialTreeData>[] = [];
+        for (const refId of zone.referencedElementIds) {
+          const refName = nameMap.get(refId) || `Element #${refId}`;
+          refChildren.push({
+            data: {
+              Name: refName,
+              modelId: model.modelId,
+              localId: refId,
+            },
+          });
+        }
+        zoneRows.push({
+          data: {
+            Name: `Spatial Zone  ||  ${zName}`,
+            modelId: model.modelId,
+            localId: zoneId,
+            children: JSON.stringify(zone.referencedElementIds),
+          },
+          children: refChildren.length > 0 ? refChildren : undefined,
+        });
+      }
+      if (zoneRows.length > 0) {
+        tree.push({
+          data: {
+            Name: "Spatial Zones (Non-Hierarchical)",
+            modelId: model.modelId,
+          },
+          children: zoneRows,
+        });
+      }
+    }
+
     if (tree.length === 0) continue;
     const modelData: BUI.TableGroupData<SpatialTreeData> = {
       data: {
@@ -170,7 +231,7 @@ export const spatialTreeTemplate = (state: SpatialTreeState) => {
     table.loadFunction = async () => {
       return new Promise((resolve) => {
         setTimeout(() => {
-          resolve(computeRowData(models));
+          resolve(computeRowData(models, components));
         });
       });
     };
@@ -186,3 +247,4 @@ export const spatialTreeTemplate = (state: SpatialTreeState) => {
     </bim-table>
   `;
 };
+

@@ -2,6 +2,7 @@ import * as OBC from "@thatopen/components";
 import { RuleSpecDefinition } from "../../../setup/rules";
 import { RuleTableData, RuleGroupByOption } from "./types";
 import { extractMaterialValue, extractClassificationValue, extractParentInfo, buildModelClassificationMap } from "./helpers";
+import { RelationParsingService } from "../../RelationParsingService";
 
 export const getFlatData = (nodes: any[]): RuleTableData[] => {
   let result: RuleTableData[] = [];
@@ -115,6 +116,8 @@ export const extractData = async (fragments: OBC.FragmentsManager, allIds: OBC.M
     if (!model) continue;
 
     const classMap = specDef.requirement.type === "classification" ? await buildModelClassificationMap(null, model) : undefined;
+    const relService = (fragments as any).components?.get?.(RelationParsingService);
+    const modelRelations = specDef.requirement.type === "partof" && relService ? await relService.getModelRelations(model) : undefined;
     itemPropsMap[modelId] = {};
     const idsArray = Array.from(allIds[modelId]);
     const itemsData = await model.getItemsData(idsArray, {
@@ -169,7 +172,7 @@ export const extractData = async (fragments: OBC.FragmentsManager, allIds: OBC.M
         const { matVal, hasMatRel } = extractMaterialValue(itemAny);
         val = matVal || (hasMatRel ? "Material Assigned" : "Null");
       } else if (reqType === "partof") {
-        const { parentNames } = extractParentInfo(itemAny);
+        const { parentNames } = extractParentInfo(itemAny, modelRelations, expressId);
         val = parentNames.length > 0 ? parentNames[0] : "Null";
       } else {
         const rels = itemAny.IsDefinedBy || [];

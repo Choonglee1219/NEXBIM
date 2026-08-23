@@ -9,3 +9,4 @@ export * from "./BimChat";
 export * from "./GISMap";
 export * from "./Diagram";
 export * from "./RuleService";
+export * from "./RelationParsingService";

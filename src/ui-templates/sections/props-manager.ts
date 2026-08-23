@@ -96,7 +96,7 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
   let categoryDropdown: BUI.Dropdown;
   let objectDropdown: BUI.Dropdown;
 
-  const targetCategories = ["IFCSITE", "IFCBUILDING", "IFCBUILDINGSTOREY", "IFCSPACE", "IFCSPATIALZONE", "IFCZONE", "IFCGROUP", "IFCELEMENTASSEMBLY"];
+  const targetCategories = ["IFCSITE", "IFCBUILDING", "IFCBUILDINGSTOREY", "IFCSPACE", "IFCSPATIALZONE", "IFCOPENINGELEMENT", "IFCZONE", "IFCGROUP", "IFCELEMENTASSEMBLY"];
 
   const onObjectSelectionChange = ({ target }: { target: BUI.Dropdown }) => {
     const selectedIds = target.value;

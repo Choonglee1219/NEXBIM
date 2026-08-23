@@ -8,6 +8,7 @@ import { Highlighter } from "../../bim-components/Highlighter";
 import { CustomCameraControl } from "../../bim-components/CustomCameraControl";
 import { FloorExploder } from "../../bim-components/FloorExploder";
 import { ClipperBox } from "../../bim-components/ClipperBox";
+import { RelationParsingService } from "../../bim-components/RelationParsingService";
 
 export interface ViewerToolbarState {
   components: OBC.Components;
@@ -284,6 +285,7 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
   const highlighter = components.get(Highlighter);
   const hider = components.get(OBC.Hider);
   const clipperBox = components.get(ClipperBox);
+  const relService = components.get(RelationParsingService);
 
   const onClipperBoxChanged = () => {
     update();
@@ -294,11 +296,24 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
     floorExploder = new FloorExploder(components);
   }
 
+  const syncCustomEntityVisibility = async (show: boolean) => {
+    if (!relService) return;
+    if (show) {
+      await relService.showOpenings();
+      await relService.showSpatialZones();
+    } else {
+      relService.hideOpenings();
+      relService.hideSpatialZones();
+    }
+  };
+
+
   const onShowAll = async ({ target }: { target: BUI.Button }) => {
     target.loading = true;
     await showAllItems(components);
     if (hiddenItemsBtn) hiddenItemsBtn.active = false;
     if (hideBtn) hideBtn.active = false;
+    await syncCustomEntityVisibility(false);
     target.loading = false;
   };
 
@@ -322,9 +337,14 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
     } else {
       await hider.set(show, hiddenItems);
     }
+
+    await syncCustomEntityVisibility(show);
+
     target.active = show;
     target.loading = false;
   };
+
+
 
   let focusBtn: BUI.TemplateResult | undefined;
   if (world.camera instanceof OBC.SimpleCamera) {
@@ -489,6 +509,7 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
         <bim-button ${BUI.ref((e) => { clipperBoxBtn = e as BUI.Button; })} ?active=${clipperBox.enabled} tooltip-title="Clipper Box (C)" tooltip-text="Toggle clipping box around the selection or whole model." icon=${appIcons.CLIPPER_BOX} @click=${onClipperBox}></bim-button>
         ${Colorize(components)}
       </bim-toolbar-section> 
+
       <bim-toolbar-section style="overflow: visible;">
         <bim-button ${BUI.ref(setupFlyModeBtn)} tooltip-title=${tooltips.FLY.TITLE} tooltip-text=${tooltips.FLY.TEXT} icon=${appIcons.FLY} @click=${onToggleFlyMode}></bim-button>
         <div style="position: relative;">
@@ -509,4 +530,3 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
     </bim-toolbar>
   `;
 };
-

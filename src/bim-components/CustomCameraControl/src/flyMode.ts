@@ -2,6 +2,8 @@ import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 import { CameraControl } from "./cameraControl";
 
+import { RelationParsingService } from "../../RelationParsingService";
+
 export class flyMode {
     private world: OBC.World;
     private cameraControl: CameraControl;
@@ -33,8 +35,29 @@ export class flyMode {
 
         const patchedFitToItems = async (...args: any[]) => {
           this.isCameraFocusing = true;
+          let handledCustom = false;
+
           try {
-            if (originalFitToItems) {
+            if (args[0] && typeof args[0] === "object" && (this.world as any).components) {
+              const relService = (this.world as any).components.get(RelationParsingService);
+              if (relService) {
+                const customBox = await relService.getBoundingBox(args[0]);
+                if (customBox && !customBox.isEmpty()) {
+                  await relService.highlightElements(args[0], true);
+                  if (cameraComp.controls?.fitToBox) {
+                    await cameraComp.controls.fitToBox(customBox, true, {
+                      paddingLeft: 1.5,
+                      paddingRight: 1.5,
+                      paddingTop: 1.5,
+                      paddingBottom: 1.5,
+                    });
+                    handledCustom = true;
+                  }
+                }
+              }
+            }
+
+            if (!handledCustom && originalFitToItems) {
               await originalFitToItems.apply(cameraComp, args);
             }
           } finally {

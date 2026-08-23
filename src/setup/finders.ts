@@ -33,10 +33,6 @@ export const setupFinders = (components: OBC.Components) => {
     { categories: [/COLUMN|SLAB|BEAM|WALL/] }
   ], false);
 
-  createQuery(finder, "Wall & Slab & Ramp", [
-    { categories: [/WALL|SLAB|RAMP/] }
-  ], false);
-
   createQuery(finder, "Duct", [
     { categories: [/DUCT/] }
   ], false);
@@ -130,10 +126,18 @@ export const setupFinders = (components: OBC.Components) => {
   ], true);
 
   createQuery(finder, "Space", [
-    { categories: [/SPACE|SPATIALZONE/] }
-  ], true);
+    { categories: [/SPACE/] }
+  ], false);
+
+  createQuery(finder, "Opening Element", [
+    { categories: [/OPENING/] }
+  ], false);
+
+  createQuery(finder, "Spatial Zone", [
+    { categories: [/SPATIALZONE/] }
+  ], false);
 
   createQuery(finder, "DistributionElement", [
     { categories: [/FLOW|DISTRIBUTION|DUCT|PIPE|CABLECARRIER/] }
-  ], true);
-};
+  ], false);
+};

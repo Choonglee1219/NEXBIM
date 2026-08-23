@@ -192,7 +192,7 @@ export const tooltips = {
   },
   TOGGLE_HIDDEN: {
     TITLE: "Toggle Hidden Items (S)",
-    TEXT: "Show or hide permanently hidden elements such as spaces, spatial zones, and openings.",
+    TEXT: "Show or hide hidden spatial elements (Space: 🟦Cyan, SpatialZone: 🟪Purple, Opening: 🟧Orange).",
   },
   COLORIZE: {
     TITLE: "Apply Color",
