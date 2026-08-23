@@ -7,6 +7,7 @@ import { BCFTopics } from "../../bim-components/BCFTopics";
 import { ClashService } from "../../bim-components/ClashService";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { GISMapComponent } from "../../bim-components/GISMap";
+import { RelationParsingService } from "../../bim-components/RelationParsingService";
 
 export interface IFCListPanelState {
   components: OBC.Components;
@@ -534,6 +535,14 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
         // 간섭 검토를 위한 원본 IFC 버퍼 캐싱
         const clashService = components.get(ClashService);
         clashService.addIfcBuffer(modelId, ifc.content as Uint8Array);
+
+        // 관계 파싱을 위한 원본 IFC 버퍼 캐싱
+        try {
+          const relService = components.get(RelationParsingService);
+          if (relService) {
+            relService.addIfcBuffer(modelId, ifc.content as Uint8Array);
+          }
+        } catch (e) {}
       }
     }
   };

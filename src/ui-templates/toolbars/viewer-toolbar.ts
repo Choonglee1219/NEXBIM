@@ -8,6 +8,7 @@ import { Highlighter } from "../../bim-components/Highlighter";
 import { CustomCameraControl } from "../../bim-components/CustomCameraControl";
 import { FloorExploder } from "../../bim-components/FloorExploder";
 import { ClipperBox } from "../../bim-components/ClipperBox";
+import { RelationParsingService } from "../../bim-components/RelationParsingService";
 
 export interface ViewerToolbarState {
   components: OBC.Components;
@@ -284,6 +285,7 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
   const highlighter = components.get(Highlighter);
   const hider = components.get(OBC.Hider);
   const clipperBox = components.get(ClipperBox);
+  const relService = components.get(RelationParsingService);
 
   const onClipperBoxChanged = () => {
     update();
@@ -294,11 +296,23 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
     floorExploder = new FloorExploder(components);
   }
 
+  const syncCustomEntityVisibility = async (show: boolean) => {
+    if (!relService) return;
+    if (show) {
+      await relService.showOpenings();
+      await relService.showSpatialZones();
+    } else {
+      relService.hideOpenings();
+      relService.hideSpatialZones();
+    }
+  };
+
   const onShowAll = async ({ target }: { target: BUI.Button }) => {
     target.loading = true;
     await showAllItems(components);
     if (hiddenItemsBtn) hiddenItemsBtn.active = false;
     if (hideBtn) hideBtn.active = false;
+    await syncCustomEntityVisibility(false);
     target.loading = false;
   };
 
@@ -322,6 +336,9 @@ export const viewerToolbarTemplate: BUI.StatefullComponent<
     } else {
       await hider.set(show, hiddenItems);
     }
+
+    await syncCustomEntityVisibility(show);
+
     target.active = show;
     target.loading = false;
   };

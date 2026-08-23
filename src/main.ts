@@ -18,6 +18,7 @@ import { Measurer } from "./bim-components/Measurer";
 import { ClipperBox } from "./bim-components/ClipperBox";
 import { bimChatPanel } from "./bim-components";
 import { GISMapComponent } from "./bim-components/GISMap";
+import { RelationParsingService } from "./bim-components/RelationParsingService";
 
 // 🎨Override the bim-label template to use a local SVG icon and apply custom colors
 // @ts-ignore
@@ -208,11 +209,25 @@ highlighter.setup({
   },
 });
 
-// 🎨 Custom highlighter style for Spatial Entities
-highlighter.styles.set("transparentCyan", {
-  color: new THREE.Color("#00ffff"),
+// 🎨 Custom highlighter styles for Spatial & Hidden Entities
+highlighter.styles.set("transparentSpace", {
+  color: new THREE.Color("#00e5ff"), // 🟦 Cyan for IfcSpace
   renderedFaces: 1,
-  opacity: 0.02,
+  opacity: 0.08,
+  transparent: true,
+});
+
+highlighter.styles.set("transparentSpatialZone", {
+  color: new THREE.Color("#a855f7"), // 🟪 Purple for IfcSpatialZone
+  renderedFaces: 1,
+  opacity: 0.18,
+  transparent: true,
+});
+
+highlighter.styles.set("transparentOpening", {
+  color: new THREE.Color("#f59e0b"), // 🟧 Amber/Orange for IfcOpeningElement
+  renderedFaces: 1,
+  opacity: 0.35,
   transparent: true,
 });
 
@@ -278,6 +293,36 @@ const fitCameraToAllModels = () => {
 };
 
 // 🚚Model Load EventHandler
+// 🧱 Helper to initialize and classify model spatial & hidden entities
+const setupModelSpatialEntities = async (
+  model: any,
+  classifier: OBC.Classifier,
+  highlighter: Highlighter,
+  hider: OBC.Hider
+) => {
+  const categoryConfigs = [
+    { regexes: [/^IFCSPACE$/], style: "transparentSpace" },
+    { regexes: [/^IFCSPATIALZONE$/], style: "transparentSpatialZone" },
+    { regexes: [/^IFCOPENINGELEMENT$/, /^IFCOPENINGSTANDARDCASE$/], style: "transparentOpening" },
+  ];
+
+  const allHiddenIds: number[] = [];
+  const modelId = String(model.modelId);
+
+  for (const { regexes, style } of categoryConfigs) {
+    const items = await model.getItemsOfCategories(regexes);
+    const ids = Object.values(items).flat() as number[];
+    if (ids.length > 0) {
+      allHiddenIds.push(...ids);
+      await highlighter.highlightByID(style, { [modelId]: new Set(ids) }, false, false);
+    }
+  }
+
+  const modelIdMap = { [modelId]: new Set(allHiddenIds) };
+  classifier.addGroupItems("PermanentHidden", "HiddenItems", modelIdMap);
+  await hider.set(false, modelIdMap);
+};
+
 fragments.list.onItemSet.add(async ({ value: model }) => {
   const finder = components.get(OBC.ItemsFinder);
   for (const [_, query] of finder.list) {
@@ -293,20 +338,17 @@ fragments.list.onItemSet.add(async ({ value: model }) => {
 
   const classifier = components.get(OBC.Classifier);
   const hider = components.get(OBC.Hider);
-  const categoryNames = ["IFCSPACE", "IFCSPATIALZONE", "IFCOPENINGELEMENT"];
-  const categoriesRegex = categoryNames.map((cat) => new RegExp(`^${cat}$`));
-  const items = await model.getItemsOfCategories(categoriesRegex);
-  const localIds = Object.values(items).flat();
-  const modelIdMap = { [model.modelId]: new Set(localIds) };
-  classifier.addGroupItems("PermanentHidden", "HiddenItems", modelIdMap);
+  await setupModelSpatialEntities(model, classifier, highlighter, hider);
 
-  await highlighter.highlightByID("transparentCyan", modelIdMap, false, false);
-  await hider.set(false, modelIdMap);
+  // 개구부 및 공간 구역 3D 지오메트리 백그라운드 사전 빌드
+  const relService = components.get(RelationParsingService);
+  relService.ensureModelGeometries(model).catch((err) => {
+    console.warn("[RelationParsingService] Pre-building geometries error:", err);
+  });
 
   if (!appState.hasExternalLink) {
     fitCameraToAllModels();
   }
-
 });
 
 fragments.list.onItemDeleted.add(async () => {

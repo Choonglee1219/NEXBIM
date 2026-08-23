@@ -2,6 +2,8 @@ import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 import { CameraControl } from "./cameraControl";
 
+import { RelationParsingService } from "../../RelationParsingService";
+
 export class flyMode {
     private world: OBC.World;
     private cameraControl: CameraControl;
@@ -33,8 +35,29 @@ export class flyMode {
 
         const patchedFitToItems = async (...args: any[]) => {
           this.isCameraFocusing = true;
+          let handledCustom = false;
+
           try {
-            if (originalFitToItems) {
+            if (args[0] && typeof args[0] === "object" && (this.world as any).components) {
+              const relService = (this.world as any).components.get(RelationParsingService);
+              if (relService) {
+                const customBox = await (relService as any).getBoundingBox?.(args[0]);
+                if (customBox && !customBox.isEmpty()) {
+                  await (relService as any).highlightElements?.(args[0], true);
+                  if (cameraComp.controls?.fitToBox) {
+                    await cameraComp.controls.fitToBox(customBox, true, {
+                      paddingLeft: 1.5,
+                      paddingRight: 1.5,
+                      paddingTop: 1.5,
+                      paddingBottom: 1.5,
+                    });
+                    handledCustom = true;
+                  }
+                }
+              }
+            }
+
+            if (!handledCustom && originalFitToItems) {
               await originalFitToItems.apply(cameraComp, args);
             }
           } finally {
@@ -155,22 +178,19 @@ export class flyMode {
         if (this.flyKeys.d || this.flyKeys.ArrowRight) moveDir.add(right);
         if (this.flyKeys.a || this.flyKeys.ArrowLeft) moveDir.sub(right);
         
-        if (moveDir.lengthSq() > 0) moveDir.normalize();
-
-        const pos = new THREE.Vector3();
-        controls.getPosition(pos);
-
         if (moveDir.lengthSq() > 0) {
-          pos.add(moveDir.multiplyScalar(this.flySpeed * dt));
+            moveDir.normalize();
+            const deltaMove = moveDir.multiplyScalar(this.flySpeed * dt);
+            
+            const curPos = new THREE.Vector3();
+            controls.getPosition(curPos);
+            curPos.add(deltaMove);
+
+            const curTarget = new THREE.Vector3();
+            controls.getTarget(curTarget);
+            curTarget.add(deltaMove);
+
+            controls.setLookAt(curPos.x, curPos.y, curPos.z, curTarget.x, curTarget.y, curTarget.z, false);
         }
-
-        const target = new THREE.Vector3();
-        controls.getTarget(target);
-        const currentDir = new THREE.Vector3().subVectors(target, camera.position);
-        
-        if (currentDir.lengthSq() > 0) currentDir.normalize().multiplyScalar(0.1);
-
-        controls.setPosition(pos.x, pos.y, pos.z, false);
-        controls.setTarget(pos.x + currentDir.x, pos.y + currentDir.y, pos.z + currentDir.z, false);
     };
 }

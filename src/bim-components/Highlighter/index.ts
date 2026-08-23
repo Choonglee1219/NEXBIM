@@ -4,6 +4,7 @@ import * as OBC from "@thatopen/components";
 import { DataMap } from "@thatopen/fragments";
 import * as FRAGS from "@thatopen/fragments";
 import { HighlighterConfig, HighlightEvents } from "./src";
+import { RelationParsingService } from "../RelationParsingService";
 
 /**
  * This component allows highlighting and selecting fragments in a 3D scene. 📕 [Tutorial](https://docs.thatopen.com/Tutorials/Components/Front/Highlighter). 📘 [API](https://docs.thatopen.com/api/@thatopen/components-front/classes/Highlighter).
@@ -198,6 +199,97 @@ export class Highlighter
    * @throws Will throw an error if the item ID is not found.
    * @throws Will throw an error if the fragment does not belong to a FragmentsGroup.
    */
+  private async getRaycastHit(
+    world: OBC.World,
+    event?: MouseEvent,
+  ): Promise<{ modelId: string; localId: number; distance: number } | null> {
+    const casters = this.components.get(OBC.Raycasters);
+    const caster = casters.get(world);
+
+    // 1. Raycast against ThatOpen fragments
+    let fragmentHit: { modelId: string; localId: number; distance: number } | null = null;
+    try {
+      const result = (await caster.castRay()) as any;
+      if (
+        result &&
+        result.localId !== undefined &&
+        result.localId !== null &&
+        result.fragments?.modelId
+      ) {
+        fragmentHit = {
+          modelId: result.fragments.modelId,
+          localId: result.localId,
+          distance: typeof result.distance === "number" ? result.distance : Infinity,
+        };
+      }
+    } catch (e) {}
+
+    // 2. Raycast against custom opening & spatial zone meshes
+    let customHit: { modelId: string; localId: number; distance: number } | null = null;
+    try {
+      const relService = this.components.get(RelationParsingService);
+      const container = world.renderer?.three.domElement;
+      if (relService && container && world.camera.three) {
+        const candidateMeshes: THREE.Object3D[] = [];
+        if (relService.openingsSceneGroup.visible || relService.isOpeningsVisible) {
+          candidateMeshes.push(relService.openingsSceneGroup);
+        }
+        if (relService.spatialZonesSceneGroup.visible || relService.isSpatialZonesVisible) {
+          candidateMeshes.push(relService.spatialZonesSceneGroup);
+        }
+
+        if (candidateMeshes.length > 0) {
+          const raycaster = new THREE.Raycaster();
+          if (event) {
+            const rect = container.getBoundingClientRect();
+            const mouse = new THREE.Vector2(
+              ((event.clientX - rect.left) / rect.width) * 2 - 1,
+              -((event.clientY - rect.top) / rect.height) * 2 + 1,
+            );
+            raycaster.setFromCamera(mouse, world.camera.three);
+          } else if (caster.three) {
+            raycaster.ray.copy(caster.three.ray);
+          }
+
+          const intersects = raycaster.intersectObjects(candidateMeshes, true);
+          for (const hit of intersects) {
+            if (!(hit.object instanceof THREE.Mesh)) continue;
+            const uData = hit.object.userData || hit.object.parent?.userData;
+            if (uData && uData.expressId !== undefined && uData.modelId) {
+              customHit = {
+                modelId: uData.modelId,
+                localId: uData.expressId,
+                distance: hit.distance,
+              };
+              break;
+            }
+          }
+        }
+      }
+    } catch (err) {}
+
+    if (customHit && fragmentHit) {
+      return customHit.distance <= fragmentHit.distance ? customHit : fragmentHit;
+    }
+    return customHit || fragmentHit || null;
+  }
+
+  /**
+   * Highlights a fragment based on a raycast from the mouse position.
+   *
+   * @param name - The name of the selection.
+   * @param removePrevious - Whether to remove previous highlights.
+   * @param zoomToSelection - Whether to zoom to the highlighted selection.
+   * @param exclude - Fragments to exclude from the highlight.
+   *
+   * @returns The highlighted fragment and its ID, or null if no fragment was highlighted.
+   *
+   * @throws Will throw an error if the world or a required component is not found.
+   * @throws Will throw an error if the selection does not exist.
+   * @throws Will throw an error if the fragment or its geometry is not found.
+   * @throws Will throw an error if the item ID is not found.
+   * @throws Will throw an error if the fragment does not belong to a FragmentsGroup.
+   */
   async highlight(
     name: string,
     removePrevious = true,
@@ -216,26 +308,14 @@ export class Highlighter
       throw new Error(`Selection ${name} does not exist.`);
     }
 
-    // TODO: Adapt clip mesh higlight to new 3D system
-    // Make clip mesh inside fragments? E.g. add the clipped face to the fragment mesh
-    const casters = this.components.get(OBC.Raycasters);
-    const caster = casters.get(world);
-    // TODO: Fix type error
-    const result = (await caster.castRay()) as any;
+    const hit = await this.getRaycastHit(world);
 
-    // const mesh = result.object as FragmentMesh;
-
-    if (!result || result.localId === undefined || result.localId === null) {
+    if (!hit) {
       if (removePrevious) this.clear(name);
       return;
     }
 
-    const {
-      localId,
-      fragments: { modelId },
-    } = result;
-
-    const found: OBC.ModelIdMap = { [modelId]: new Set([localId]) };
+    const found: OBC.ModelIdMap = { [hit.modelId]: new Set([hit.localId]) };
 
     await this.highlightByID(
       name,
@@ -352,6 +432,15 @@ export class Highlighter
     }
 
     this.updateStyleMap(name, map);
+
+    try {
+      const relService = this.components.get(RelationParsingService);
+      if (relService) {
+        const definition = this.styles.get(name);
+        relService.applySelectionHighlight(name, this.selection[name], definition);
+      }
+    } catch (err) {}
+
     this.events[name].onHighlight.trigger(this.selection[name]);
 
     // TODO: Adapt clip mesh higlight to new 3D system
@@ -523,6 +612,13 @@ export class Highlighter
       }
     }
 
+    try {
+      const relService = this.components.get(RelationParsingService);
+      if (relService) {
+        relService.clearSelectionHighlight();
+      }
+    } catch (err) {}
+
     if (!this._fromHighlight) {
       await this.updateColors();
     }
@@ -689,13 +785,11 @@ export class Highlighter
     this._mouseState.moved = false;
 
     if (autoHighlightOnClick && selectEnabled) {
-      const casters = this.components.get(OBC.Raycasters);
-      const caster = casters.get(world);
-      const result = (await caster.castRay()) as any;
       const selectName = this.config.selectName;
+      const hit = await this.getRaycastHit(world, event);
 
       // No object was clicked
-      if (!result || result.localId === undefined || result.localId === null) {
+      if (!hit) {
         // If no modifier key is pressed, clear selection
         if (!event.ctrlKey && !event.shiftKey) {
           await this.clear(selectName);
@@ -704,7 +798,7 @@ export class Highlighter
         return;
       }
 
-      const { localId, fragments: { modelId } } = result;
+      const { modelId, localId } = hit;
       const found: OBC.ModelIdMap = { [modelId]: new Set([localId]) };
       const isSelected = this.selection[selectName]?.[modelId]?.has(localId);
 
@@ -713,6 +807,12 @@ export class Highlighter
         if (!isSelected) {
           // Manually add to selection to bypass auto-toggle behavior in highlightByID
           OBC.ModelIdMapUtils.add(this.selection[selectName], found);
+          try {
+            const relService = this.components.get(RelationParsingService);
+            if (relService) {
+              relService.applySelectionHighlight(selectName, this.selection[selectName]);
+            }
+          } catch (e) {}
           await this.updateColors();
           this.events[selectName].onHighlight.trigger(this.selection[selectName]);
         }
@@ -728,7 +828,7 @@ export class Highlighter
       }
 
       const mult = this.multiple === "none" ? true : !event[this.multiple];
-      await this.highlight(this.config.selectName, mult, this.zoomToSelection);
+      await this.highlightByID(selectName, found, mult, this.zoomToSelection, null, true);
     }
   };
 

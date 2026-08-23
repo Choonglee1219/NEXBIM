@@ -1,4 +1,5 @@
 import { SharedIFC } from "../../SharedIFC";
+import { ModelRelationData } from "../../RelationParsingService";
 
 export const getPattern = (val: string): string => {
   if (!val || val.toUpperCase() === "ALL" || val.toUpperCase() === "ANY" || val === ".*") return ".*";
@@ -460,7 +461,11 @@ export const extractClassificationValue = (
   return { classVal, systemVal, codeVal, hasClassRel };
 };
 
-export const extractParentInfo = (itemAny: any): { parentCategories: string[]; parentNames: string[] } => {
+export const extractParentInfo = (
+  itemAny: any,
+  modelRelations?: ModelRelationData,
+  expressId?: number
+): { parentCategories: string[]; parentNames: string[] } => {
   const parentCategories: string[] = [];
   const parentNames: string[] = [];
   const rels = [
@@ -485,6 +490,54 @@ export const extractParentInfo = (itemAny: any): { parentCategories: string[]; p
     }
     parentName = String(parentName || "").trim();
     if (parentName) parentNames.push(parentName);
+  }
+
+  // 3. Extended relations from STEP (Voids, Fills, SpatialZone)
+  if (modelRelations && expressId !== undefined) {
+    // Check if item is a filling element (e.g. Door/Window) filling an Opening
+    const openingId = modelRelations.fillingToOpening.get(expressId);
+    if (openingId !== undefined) {
+      if (!parentCategories.includes("OPENINGELEMENT")) {
+        parentCategories.push("OPENINGELEMENT");
+      }
+      const opData = modelRelations.openings.get(openingId);
+      if (opData?.name && !parentNames.includes(opData.name)) {
+        parentNames.push(opData.name);
+      }
+
+      // Also get the Wall/Slab that owns the opening
+      const parentBuildingElemId = modelRelations.openingToParent.get(openingId);
+      if (parentBuildingElemId !== undefined) {
+        if (!parentCategories.includes("BUILDINGELEMENT")) {
+          parentCategories.push("BUILDINGELEMENT");
+        }
+      }
+    }
+
+    // Check if item is an OpeningElement voiding a Wall/Slab
+    const parentElemId = modelRelations.openingToParent.get(expressId);
+    if (parentElemId !== undefined) {
+      if (!parentCategories.includes("BUILDINGELEMENT")) {
+        parentCategories.push("BUILDINGELEMENT");
+      }
+    }
+
+    // Check if item is referenced in any SpatialZone
+    const zoneIds = modelRelations.elementToZones.get(expressId);
+    if (zoneIds && zoneIds.length > 0) {
+      if (!parentCategories.includes("SPATIALZONE")) {
+        parentCategories.push("SPATIALZONE");
+      }
+      for (const zid of zoneIds) {
+        const zoneData = modelRelations.spatialZones.get(zid);
+        if (zoneData) {
+          const zName = zoneData.name || zoneData.longName || zoneData.objectType;
+          if (zName && !parentNames.includes(zName)) {
+            parentNames.push(zName);
+          }
+        }
+      }
+    }
   }
 
   return { parentCategories, parentNames };

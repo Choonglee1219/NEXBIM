@@ -13,6 +13,7 @@ import {
   extractParentInfo,
   buildModelClassificationMap,
 } from "./helpers";
+import { RelationParsingService } from "../../RelationParsingService";
 
 export const createFacetParameter = (
   condition: string,
@@ -94,6 +95,8 @@ export const testStandardSpec = async (
   if (reqType === "material" || reqType === "classification" || reqType === "partof") {
     for (const [modelId, model] of fragments.list) {
       const classMap = reqType === "classification" ? await buildModelClassificationMap(components, model) : undefined;
+      const relService = components.get(RelationParsingService);
+      const modelRelations = reqType === "partof" ? await relService.getModelRelations(model) : undefined;
       const localIds = await model.getLocalIds();
       const itemsData = await model.getItemsData(localIds, {
         attributesDefault: true,
@@ -170,7 +173,7 @@ export const testStandardSpec = async (
             isPassed = systemMatch && Boolean((codeVal && enumVals.includes(codeVal.trim().toUpperCase())) || (classVal && enumVals.includes(classVal.trim().toUpperCase())));
           }
         } else if (reqType === "partof") {
-          const { parentCategories, parentNames } = extractParentInfo(itemAny);
+          const { parentCategories, parentNames } = extractParentInfo(itemAny, modelRelations, expressId);
 
           const cleanParentEntityReq = specDef.requirement.name && specDef.requirement.name !== "N.A." && specDef.requirement.name.trim() !== ""
             ? specDef.requirement.name.replace(/^IFC/i, "").toUpperCase()

@@ -4,35 +4,10 @@ import { ViewTemplater } from "../bim-components";
 export const setupViewTemplates = (components: OBC.Components) => {
   const templater = components.get(ViewTemplater);
 
-  templater.list.set("Slab", {
-    defaultVisibility: false,
-    visibilityExceptions: {
-      queries: new Set(["Slab"]),
-    },
-    colors: {
-      queries: {
-        "#C0C0C0": new Set(["Slab"]),
-      },
-    },
-  });
-
-  templater.list.set("Structure & Duct", {
-    defaultVisibility: false,
-    visibilityExceptions: {
-      queries: new Set(["Structure Elements", "Duct"]),
-    },
-    colors: {
-      queries: {
-        "#C0C0C0": new Set(["Structure Elements"]),
-        "#92DEAD": new Set(["Duct"]),
-      },
-    },
-  });
-
   templater.list.set("KEPCO E&C", {
     defaultVisibility: true,
     visibilityExceptions: {
-      queries: new Set(["Plate", "Space"]),
+      queries: new Set(["Base Slab", "Wall", "Slab", "Ramp", "Beam", "Plate", "Rail", "Stair", "Concrete Column", "Steel Member", "Member", "Proxy", "Space", "Opening Element", "Spatial Zone"]),
     },
     colors: {
       queries: {
@@ -41,14 +16,13 @@ export const setupViewTemplates = (components: OBC.Components) => {
         "#A3A083": new Set(["Beam"]),
         "#B7604F": new Set(["Plate"]),
         "#8FB7EB": new Set(["Rail", "Stair", "Steel Member"]),
-        "#9DA599": new Set(["Concrete Column"]),
-        "#8F9099": new Set(["Member"]),
-        "#FFBD96": new Set(["Tray"]),
-        "#92DEAD": new Set(["Duct"]),
-        "#64C8B4": new Set(["Equipment"]),
-        "#008040": new Set(["Pipe"]),
-        "#FF0000": new Set(["Proxy"]),
-      }
-    }
+        "#3871C1": new Set(["Concrete Column"]),
+        "#FFFF00": new Set(["Member"]),
+        "#E2B96D": new Set(["Proxy"]),
+        "#00FFFF": new Set(["Space"]),
+        "#FFA500": new Set(["Opening Element"]),
+        "#800080": new Set(["Spatial Zone"]),
+      },
+    },
   });
 };
