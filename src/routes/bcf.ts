@@ -5,6 +5,40 @@ import { upload } from "../app.js";
 
 const router = express.Router();
 
+const toDbStatus = (status?: string): string => {
+  if (!status) return "Active";
+  switch (status) {
+    case "Open": return "Active";
+    case "Assigned": return "In Progress";
+    case "Resolved": return "Done";
+    case "Active":
+    case "In Progress":
+    case "Done":
+    case "In Review":
+    case "Closed":
+      return status;
+    default:
+      return "Active";
+  }
+};
+
+const fromDbStatus = (status?: string): string => {
+  if (!status) return "Open";
+  switch (status) {
+    case "Active": return "Open";
+    case "In Progress": return "Assigned";
+    case "Done": return "Resolved";
+    case "Open":
+    case "Assigned":
+    case "Resolved":
+    case "Closed":
+    case "In Review":
+      return status;
+    default:
+      return status;
+  }
+};
+
 // Get bcfs name
 router.get("/api/bcfs/name", async (_req: Request, res: Response): Promise<any> => {
   let connection: OracleDB.Connection | undefined;
@@ -45,7 +79,7 @@ router.get("/api/bcf/comments", async (req: Request, res: Response): Promise<any
               ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, RESOL_PREPARE_DATE,
               COORDX, COORDY, COORDZ
        FROM SI_BCF_COMMENT
-       WHERE TOPIC_NO = :topic_no
+       WHERE TOPIC_NO = :topic_no AND IS_TOPIC = 0
        ORDER BY COMMENT_NO ASC`,
       { topic_no: Number(mrimsNo) },
       {
@@ -121,7 +155,7 @@ router.get("/api/bcf/comments", async (req: Request, res: Response): Promise<any
   }
 });
 
-// GET BCF Topics & Comments from TDVS (SI_BCF_TOPIC & SI_BCF_COMMENT)
+// GET BCF Topics & Comments from TDVS (SI_BCF_COMMENT)
 router.get("/api/bcf/sync", async (req: Request, res: Response): Promise<any> => {
   const priFilesQuery = req.query.priFiles;
   let priFiles: string[] = [];
@@ -144,12 +178,12 @@ router.get("/api/bcf/sync", async (req: Request, res: Response): Promise<any> =>
       return `:` + paramName;
     }).join(", ");
 
-    // 1. Topic 조회 (CLOB 컬럼인 REVIEW_COMMENT는 String으로 가져오도록 fetchInfo 설정)
+    // 1. Topic 조회 (IS_TOPIC = 1, CLOB 컬럼인 REVIEW_COMMENT는 String으로 가져오도록 fetchInfo 설정)
     const topicResult = await connection.execute(
-      `SELECT TOPIC_NO, MRIMS_TYPE, PRI_DISP, SEC_DISP, REVIEW_COMMENT, COORDX, COORDY, COORDZ, 
-              INSERT_DATE, ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, DUE_DATE, PRI_FILE, ACK_COMMENT_NO
-       FROM SI_BCF_TOPIC
-       WHERE PRI_FILE IN (${placeholders})`,
+      `SELECT COMMENT_NO AS TOPIC_NO, MRIMS_TYPE, PRI_DISP, SEC_DISP, REVIEW_COMMENT, COORDX, COORDY, COORDZ, 
+              INSERT_DATE, ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, DUE_DATE, PRI_FILE, STATUS, ACK_COMMENT_NO
+       FROM SI_BCF_COMMENT
+       WHERE IS_TOPIC = 1 AND PRI_FILE IN (${placeholders})`,
       bindParams,
       {
         outFormat: OracleDB.OUT_FORMAT_OBJECT,
@@ -157,15 +191,15 @@ router.get("/api/bcf/sync", async (req: Request, res: Response): Promise<any> =>
       } as any
     );
 
-    // 2. Comment 조회 (REVIEW_COMMENT 및 SOLVE_COMMENT 컬럼)
+    // 2. Comment 조회 (IS_TOPIC = 0, REVIEW_COMMENT 및 SOLVE_COMMENT 컬럼)
     const commentResult = await connection.execute(
       `SELECT COMMENT_NO, TOPIC_NO, REVIEW_COMMENT, SOLVE_COMMENT, COORDX, COORDY, COORDZ, INSERT_DATE, 
               ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, RESOL_PREPARE_DATE
        FROM SI_BCF_COMMENT
-       WHERE TOPIC_NO IN (
-         SELECT TOPIC_NO 
-         FROM SI_BCF_TOPIC 
-         WHERE PRI_FILE IN (${placeholders})
+       WHERE IS_TOPIC = 0 AND TOPIC_NO IN (
+         SELECT COMMENT_NO 
+         FROM SI_BCF_COMMENT 
+         WHERE IS_TOPIC = 1 AND PRI_FILE IN (${placeholders})
        )`,
       bindParams,
       {
@@ -303,6 +337,7 @@ router.get("/api/bcf/sync", async (req: Request, res: Response): Promise<any> =>
           description,
           type: row.MRIMS_TYPE || row.mrims_type || "Info",
           priority: "Normal",
+          status: fromDbStatus(row.STATUS || row.status),
           creationAuthor: row.ISSUE_PREPARE_NAME || row.issue_prepare_name || "Admin",
           creationDate: row.ISSUE_PREPARE_DATE || row.issue_prepare_date || new Date().toISOString(),
           assignedTo: row.RESOL_PREPARE_NAME || row.resol_prepare_name || "",
@@ -514,7 +549,7 @@ router.delete("/api/bcf/:id", async (req: Request, res: Response): Promise<any> 
   }
 });
 
-// POST BCF Topics & Comments to TDVS (SI_BCF_TOPIC & SI_BCF_COMMENT)
+// POST BCF Topics & Comments to TDVS (SI_BCF_COMMENT)
 router.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promise<any> => {
   let connection: OracleDB.Connection | undefined;
   try {
@@ -526,15 +561,7 @@ router.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promis
 
     connection = await getMrimsConnection();
 
-    // 1. 최대 TOPIC_NO 및 COMMENT_NO의 초기값 조회
-    const maxTopicResult = await connection.execute<any>(
-      `SELECT NVL(MAX(TOPIC_NO), 0) AS MAX_NO FROM SI_BCF_TOPIC`,
-      [],
-      { outFormat: OracleDB.OUT_FORMAT_OBJECT }
-    );
-    const tRows = maxTopicResult.rows as any[];
-    let nextTopicNo = tRows && tRows.length > 0 ? (tRows[0].MAX_NO || tRows[0].max_no || 0) : 0;
-
+    // 1. 최대 COMMENT_NO의 초기값 조회 (Topic/Comment 모두 단일 PK 시퀀스 공유)
     const maxCommentResult = await connection.execute<any>(
       `SELECT NVL(MAX(COMMENT_NO), 0) AS MAX_NO FROM SI_BCF_COMMENT`,
       [],
@@ -549,9 +576,9 @@ router.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promis
       let topicNo = topic.mrimsNo ? Number(topic.mrimsNo) : null;
 
       if (topicNo && !isNaN(topicNo)) {
-        // 이미 등록된 토픽인지 조회
+        // 이미 등록된 토픽인지 조회 (IS_TOPIC = 1)
         const checkResult = await connection.execute<any>(
-          `SELECT COUNT(*) AS CNT FROM SI_BCF_TOPIC WHERE TOPIC_NO = :topic_no`,
+          `SELECT COUNT(*) AS CNT FROM SI_BCF_COMMENT WHERE COMMENT_NO = :topic_no AND IS_TOPIC = 1`,
           { topic_no: topicNo },
           { outFormat: OracleDB.OUT_FORMAT_OBJECT }
         );
@@ -563,8 +590,8 @@ router.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promis
 
       // 새 토픽일 경우 신규 번호 할당
       if (!isExisting) {
-        nextTopicNo++;
-        topicNo = nextTopicNo;
+        nextCommentNo++;
+        topicNo = nextCommentNo;
       }
 
       const reviewComment = `${topic.title};;${topic.description || ""}`;
@@ -575,6 +602,7 @@ router.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promis
       const insertDate = topic.creationDate ? new Date(topic.creationDate) : new Date();
       const issuePrepareDate = topic.creationDate ? new Date(topic.creationDate) : new Date();
       const dueDate = topic.dueDate ? new Date(topic.dueDate) : null;
+      const dbStatus = toDbStatus(topic.status);
 
       const labels = topic.labels || [];
       const priDisp = labels[0] || null;
@@ -583,7 +611,7 @@ router.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promis
       if (isExisting) {
         // 1. 기존 토픽일 경우 UPDATE 처리 (작성자와 최초작성일은 유지)
         const sqlUpdateTopic = `
-          UPDATE SI_BCF_TOPIC SET
+          UPDATE SI_BCF_COMMENT SET
             MRIMS_TYPE = :mrims_type,
             PRI_DISP = :pri_disp,
             SEC_DISP = :sec_disp,
@@ -593,8 +621,9 @@ router.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promis
             COORDZ = :coordz,
             RESOL_PREPARE_NAME = :resol_prepare_name,
             DUE_DATE = :due_date,
-            PRI_FILE = :pri_file
-          WHERE TOPIC_NO = :topic_no
+            PRI_FILE = :pri_file,
+            STATUS = :status
+          WHERE COMMENT_NO = :topic_no AND IS_TOPIC = 1
         `;
 
         const bindsUpdateTopic = {
@@ -608,31 +637,32 @@ router.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promis
           coordz: coordZ !== null ? { val: coordZ, type: OracleDB.DB_TYPE_NUMBER } : { val: null, type: OracleDB.DB_TYPE_NUMBER },
           resol_prepare_name: { val: topic.assignedTo || null, type: OracleDB.DB_TYPE_VARCHAR },
           due_date: dueDate !== null ? { val: dueDate, type: OracleDB.DB_TYPE_DATE } : { val: null, type: OracleDB.DB_TYPE_DATE },
-          pri_file: { val: topic.priFile || null, type: OracleDB.DB_TYPE_VARCHAR }
+          pri_file: { val: topic.priFile || null, type: OracleDB.DB_TYPE_VARCHAR },
+          status: { val: dbStatus, type: OracleDB.DB_TYPE_VARCHAR }
         };
 
         await connection.execute(sqlUpdateTopic, bindsUpdateTopic, { autoCommit: false });
 
         // 2. 기존 댓글이 있다면 삭제 후 재인서트하여 중복 방지 및 동기화 처리
         await connection.execute(
-          `DELETE FROM SI_BCF_COMMENT WHERE TOPIC_NO = :topic_no`,
+          `DELETE FROM SI_BCF_COMMENT WHERE TOPIC_NO = :topic_no AND IS_TOPIC = 0`,
           { topic_no: topicNo },
           { autoCommit: false }
         );
       } else {
-        // 3. 신규 토픽일 경우 INSERT 처리
+        // 3. 신규 토픽일 경우 INSERT 처리 (IS_TOPIC = 1, TOPIC_NO = NULL)
         const sqlInsertTopic = `
-          INSERT INTO SI_BCF_TOPIC (
-            TOPIC_NO, MRIMS_TYPE, PRI_DISP, SEC_DISP, REVIEW_COMMENT, COORDX, COORDY, COORDZ, 
-            INSERT_DATE, ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, DUE_DATE, PRI_FILE
+          INSERT INTO SI_BCF_COMMENT (
+            COMMENT_NO, TOPIC_NO, IS_TOPIC, MRIMS_TYPE, PRI_DISP, SEC_DISP, REVIEW_COMMENT, COORDX, COORDY, COORDZ, 
+            INSERT_DATE, ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, DUE_DATE, PRI_FILE, STATUS
           ) VALUES (
-            :topic_no, :mrims_type, :pri_disp, :sec_disp, :review_comment, :coordx, :coordy, :coordz,
-            :insert_date, :issue_prepare_name, :issue_prepare_date, :resol_prepare_name, :due_date, :pri_file
+            :comment_no, NULL, 1, :mrims_type, :pri_disp, :sec_disp, :review_comment, :coordx, :coordy, :coordz,
+            :insert_date, :issue_prepare_name, :issue_prepare_date, :resol_prepare_name, :due_date, :pri_file, :status
           )
         `;
 
         const bindsInsertTopic = {
-          topic_no: { val: topicNo, type: OracleDB.DB_TYPE_NUMBER },
+          comment_no: { val: topicNo, type: OracleDB.DB_TYPE_NUMBER },
           mrims_type: { val: topic.type || null, type: OracleDB.DB_TYPE_VARCHAR },
           pri_disp: { val: priDisp, type: OracleDB.DB_TYPE_VARCHAR },
           sec_disp: { val: secDisp, type: OracleDB.DB_TYPE_VARCHAR },
@@ -645,13 +675,14 @@ router.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promis
           issue_prepare_date: { val: issuePrepareDate, type: OracleDB.DB_TYPE_DATE },
           resol_prepare_name: { val: topic.assignedTo || null, type: OracleDB.DB_TYPE_VARCHAR },
           due_date: dueDate !== null ? { val: dueDate, type: OracleDB.DB_TYPE_DATE } : { val: null, type: OracleDB.DB_TYPE_DATE },
-          pri_file: { val: topic.priFile || null, type: OracleDB.DB_TYPE_VARCHAR }
+          pri_file: { val: topic.priFile || null, type: OracleDB.DB_TYPE_VARCHAR },
+          status: { val: dbStatus, type: OracleDB.DB_TYPE_VARCHAR }
         };
 
         await connection.execute(sqlInsertTopic, bindsInsertTopic, { autoCommit: false });
       }
 
-      // 댓글들이 있는 경우 (새로 작성되었거나 기존의 최신화된 댓글들을 결합하여 일괄 인서트)
+      // 댓글들이 있는 경우 (새로 작성되었거나 기존의 최신화된 댓글들을 결합하여 일괄 인서트, IS_TOPIC = 0)
       if (topic.comments && Array.isArray(topic.comments) && topic.comments.length > 0) {
         for (const comment of topic.comments) {
           nextCommentNo++;
@@ -663,10 +694,10 @@ router.post("/api/bcf/send-to-tdvs", async (req: Request, res: Response): Promis
 
           const sqlComment = `
             INSERT INTO SI_BCF_COMMENT (
-              COMMENT_NO, TOPIC_NO, REVIEW_COMMENT, SOLVE_COMMENT, COORDX, COORDY, COORDZ, PRI_FILE,
+              COMMENT_NO, TOPIC_NO, IS_TOPIC, REVIEW_COMMENT, SOLVE_COMMENT, COORDX, COORDY, COORDZ, PRI_FILE,
               ISSUE_PREPARE_NAME, ISSUE_PREPARE_DATE, RESOL_PREPARE_NAME, RESOL_PREPARE_DATE
             ) VALUES (
-              :comment_no, :topic_no, :review_comment, :solve_comment, :coordx, :coordy, :coordz, :pri_file,
+              :comment_no, :topic_no, 0, :review_comment, :solve_comment, :coordx, :coordy, :coordz, :pri_file,
               :issue_prepare_name, :issue_prepare_date, :resol_prepare_name, :resol_prepare_date
             )
           `;
@@ -730,7 +761,7 @@ router.post("/api/bcf/acknowledge-sync", async (req: Request, res: Response): Pr
 
     connection = await getMrimsConnection();
     await connection.execute(
-      `UPDATE SI_BCF_TOPIC SET ACK_COMMENT_NO = :ack_comment_no WHERE TOPIC_NO = :topic_no`,
+      `UPDATE SI_BCF_COMMENT SET ACK_COMMENT_NO = :ack_comment_no WHERE COMMENT_NO = :topic_no AND IS_TOPIC = 1`,
       {
         ack_comment_no: Number(ackCommentNo || 0),
         topic_no: Number(mrimsNo)

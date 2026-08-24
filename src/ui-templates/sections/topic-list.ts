@@ -20,7 +20,7 @@ export const topicListTemplate: BUI.StatefullComponent<
   const bcfTopics = components.get(BCFTopics);
   const [topicListTable, updateTopicListTable] = topicsList({ components });
   setupBIMTable(topicListTable);
-  
+
   let panelSection: BUI.PanelSection;
   const updateTopicCount = () => {
     if (!panelSection) return;
@@ -46,7 +46,7 @@ export const topicListTemplate: BUI.StatefullComponent<
     if (listContainer) listContainer.style.display = view === "list" ? "flex" : "none";
     if (newContainer) newContainer.style.display = view === "new" ? "flex" : "none";
     if (updateContainer) updateContainer.style.display = view === "update" ? "flex" : "none";
-    
+
     if (panelSection) {
       if (view === "new") panelSection.label = "New Topic";
       else if (view === "update") panelSection.label = "Update Topic";
@@ -67,7 +67,7 @@ export const topicListTemplate: BUI.StatefullComponent<
 
   // --- Pagination UI Refs ---
   const paginationRefs: PaginationRefs = {};
-  
+
   let syncTdvsBtn: BUI.Button | undefined;
 
   let isMarkersVisible = false;
@@ -241,12 +241,12 @@ export const topicListTemplate: BUI.StatefullComponent<
           currentCapturedSnapshot = base64Snapshot;
           updateForm();
         },
-         onSubmit: async (newTopic: EngineTopic) => {
+        onSubmit: async (newTopic: EngineTopic) => {
           newTopic.creationAuthor = appState.currentUser || "System";
           if (currentCapturedViewpoint) {
             newTopic.viewpoints.add(currentCapturedViewpoint.guid);
             if (currentCapturedSnapshot) {
-              (newTopic as any).snapshot = currentCapturedSnapshot;    
+              (newTopic as any).snapshot = currentCapturedSnapshot;
               const viewpoints = components.get(OBC.Viewpoints);
               const base64Data = currentCapturedSnapshot.replace(/^data:image\/\w+;base64,/, "");
               const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
@@ -262,15 +262,15 @@ export const topicListTemplate: BUI.StatefullComponent<
           alert("변경사항을 공유하려면 Save BCF 버튼을 눌러 데이터베이스에 저장하십시오.");
 
           if (bcfTopics.list.size > topicCountBeforeNew) {
-            setTimeout(() => {          
+            setTimeout(() => {
               refreshTopicsCache(); // 캐시 즉시 동기화
-              
+
               const newTopicIndex = currentTopicsCache.findIndex(t => t.guid === newTopic.guid);
               if (newTopicIndex !== -1) {
                 currentPage = Math.floor(newTopicIndex / pageSize);
                 updatePage();
               }
-              
+
               const targetGroup = topicListTable.value.find((row: any) => row.data && row.data.Guid === newTopic.guid);
               if (targetGroup) {
                 topicListTable.selection.clear();
@@ -327,12 +327,12 @@ export const topicListTemplate: BUI.StatefullComponent<
       return;
     }
 
-    const confirmSend = confirm(`${list.length}개의 토픽을 TDVS(SI_BCF_TOPIC)로 전송하시겠습니까?`);
+    const confirmSend = confirm(`${list.length}개의 토픽을 TDVS로 전송하시겠습니까?`);
     if (!confirmSend) return;
 
     const viewpoints = components.get(OBC.Viewpoints);
     const fragments = components.get(OBC.FragmentsManager);
-    
+
     // BCF와 연동된 첫 번째 IFC 모델명 추출
     let ifcFileName = "";
     if (fragments.list.size > 0) {
@@ -364,7 +364,7 @@ export const topicListTemplate: BUI.StatefullComponent<
 
       // Comments 및 Comment viewpoint 카메라 좌표 (comments-ui.ts의 페이지 그룹화 방식과 일치시킴)
       const commentsArray = Array.from(topic.comments.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
-      
+
       const groups: { viewpointGuid: string | null; comments: any[] }[] = [];
       const vpMap = new Map<string, any[]>();
       for (const comment of commentsArray) {
@@ -410,7 +410,7 @@ export const topicListTemplate: BUI.StatefullComponent<
             reviewComment: null,
             author: null,
             date: null,
-            
+
             solveComment: null,
             modifiedAuthor: null,
             modifiedDate: null,
@@ -437,7 +437,7 @@ export const topicListTemplate: BUI.StatefullComponent<
             reviewComment: integratedCommentsText,
             author: null,
             date: oldestDate,
-            
+
             solveComment: null,
             modifiedAuthor: null,
             modifiedDate: null,
@@ -505,7 +505,7 @@ export const topicListTemplate: BUI.StatefullComponent<
   const checkTdvsSyncState = async () => {
     if (isCheckingSync) return;
     if (!syncTdvsBtn) return;
-    
+
     const fragments = components.get(OBC.FragmentsManager);
     const loadedModelNames = Array.from(fragments.list.values())
       .map(m => (m as any).name)
@@ -749,10 +749,10 @@ export const topicListTemplate: BUI.StatefullComponent<
   const onExcludeSearch = () => {
     if (!searchQuery) return;
     if (currentTopicsCache.length === 0) return;
-    
+
     const toDelete = new Set(currentTopicsCache.map(t => ({ Guid: t.guid })));
     bcfTopics.delete(toDelete);
-    
+
     topicListTable.selection.clear();
     onClearSearch();
   };
@@ -764,9 +764,9 @@ export const topicListTemplate: BUI.StatefullComponent<
     const keepGuids = new Set(currentTopicsCache.map(t => t.guid));
     const allGuids = Array.from(bcfTopics.list.keys());
     const toDelete = new Set(allGuids.filter(g => !keepGuids.has(g)).map(g => ({ Guid: g })));
-    
+
     if (toDelete.size > 0) bcfTopics.delete(toDelete);
-    
+
     topicListTable.selection.clear();
     onClearSearch();
   };

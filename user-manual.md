@@ -264,7 +264,7 @@
 * **업데이트 적용**: 수정 완료 후 `Update Topic` 버튼을 클릭하여 토픽 목록에 반영하며, 최종적으로 `Save BCF` 버튼을 실행해 Oracle DB에 저장함.
 
 ### 5.8. TDVS 에 토픽 보내기, 동기화시키기 기능 설명
-* **TDVS 데이터 연계 환경**: 플랫폼은 외부 사업 및 마일스톤 관리를 수행하는 TDVS 데이터베이스 테이블(`SI_BCF_TOPIC`, `SI_BCF_COMMENT`)과 전용 API를 통해 상호 연결됨.
+* **TDVS 데이터 연계 환경**: 플랫폼은 외부 사업 및 마일스톤 관리를 수행하는 TDVS 데이터베이스 테이블(`SI_BCF_COMMENT`)과 전용 API를 통해 상호 연결됨.
 * **Send to TDVS (토픽 외부 전송)**
   * 현재 로드된 BCF 토픽들과 하위 댓글 내역 전체를 취합하여 TDVS 서버 API(`/api/bcf/send-to-tdvs`)로 전송함.
   * 전송 시 3D 카메라 좌표 정보를 TDVS 공간 체체에 적합하도록 Z-up 좌표계(`X=x, Y=-z, Z=y`)로 자동 매핑 변환함.
@@ -704,30 +704,26 @@
     * `x_coord` / `y_coord` / `z_coord` (NUMBER): 3D 공간 상 간섭 검출 지점의 X, Y, Z 절대 좌표.
 
 * **외부 TDVS 연동 관련 테이블 (mrims 스키마)**
-  * **SI_BCF_TOPIC (TDVS BCF 토픽 테이블)**
-    * `TOPIC_NO` (NUMBER(10), IDENTITY PRIMARY KEY): 모델검토사항 고유 번호 (자동 증분).
+  * **SI_BCF_COMMENT (TDVS BCF 토픽 및 코멘트 통합 테이블)**
+    * `COMMENT_NO` (NUMBER(10), IDENTITY PRIMARY KEY): 토픽/코멘트 고유 식별 번호 (자동 증분).
+    * `TOPIC_NO` (NUMBER(10), FK -> SI_BCF_COMMENT.COMMENT_NO): 부모 토픽 일련번호 (토픽 레코드일 경우 NULL, 코멘트 레코드일 경우 부모 토픽 ID, 삭제 시 CASCADE).
+    * `IS_TOPIC` (NUMBER(1), NOT NULL, 기본값 0): 토픽 여부 구분 플래그 (`1`: 토픽, `0`: 하위 코멘트).
     * `MRIMS_TYPE` (VARCHAR2(50)): 모델검토사항 타입.
     * `PRI_DISP` (VARCHAR2(100)): 주관분야 명칭.
     * `SEC_DISP` (VARCHAR2(100)): 협조분야 명칭.
     * `PRI_FILE` (VARCHAR2(100)): 주관분야 IFC 모델 파일명 (연계 검색의 주 키값으로 활용).
     * `SEC_FILE` (VARCHAR2(100)): 협조분야 IFC 모델 파일명.
-    * `REVIEW_COMMENT` (CLOB): 검토 의견 본문 (구분자 `;;`를 이용하여 `Title;;Description` 형식으로 병합 보관).
+    * `REVIEW_COMMENT` (CLOB): 검토 의견 본문 (토픽의 경우 구분자 `;;`를 이용하여 `Title;;Description` 형식으로 병합 보관, 코멘트의 경우 검토 의견 본문).
     * `SOLVE_COMMENT` (CLOB): 조치 및 해결방안 의견 텍스트.
-    * `COORDX` / `COORDY` / `COORDZ` (NUMBER(20, 6)): Z-up 좌표계 기준의 간섭 지점 X, Y, Z 물리 좌표.
-    * `INSERT_DATE` (DATE): 검토항목 생성일자 (기본값 SYSDATE).
-    * `ISSUE_PREPARE_NAME` (VARCHAR2(100)): 이슈 발행 담당자명.
+    * `COORDX` / `COORDY` / `COORDZ` (NUMBER(20, 6)): Z-up 좌표계 기준의 간섭 지점 또는 카메라 X, Y, Z 물리 좌표.
+    * `INSERT_DATE` (DATE): 항목 생성일자 (기본값 SYSDATE).
+    * `ISSUE_PREPARE_NAME` (VARCHAR2(100)): 이슈 발행 및 의견 등록 담당자명.
     * `ISSUE_PREPARE_DATE` (DATE): 이슈 발행 일자.
     * `RESOL_PREPARE_NAME` (VARCHAR2(100)): 해결방안 제출 및 조치 담당자명.
     * `RESOL_PREPARE_DATE` (DATE): 해결방안 제출 일자.
     * `DUE_DATE` (DATE): 검토 완료 요구 기한.
+    * `STATUS` (VARCHAR2(20), 기본값 'Active'): 토픽 상태 (`Active`, `In Progress`, `Done`, `In Review`, `Closed`).
     * `ACK_COMMENT_NO` (NUMBER(10), NOT NULL, 기본값 0): 최종 동기화(Acknowledge) 처리된 완료 시점의 코멘트 번호.
-  * **SI_BCF_COMMENT (TDVS BCF 코멘트 테이블)**
-    * `COMMENT_NO` (NUMBER(10), IDENTITY PRIMARY KEY): 코멘트 ID (자동 증분).
-    * `TOPIC_NO` (NUMBER(10), NOT NULL, FK -> SI_BCF_TOPIC.TOPIC_NO): 부모 토픽 일련번호 (삭제 시 CASCADE).
-    * `REVIEW_COMMENT` / `SOLVE_COMMENT` (CLOB): 검토 및 해결 의견 코멘트 본문.
-    * `COORDX` / `COORDY` / `COORDZ` (NUMBER(20, 6)): 코멘트 작성 시점의 Z-up 기준 3D 카메라/간섭 X, Y, Z 좌표.
-    * `INSERT_DATE` (DATE): 코멘트 등록일자.
-    * `ISSUE_PREPARE_NAME` / `RESOL_PREPARE_NAME` (VARCHAR2(100)): 의견 등록자 이름.
 
 ### 13.2. 백엔드 주요 API 라우팅 명세 (Node.js Express)
 * **프로젝트 및 권한 관리 관련 API**
@@ -744,7 +740,7 @@
   * `DELETE /api/ifc/:id`: 특정 ID의 IFC 모델을 DB에서 영구 삭제함.
   * `GET /api/frags/name?projectId=:projectId` / `GET /api/frag/:id` / `POST /api/frag` / `DELETE /api/frag/:id`: Frag 데이터 목록 조회, 다운로드/로드, 신규 등록 및 삭제를 수행함.
 * **TDVS BCF 연동 및 동기화 API**
-  * `GET /api/bcf/sync?priFiles=:commaSeparatedFileNames`: 로드된 IFC 파일명 목록을 기반으로 TDVS `SI_BCF_TOPIC` 및 `SI_BCF_COMMENT` 테이블을 검색해 연계된 최신 BCF 토픽 및 하위 댓글 데이터를 동기화하여 가져옴.
+  * `GET /api/bcf/sync?priFiles=:commaSeparatedFileNames`: 로드된 IFC 파일명 목록을 기반으로 TDVS `SI_BCF_COMMENT` 테이블을 검색해 연계된 최신 BCF 토픽(`IS_TOPIC = 1`) 및 하위 댓글 데이터(`IS_TOPIC = 0`)를 동기화하여 가져옴.
   * `GET /api/bcf/comments?mrimsNo=:mrimsNo`: 특정 TDVS 토픽 번호(`mrimsNo`) 하위에 등록된 모든 외부 코멘트 이력을 시간순으로 정밀 조회함.
 * **간섭 데이터 보존 API**
   * `GET /api/clash-manager`: 데이터베이스에 기록된 모든 간섭 상태 뱃지 목록을 일괄 조회함.
