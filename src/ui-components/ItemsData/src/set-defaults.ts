@@ -1,79 +1,187 @@
 import * as BUI from "@thatopen/ui";
-import * as OBC from "@thatopen/components"
+import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import { ItemsDataState, ItemsDataTableData } from "./types";
 
-const modelUnits = new Map<string, FRAGS.ItemData[]>()
+const modelUnitsCache = new Map<string, FRAGS.ItemData[]>();
+const boundDeletedModels = new Set<string>();
 
-const unitSymbols: Record<string, string> = {
-  "METRE": "m",
-  "SQUARE_METRE": "m²",
-  "CUBIC_METRE": "m³",
-}
+const extractValue = (attr: any): any => {
+  if (attr === null || attr === undefined) return null;
+  if (Array.isArray(attr)) return attr.length > 0 ? extractValue(attr[0]) : null;
+  if (typeof attr === "object" && "value" in attr) return attr.value;
+  return attr;
+};
+
+const mapDataTypeToUnitType = (dataType: string | number): string | null => {
+  if (typeof dataType !== "string") return null;
+  const upper = dataType.toUpperCase();
+
+  if (upper.includes("LENGTH")) return "LENGTHUNIT";
+  if (upper.includes("AREA")) return "AREAUNIT";
+  if (upper.includes("VOLUME")) return "VOLUMEUNIT";
+  if (upper.includes("MASS") || upper.includes("WEIGHT")) return "MASSUNIT";
+  if (upper.includes("TIME")) return "TIMEUNIT";
+  if (upper.includes("PLANEANGLE")) return "PLANEANGLEUNIT";
+  if (upper.includes("PRESSURE")) return "PRESSUREUNIT";
+  if (upper.includes("THERMALTRANSMITTANCE")) return "THERMALTRANSMITTANCEUNIT";
+  if (upper.includes("TEMPERATURE")) return "THERMODYTEMPERATUREUNIT";
+  if (upper.includes("POWER")) return "POWERUNIT";
+
+  return null;
+};
+
+const prefixSymbols: Record<string, string> = {
+  MILLI: "m",
+  CENTI: "c",
+  DECI: "d",
+  KILO: "k",
+  MEGA: "M",
+  GIGA: "G",
+  MICRO: "µ",
+  NANO: "n",
+};
+
+const baseUnitSymbols: Record<string, string> = {
+  METRE: "m",
+  METER: "m",
+  SQUARE_METRE: "m²",
+  SQUARE_METER: "m²",
+  CUBIC_METRE: "m³",
+  CUBIC_METER: "m³",
+  GRAM: "g",
+  SECOND: "s",
+  RADIAN: "rad",
+  DEGREE: "°",
+  DEGREE_CELSIUS: "°C",
+  CELSIUS: "°C",
+  PASCAL: "Pa",
+  WATT: "W",
+  JOULE: "J",
+  NEWTON: "N",
+  INCH: "in",
+  FOOT: "ft",
+  FEET: "ft",
+};
+
+const fallbackUnitSymbols: Record<string, string> = {
+  LENGTHUNIT: "mm",
+  AREAUNIT: "m²",
+  VOLUMEUNIT: "m³",
+  MASSUNIT: "kg",
+  TIMEUNIT: "s",
+  PLANEANGLEUNIT: "°",
+};
+
+const getUnitSymbol = (unit: any, targetUnitType?: string | null): string => {
+  if (!unit) {
+    return (targetUnitType && fallbackUnitSymbols[targetUnitType]) || "";
+  }
+
+  const name = String(extractValue(unit.Name) || "").toUpperCase();
+  const prefix = String(extractValue(unit.Prefix) || "").toUpperCase();
+  const unitType = String(extractValue(unit.UnitType) || "").toUpperCase();
+
+  const pSym = prefixSymbols[prefix] || (prefix ? prefix.toLowerCase() : "");
+  const baseSym = baseUnitSymbols[name];
+
+  if (baseSym) {
+    if (pSym) {
+      if (baseSym === "m²") return `${pSym}m²`;
+      if (baseSym === "m³") return `${pSym}m³`;
+      return `${pSym}${baseSym}`;
+    }
+    return baseSym;
+  }
+
+  if (name) return name;
+  return fallbackUnitSymbols[unitType] || (targetUnitType && fallbackUnitSymbols[targetUnitType]) || "";
+};
 
 const getModelUnits = async (components: OBC.Components, modelId: string) => {
-  const fragments = components.get(OBC.FragmentsManager)
-  const model = fragments.list.get(modelId)
-  if (!model) {
-    throw new Error(`ItemsDataUI: model ${modelId} not found.`)
-  }
+  const fragments = components.get(OBC.FragmentsManager);
+  const model = fragments.list.get(modelId);
+  if (!model) return [];
 
-  let units = modelUnits.get(model.modelId)
+  const cacheKey = model.modelId || modelId;
+  let units = modelUnitsCache.get(cacheKey);
   if (!units) {
-    // IfcUnitAssignment is the entity that holds all the global model units
-    const [unitAssignment] = Object.values((await model.getItemsOfCategories([/UNITASSIGNMENT/]))).flat()
-    const [unitAssignmentsData] = await model.getItemsData([unitAssignment], {
-      // Units is the relation from the IfcUnitAssignment that holds the list of units in the project
-      relations: { Units: { relations: false, attributes: true } }
-    })
-  
-    if (!Array.isArray(unitAssignmentsData.Units)) return []
-    units = unitAssignmentsData.Units // This is the list of IfcSIUnits in the file
+    try {
+      const categories = await model.getItemsOfCategories([/UNITASSIGNMENT/]);
+      const [unitAssignment] = Object.values(categories).flat();
+      if (unitAssignment !== undefined) {
+        const [unitAssignmentsData] = await model.getItemsData([unitAssignment], {
+          relations: { Units: { relations: false, attributes: true } },
+        });
+        if (unitAssignmentsData && Array.isArray(unitAssignmentsData.Units)) {
+          units = unitAssignmentsData.Units;
+          modelUnitsCache.set(cacheKey, units);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch model units:", e);
+    }
   }
 
-  return units
-}
-
+  return units || [];
+};
 
 export const setDefaults = (
   state: ItemsDataState,
   table: BUI.Table<ItemsDataTableData>,
 ) => {
-  const { components } = state
+  const { components } = state;
+  const fragments = components.get(OBC.FragmentsManager);
+
+  // 메모리 누수 방지: 1회만 안전하게 등록
+  const fragmentsKey = "GLOBAL_SET_DEFAULTS_LISTENER";
+  if (!boundDeletedModels.has(fragmentsKey)) {
+    boundDeletedModels.add(fragmentsKey);
+    fragments.list.onItemDeleted.add((modelId) => {
+      modelUnitsCache.delete(modelId);
+    });
+  }
+
   table.columns = [{ name: "Name", width: "12rem" }, { name: "Value", width: "auto" }];
-  table.hiddenColumns = ["modelId", "localId", "type", "dataType"]
+  table.hiddenColumns = ["modelId", "localId", "type", "dataType"];
   table.headersHidden = true;
   table.dataTransform = {
     Value: (value, rowData) => {
-      const { dataType, modelId } = rowData
-      if (!dataType) return value
-      
+      const { dataType, modelId } = rowData;
+      if (!dataType) return value;
+
       const onCreated = async (e?: Element) => {
-        if (!(e && modelId)) return
-        const units = await getModelUnits(components, modelId)
-        const valueUnit = dataType.replace("IFC", "").replace("MEASURE", "UNIT")
-        const modelUnit = units.find(unit => {
-        if (!(unit.UnitType && "value" in unit.UnitType)) return false
-          return unit.UnitType.value === valueUnit
-        })
-  
-        if (!modelUnit) {
-          e.textContent = String(value)
-          return
-        }
-        if (!(modelUnit.Name && "value" in modelUnit.Name)) {
-          e.textContent = String(value)
-          return
+        if (!(e && modelId)) return;
+        const targetUnitType = mapDataTypeToUnitType(dataType);
+        if (!targetUnitType) return;
+
+        const units = await getModelUnits(components, modelId);
+        const modelUnit = units.find((unit) => {
+          const uType = String(extractValue(unit.UnitType) || "").toUpperCase();
+          return uType === targetUnitType;
+        });
+
+        const symbol = getUnitSymbol(modelUnit, targetUnitType);
+        if (!symbol) return;
+
+        const numVal = Number(value);
+        let formattedValStr: string;
+        if (!isNaN(numVal) && typeof value !== "boolean") {
+          formattedValStr = numVal.toLocaleString(undefined, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          });
+        } else {
+          formattedValStr = String(value);
         }
 
-        const formattedValue = `${(value as number).toFixed(2)} ${unitSymbols[modelUnit.Name.value] ?? modelUnit.Name.value}`
-        
-        e.textContent = formattedValue
-        e.setAttribute("title", formattedValue)
-      }
+        const formattedValue = `${formattedValStr} ${symbol}`.trim();
+        e.textContent = formattedValue;
+        e.setAttribute("title", formattedValue);
+      };
 
       const text = value !== null && value !== undefined ? String(value) : "";
-      return BUI.html`<bim-label style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; width: 100%;" title=${text} ${BUI.ref(onCreated)}>${text}</bim-label>`
-    }
-  }
+      return BUI.html`<bim-label style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; width: 100%;" title=${text} ${BUI.ref(onCreated)}>${text}</bim-label>`;
+    },
+  };
 };
