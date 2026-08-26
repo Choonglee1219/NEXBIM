@@ -698,6 +698,17 @@ export class Highlighter
     for (const box of bboxes) {
       bbox.union(box);
     }
+
+    try {
+      const relService = this.components.get(RelationParsingService);
+      if (relService) {
+        const customBox = await relService.getBoundingBox(items);
+        if (customBox && !customBox.isEmpty()) {
+          bbox.union(customBox);
+        }
+      }
+    } catch (e) {}
+
     bbox.getBoundingSphere(sphere);
 
     const i = Infinity;

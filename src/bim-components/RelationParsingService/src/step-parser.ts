@@ -1,5 +1,9 @@
 import { IfcOpeningElementData, IfcSpatialZoneData, ModelRelationData } from "./types";
 
+/**
+ * STEP 파라미터 문자열을 안전하고 신속하게 분할 파싱합니다.
+ * 작은따옴표 문자열 이스케이프('') 및 중첩 괄호를 완벽하게 지원합니다.
+ */
 export const parseStepArgs = (argsStr: string): string[] => {
   const args: string[] = [];
   let current = "";
@@ -10,10 +14,9 @@ export const parseStepArgs = (argsStr: string): string[] => {
     const char = argsStr[i];
 
     if (char === "'") {
-      // STEP 규격: '' 는 문자열 내부의 작은따옴표 이스케이프
       if (inString && i + 1 < argsStr.length && argsStr[i + 1] === "'") {
         current += "''";
-        i++; // 다음 작은따옴표 건너뛰기
+        i++;
         continue;
       }
       inString = !inString;
@@ -51,18 +54,14 @@ export const cleanStepArg = (val: string): string => {
   return val;
 };
 
-const extractExpressId = (ref: string): number | null => {
+const extractExpressId = (ref: string | undefined): number | null => {
   if (!ref) return null;
   const cleaned = ref.trim();
-  if (cleaned.startsWith("#")) {
-    const num = parseInt(cleaned.substring(1), 10);
-    return isNaN(num) ? null : num;
-  }
-  const num = parseInt(cleaned, 10);
+  const num = parseInt(cleaned.startsWith("#") ? cleaned.substring(1) : cleaned, 10);
   return isNaN(num) ? null : num;
 };
 
-const extractExpressIdList = (listStr: string): number[] => {
+const extractExpressIdList = (listStr: string | undefined): number[] => {
   if (!listStr) return [];
   const ids: number[] = [];
   const matches = listStr.matchAll(/#?(\d+)/g);
@@ -75,6 +74,21 @@ const extractExpressIdList = (listStr: string): number[] => {
   return ids;
 };
 
+// 헬퍼: 1:N Map 관계 추가 (중복 방지)
+const appendToMapList = <K, V>(map: Map<K, V[]>, key: K, value: V) => {
+  let list = map.get(key);
+  if (!list) {
+    list = [];
+    map.set(key, list);
+  }
+  if (!list.includes(value)) {
+    list.push(value);
+  }
+};
+
+/**
+ * IFC STEP 텍스트를 단일 패스로 고속 분석하여 비계층 관계망(Openings, Voids, Fills, SpatialZones)을 추출합니다.
+ */
 export const parseIfcStepRelations = (ifcText: string, modelKey: string): ModelRelationData => {
   const relationData: ModelRelationData = {
     modelKey,
@@ -88,19 +102,17 @@ export const parseIfcStepRelations = (ifcText: string, modelKey: string): ModelR
     zoneToElements: new Map<number, number[]>(),
   };
 
-  // High-performance single-pass unified statement parser
   const statementRegex = /#(\d+)\s*=\s*(IFCOPENINGELEMENT|IFCOPENINGSTANDARDCASE|IFCSPATIALZONE|IFCRELVOIDSELEMENT|IFCRELFILLSELEMENT|IFCRELREFERENCEDINSPATIALSTRUCTURE)\s*\(([\s\S]*?)\);/gi;
   let match: RegExpExecArray | null;
 
   while ((match = statementRegex.exec(ifcText)) !== null) {
     const id = parseInt(match[1], 10);
     const entityType = match[2].toUpperCase();
-    const argsStr = match[3];
+    const args = parseStepArgs(match[3]);
 
     switch (entityType) {
       case "IFCOPENINGELEMENT":
       case "IFCOPENINGSTANDARDCASE": {
-        const args = parseStepArgs(argsStr);
         const existing = relationData.openings.get(id);
         relationData.openings.set(id, {
           expressId: id,
@@ -116,7 +128,6 @@ export const parseIfcStepRelations = (ifcText: string, modelKey: string): ModelR
       }
 
       case "IFCSPATIALZONE": {
-        const args = parseStepArgs(argsStr);
         const existing = relationData.spatialZones.get(id);
         relationData.spatialZones.set(id, {
           expressId: id,
@@ -132,12 +143,11 @@ export const parseIfcStepRelations = (ifcText: string, modelKey: string): ModelR
       }
 
       case "IFCRELVOIDSELEMENT": {
-        const args = parseStepArgs(argsStr);
         let parentId = extractExpressId(args[4]);
         let openingId = extractExpressId(args[5]);
 
         if (parentId === null || openingId === null) {
-          const ids = args.map(extractExpressId).filter((num): num is number => num !== null);
+          const ids = args.map(extractExpressId).filter((n): n is number => n !== null);
           if (ids.length >= 2) {
             parentId = ids[ids.length - 2];
             openingId = ids[ids.length - 1];
@@ -145,15 +155,7 @@ export const parseIfcStepRelations = (ifcText: string, modelKey: string): ModelR
         }
 
         if (parentId !== null && openingId !== null) {
-          let openingsList = relationData.elementToOpenings.get(parentId);
-          if (!openingsList) {
-            openingsList = [];
-            relationData.elementToOpenings.set(parentId, openingsList);
-          }
-          if (!openingsList.includes(openingId)) {
-            openingsList.push(openingId);
-          }
-
+          appendToMapList(relationData.elementToOpenings, parentId, openingId);
           relationData.openingToParent.set(openingId, parentId);
 
           const opData = relationData.openings.get(openingId);
@@ -171,12 +173,11 @@ export const parseIfcStepRelations = (ifcText: string, modelKey: string): ModelR
       }
 
       case "IFCRELFILLSELEMENT": {
-        const args = parseStepArgs(argsStr);
         let openingId = extractExpressId(args[4]);
         let fillingId = extractExpressId(args[5]);
 
         if (openingId === null || fillingId === null) {
-          const ids = args.map(extractExpressId).filter((num): num is number => num !== null);
+          const ids = args.map(extractExpressId).filter((n): n is number => n !== null);
           if (ids.length >= 2) {
             openingId = ids[ids.length - 2];
             fillingId = ids[ids.length - 1];
@@ -184,15 +185,7 @@ export const parseIfcStepRelations = (ifcText: string, modelKey: string): ModelR
         }
 
         if (openingId !== null && fillingId !== null) {
-          let fillingsList = relationData.openingToFillings.get(openingId);
-          if (!fillingsList) {
-            fillingsList = [];
-            relationData.openingToFillings.set(openingId, fillingsList);
-          }
-          if (!fillingsList.includes(fillingId)) {
-            fillingsList.push(fillingId);
-          }
-
+          appendToMapList(relationData.openingToFillings, openingId, fillingId);
           relationData.fillingToOpening.set(fillingId, openingId);
 
           const opData = relationData.openings.get(openingId);
@@ -212,32 +205,13 @@ export const parseIfcStepRelations = (ifcText: string, modelKey: string): ModelR
       }
 
       case "IFCRELREFERENCEDINSPATIALSTRUCTURE": {
-        const args = parseStepArgs(argsStr);
-        const relatedElementsArg = args[4];
-        const relatingStructureArg = args[5];
-
-        const relatingStructureId = extractExpressId(relatingStructureArg);
+        const relatingStructureId = extractExpressId(args[5]);
         if (relatingStructureId !== null) {
-          const elementIds = extractExpressIdList(relatedElementsArg);
-          let zoneElements = relationData.zoneToElements.get(relatingStructureId);
-          if (!zoneElements) {
-            zoneElements = [];
-            relationData.zoneToElements.set(relatingStructureId, zoneElements);
-          }
+          const elementIds = extractExpressIdList(args[4]);
 
           for (const elId of elementIds) {
-            if (!zoneElements.includes(elId)) {
-              zoneElements.push(elId);
-            }
-
-            let elZones = relationData.elementToZones.get(elId);
-            if (!elZones) {
-              elZones = [];
-              relationData.elementToZones.set(elId, elZones);
-            }
-            if (!elZones.includes(relatingStructureId)) {
-              elZones.push(relatingStructureId);
-            }
+            appendToMapList(relationData.zoneToElements, relatingStructureId, elId);
+            appendToMapList(relationData.elementToZones, elId, relatingStructureId);
           }
 
           const zoneData = relationData.spatialZones.get(relatingStructureId);

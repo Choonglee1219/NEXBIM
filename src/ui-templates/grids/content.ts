@@ -105,6 +105,11 @@ type GISSettings = {
   state: TEMPLATES.GISSettingsPanelState;
 };
 
+type Openings = {
+  name: "openings";
+  state: TEMPLATES.OpeningsPanelState;
+};
+
 export type ContentGridElements = [
   Viewer,
   IFCList,
@@ -124,11 +129,12 @@ export type ContentGridElements = [
   Timeline,
   PhaseManager,
   GISSettings,
+  Openings,
   DrawingEditor,
   Diagram,
 ];
 
-export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "RuleCheck", "FullScreen", "Quantities", "Timeline", "GISMap", "DrawingEditor", "Diagram"];
+export type ContentGridLayouts = ["Viewer", "BCFManager", "ClashDetection", "Queries", "Properties", "ViewPoints", "RuleCheck", "FullScreen", "Quantities", "Opening", "Timeline", "GISMap", "DrawingEditor", "Diagram"];
 
 
 export interface ContentGridState {
@@ -225,6 +231,10 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         template: TEMPLATES.gisSettingsPanelTemplate,
         initialState: { components },
       },
+      openings: {
+        template: TEMPLATES.openingsPanelTemplate,
+        initialState: { components },
+      },
       diagram: () => BUI.html`
         <bim-panel label="Diagram View" icon=${appIcons.DRAWING} style="height: 100%;">
           <div ${BUI.ref((e) => {
@@ -288,6 +298,13 @@ export const contentGridTemplate: BUI.StatefullComponent<ContentGridState> = (
         template: `
         "viewer quantities quantities" var(--top-row-height, 1fr)
         "elementData quantities quantities" 1fr
+        / var(--left-col-width) 1fr var(--right-col-width)
+        `,
+      },
+      Opening: {
+        template: `
+        "viewer openings openings" var(--top-row-height, 1fr)
+        "elementData openings openings" 1fr
         / var(--left-col-width) 1fr var(--right-col-width)
         `,
       },

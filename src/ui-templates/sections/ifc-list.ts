@@ -313,10 +313,18 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       const gisMap = components.get(GISMapComponent);
       gisMap.detectGeorefFromBuffer(bytes);
 
-      // 파일 로드 시 원본 버퍼를 ClashService에 캐싱 (정밀 간섭 검토용)
+      // 파일 로드 시 원본 버퍼를 ClashService 및 RelationParsingService에 캐싱
       if (modelId) {
         const clashService = components.get(ClashService);
         clashService.addIfcBuffer(modelId, bytes);
+
+        try {
+          const relService = components.get(RelationParsingService);
+          if (relService) {
+            relService.addIfcBuffer(modelId, bytes);
+            if (newModelName) relService.addIfcBuffer(newModelName, bytes);
+          }
+        } catch (e) {}
       }
 
       const fragData = await (model as any).getBuffer(false);
@@ -536,11 +544,12 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
         const clashService = components.get(ClashService);
         clashService.addIfcBuffer(modelId, ifc.content as Uint8Array);
 
-        // 관계 파싱을 위한 원본 IFC 버퍼 캐싱
+        // 관계 파싱 및 개구부 지오메트리 빌드를 위한 원본 IFC 버퍼 캐싱
         try {
           const relService = components.get(RelationParsingService);
           if (relService) {
             relService.addIfcBuffer(modelId, ifc.content as Uint8Array);
+            if (ifc.name) relService.addIfcBuffer(ifc.name, ifc.content as Uint8Array);
           }
         } catch (e) {}
       }

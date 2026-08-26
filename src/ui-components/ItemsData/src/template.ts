@@ -105,15 +105,11 @@ const getItemRow = (
 
     const isRestricted = !!parentRelation && !["HasProperties", "Quantities"].includes(parentRelation);
 
-    const name =
-      propertyData && propertyData[state.defaultItemNameKey] && (propertyData[state.defaultItemNameKey] as any).value !== undefined
-        ? (propertyData[state.defaultItemNameKey] as any).value
-        : undefined;
+    const rawName = propertyData && propertyData[state.defaultItemNameKey];
+    const name = rawName !== undefined ? extractValue(rawName) : undefined;
 
-    const category =
-      propertyData && propertyData._category && (propertyData._category as any).value !== undefined
-        ? (propertyData._category as any).value
-        : "Unknown";
+    const rawCat = propertyData && propertyData._category;
+    const category = extractValue(rawCat) || (typeof rawCat === "string" ? rawCat : undefined) || "Unknown";
 
     if (!isRestricted && modelProcessings.has(localId)) {
       const cachedRow = modelProcessings.get(localId)!;
@@ -219,7 +215,8 @@ const getItemRow = (
         } else if (parentRelation && ["HasProperties", "Quantities"].includes(parentRelation)) {
           if (["Category", "LocalId", "Guid"].includes(mappedKey)) continue;
         }
-        addDataToRow(row, key, (data as any).value, modelId, localId, (data as any).type);
+        const dataVal = extractValue(data);
+        addDataToRow(row, key, dataVal, modelId, localId, (data as any)?.type);
       } else {
         if (!flattenRelations.includes(key)) continue;
         if (parentRelation === "ContainedInStructure" && key !== "IsDefinedBy") continue;
@@ -258,9 +255,35 @@ const getItemRow = (
 async function preloadEntityInfoCache(
   model: FRAGS.FragmentsModel,
   modelId: string,
-  expressIds: number[]
+  expressIds: number[],
+  relData?: any
 ) {
-  const missingIds = expressIds.filter((id) => !entityInfoCache.has(`${modelId}_${id}`));
+  const missingIds: number[] = [];
+  for (const id of expressIds) {
+    const cacheKey = `${modelId}_${id}`;
+    if (entityInfoCache.has(cacheKey)) continue;
+
+    // 1. STEP 파싱 데이터(relData) 최우선 캐싱
+    if (relData?.openings?.has(id)) {
+      const op = relData.openings.get(id);
+      entityInfoCache.set(cacheKey, {
+        category: "IFCOPENINGELEMENT",
+        name: op.name || `#${id}`,
+      });
+      continue;
+    }
+    if (relData?.spatialZones?.has(id)) {
+      const zone = relData.spatialZones.get(id);
+      entityInfoCache.set(cacheKey, {
+        category: "IFCSPATIALZONE",
+        name: zone.name || zone.longName || `#${id}`,
+      });
+      continue;
+    }
+
+    missingIds.push(id);
+  }
+
   if (missingIds.length === 0) return;
 
   try {
@@ -289,11 +312,8 @@ function resolveEntityInfoSync(
   relData?: any
 ): EntityInfo {
   const cacheKey = `${modelId}_${expressId}`;
-  if (entityInfoCache.has(cacheKey)) {
-    return entityInfoCache.get(cacheKey)!;
-  }
 
-  // 1. Opening
+  // 1. STEP 파싱 데이터(relData) 최우선 확인
   if (relData?.openings?.has(expressId)) {
     const op = relData.openings.get(expressId);
     const info: EntityInfo = {
@@ -313,6 +333,10 @@ function resolveEntityInfoSync(
     };
     entityInfoCache.set(cacheKey, info);
     return info;
+  }
+
+  if (entityInfoCache.has(cacheKey)) {
+    return entityInfoCache.get(cacheKey)!;
   }
 
   const fallback: EntityInfo = {
@@ -699,14 +723,47 @@ const computeTableData = async (
       }
 
       if (relatedIdsToPreload.size > 0) {
-        await preloadEntityInfoCache(model, modelId, Array.from(relatedIdsToPreload));
+        await preloadEntityInfoCache(model, modelId, Array.from(relatedIdsToPreload), relData);
       }
 
       // 3. Fast synchronous row assembly
       const rows: BUI.TableGroupData<ItemsDataTableData>[] = [];
       for (const localId of localIdsArray) {
         const numLocalId = Number(localId);
-        const elementAttrs = allAttrsMap.get(localId);
+        let elementAttrs = allAttrsMap.get(localId);
+
+        // 🛡️ 방어코드: FragmentsModel에 색인되지 않은 IfcOpeningElement / IfcSpatialZone 속성 주입 및 보정
+        if (relData?.openings?.has(numLocalId)) {
+          const opData = relData.openings.get(numLocalId);
+          if (!elementAttrs) elementAttrs = {};
+          if (!elementAttrs._localId) elementAttrs._localId = { value: numLocalId };
+          if (!elementAttrs._category || !extractValue(elementAttrs._category)) {
+            elementAttrs._category = { value: "IFCOPENINGELEMENT" };
+          }
+          if (opData?.name && (!elementAttrs.Name || !extractValue(elementAttrs.Name))) {
+            elementAttrs.Name = { value: opData.name };
+          }
+          if (opData?.globalId && (!elementAttrs._guid || !extractValue(elementAttrs._guid))) {
+            elementAttrs._guid = { value: opData.globalId };
+          }
+          if (opData?.predefinedType && !elementAttrs.PredefinedType) {
+            elementAttrs.PredefinedType = { value: opData.predefinedType };
+          }
+        } else if (relData?.spatialZones?.has(numLocalId)) {
+          const zoneData = relData.spatialZones.get(numLocalId);
+          if (!elementAttrs) elementAttrs = {};
+          if (!elementAttrs._localId) elementAttrs._localId = { value: numLocalId };
+          if (!elementAttrs._category || !extractValue(elementAttrs._category)) {
+            elementAttrs._category = { value: "IFCSPATIALZONE" };
+          }
+          if (zoneData?.name && (!elementAttrs.Name || !extractValue(elementAttrs.Name))) {
+            elementAttrs.Name = { value: zoneData.name || zoneData.longName };
+          }
+          if (zoneData?.globalId && (!elementAttrs._guid || !extractValue(elementAttrs._guid))) {
+            elementAttrs._guid = { value: zoneData.globalId };
+          }
+        }
+
         let elementRow = modelProcessings.get(localId);
 
         if (!elementRow) {
@@ -853,11 +910,11 @@ export const itemsDataTemplate = (_state: ItemsDataState) => {
     }
   };
 
-  const onCellCreated = (
-    e: CustomEvent<BUI.CellCreatedEventDetail<ItemsDataTableData>>,
-  ) => {
-    onTableCellCreated(e);
-    const { cell } = e.detail;
+  const onCellCreated = ({
+    detail,
+  }: CustomEvent<BUI.CellCreatedEventDetail>) => {
+    onTableCellCreated(new CustomEvent("cellcreated", { detail }));
+    const { cell } = detail;
 
     const { Name, Value } = cell.rowData;
     if (Name && Value === undefined) {

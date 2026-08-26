@@ -143,6 +143,7 @@ export const appIcons = {
   CHATBOT: "/icons/hugeicons--chat-bot.svg",
   DRAWING: "/icons/hugeicons--drawing-compass.svg",
   DIAGRAM: "/icons/ph--flow-arrow-bold.svg",
+  OPENING: "/icons/hugeicons--golf-hole.svg",
 };
 
 // 테이블 내 아이콘 버튼들의 공통 컴팩트 스타일

@@ -4,6 +4,9 @@ import { ModelRelationData } from "./types";
 
 let ifcApiInstance: WebIFC.IfcAPI | null = null;
 
+/**
+ * WebIFC API 싱글톤 인스턴스를 반환합니다.
+ */
 export async function getSharedWebIfcApi(): Promise<WebIFC.IfcAPI> {
   if (!ifcApiInstance) {
     const api = new WebIFC.IfcAPI();
@@ -27,22 +30,96 @@ export interface GeometryBuildResult {
   spatialZonesGroup: THREE.Group;
 }
 
+// 🎨 재사용 가능한 공유 머티리얼 싱글톤 (메모리 절약 & 드로우콜 최적화)
+const SHARED_MATERIALS = {
+  opening: new THREE.MeshStandardMaterial({
+    color: new THREE.Color("#f59e0b"),
+    transparent: true,
+    opacity: 0.45,
+    roughness: 0.2,
+    metalness: 0.1,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  }),
+  openingEdge: new THREE.LineBasicMaterial({
+    color: new THREE.Color("#d97706"),
+    transparent: true,
+    opacity: 0.9,
+    linewidth: 1,
+  }),
+  zone: new THREE.MeshStandardMaterial({
+    color: new THREE.Color("#9d4edd"),
+    transparent: true,
+    opacity: 0.3,
+    roughness: 0.3,
+    metalness: 0.1,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  }),
+  zoneEdge: new THREE.LineBasicMaterial({
+    color: new THREE.Color("#c77dff"),
+    transparent: true,
+    opacity: 0.8,
+    linewidth: 1,
+  }),
+};
+
+/**
+ * WebIFC PlacedGeometry로부터 Three.js BufferGeometry 및 엣지 라인을 고속 빌드합니다.
+ */
+function buildBufferGeometryAndLine(
+  api: WebIFC.IfcAPI,
+  modelID: number,
+  placed: WebIFC.PlacedGeometry,
+  material: THREE.Material,
+  edgeMaterial: THREE.Material,
+  userData: any,
+  renderOrder = 10
+): { mesh: THREE.Mesh; line: THREE.LineSegments } {
+  const geom = api.GetGeometry(modelID, placed.geometryExpressID);
+  const rawVerts = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
+  const indices = api.GetIndexArray(geom.GetIndexData(), geom.GetIndexDataSize());
+  const matrix = new THREE.Matrix4().fromArray(placed.flatTransformation);
+
+  const numVerts = Math.floor(rawVerts.length / 6);
+  const positions = new Float32Array(numVerts * 3);
+  const normals = new Float32Array(numVerts * 3);
+
+  for (let j = 0, p = 0; j < rawVerts.length; j += 6, p += 3) {
+    positions[p] = rawVerts[j];
+    positions[p + 1] = rawVerts[j + 1];
+    positions[p + 2] = rawVerts[j + 2];
+    normals[p] = rawVerts[j + 3];
+    normals[p + 1] = rawVerts[j + 4];
+    normals[p + 2] = rawVerts[j + 5];
+  }
+
+  const bufferGeo = new THREE.BufferGeometry();
+  bufferGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  bufferGeo.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+  bufferGeo.setIndex(Array.from(indices));
+  bufferGeo.applyMatrix4(matrix);
+
+  const mesh = new THREE.Mesh(bufferGeo, material);
+  mesh.renderOrder = renderOrder;
+  mesh.userData = userData;
+
+  const edges = new THREE.EdgesGeometry(bufferGeo, 24);
+  const line = new THREE.LineSegments(edges, edgeMaterial);
+  line.renderOrder = renderOrder + 1;
+
+  return { mesh, line };
+}
+
+/**
+ * 원본 IFC 바이너리로부터 IfcOpeningElement 및 IfcSpatialZone의 3D 지오메트리를 생성합니다.
+ */
 export async function buildModelGeometries(
   ifcBuffer: Uint8Array,
   modelId: string,
   relationData: ModelRelationData
 ): Promise<GeometryBuildResult> {
-  let api: WebIFC.IfcAPI;
-  try {
-    api = await getSharedWebIfcApi();
-  } catch (e) {
-    console.error("[RelationParsingService] WebIFC Init failed:", e);
-    return {
-      openingsGroup: new THREE.Group(),
-      spatialZonesGroup: new THREE.Group(),
-    };
-  }
-
+  const api = await getSharedWebIfcApi();
   const openingsGroup = new THREE.Group();
   openingsGroup.name = `Openings_${modelId}`;
 
@@ -52,34 +129,12 @@ export async function buildModelGeometries(
   let modelID: number | null = null;
 
   try {
-    const safeBuffer =
-      ifcBuffer.byteOffset === 0 && ifcBuffer.byteLength === ifcBuffer.buffer.byteLength
-        ? ifcBuffer
-        : new Uint8Array(ifcBuffer.buffer, ifcBuffer.byteOffset, ifcBuffer.byteLength);
-
-    modelID = api.OpenModel(safeBuffer, {
+    modelID = api.OpenModel(ifcBuffer, {
       COORDINATE_TO_ORIGIN: false,
       USE_FAST_BOOLS: true,
     } as any);
 
-    // 1. Build IfcOpeningElement Geometries (🟧 Amber/Orange)
-    const openingMaterial = new THREE.MeshStandardMaterial({
-      color: new THREE.Color("#f59e0b"),
-      transparent: true,
-      opacity: 0.5,
-      roughness: 0.2,
-      metalness: 0.1,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-
-    const openingEdgeMaterial = new THREE.LineBasicMaterial({
-      color: new THREE.Color("#d97706"),
-      transparent: true,
-      opacity: 0.9,
-      linewidth: 1,
-    });
-
+    // 1. IfcOpeningElement 3D 메쉬 생성
     for (const [expressId, opData] of relationData.openings.entries()) {
       try {
         const flatMesh = api.GetFlatMesh(modelID, expressId);
@@ -98,38 +153,16 @@ export async function buildModelGeometries(
 
         for (let i = 0; i < flatMesh.geometries.size(); i++) {
           const placed = flatMesh.geometries.get(i);
-          const geom = api.GetGeometry(modelID, placed.geometryExpressID);
-          const verts = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
-          const indices = api.GetIndexArray(geom.GetIndexData(), geom.GetIndexDataSize());
-          const matrix = new THREE.Matrix4().fromArray(placed.flatTransformation);
-
-          const numVerts = Math.floor(verts.length / 6);
-          const positions = new Float32Array(numVerts * 3);
-          const normals = new Float32Array(numVerts * 3);
-
-          for (let j = 0, p = 0; j < verts.length; j += 6, p += 3) {
-            positions[p] = verts[j];
-            positions[p + 1] = verts[j + 1];
-            positions[p + 2] = verts[j + 2];
-            normals[p] = verts[j + 3];
-            normals[p + 1] = verts[j + 4];
-            normals[p + 2] = verts[j + 5];
-          }
-
-          const bufferGeo = new THREE.BufferGeometry();
-          bufferGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-          bufferGeo.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
-          bufferGeo.setIndex(Array.from(indices));
-          bufferGeo.applyMatrix4(matrix);
-
-          const mesh = new THREE.Mesh(bufferGeo, openingMaterial);
-          mesh.renderOrder = 10;
-          mesh.userData = elemGroup.userData;
+          const { mesh, line } = buildBufferGeometryAndLine(
+            api,
+            modelID,
+            placed,
+            SHARED_MATERIALS.opening,
+            SHARED_MATERIALS.openingEdge,
+            elemGroup.userData,
+            10
+          );
           elemGroup.add(mesh);
-
-          const edges = new THREE.EdgesGeometry(bufferGeo, 24);
-          const line = new THREE.LineSegments(edges, openingEdgeMaterial);
-          line.renderOrder = 11;
           elemGroup.add(line);
         }
 
@@ -137,32 +170,11 @@ export async function buildModelGeometries(
           openingsGroup.add(elemGroup);
         }
       } catch (e) {
-        // 일부 복합 개구부 파싱 예외 무시
+        // 개별 복합 개구부 파싱 오류 격리
       }
     }
 
-    if (openingsGroup.children.length > 0) {
-      console.log(`[RelationParsingService] Built ${openingsGroup.children.length} 3D opening meshes for ${modelId}`);
-    }
-
-    // 2. Build IfcSpatialZone Geometries
-    const zoneMaterial = new THREE.MeshStandardMaterial({
-      color: new THREE.Color("#9d4edd"),
-      transparent: true,
-      opacity: 0.3,
-      roughness: 0.3,
-      metalness: 0.1,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-
-    const zoneEdgeMaterial = new THREE.LineBasicMaterial({
-      color: new THREE.Color("#c77dff"),
-      transparent: true,
-      opacity: 0.8,
-      linewidth: 1,
-    });
-
+    // 2. IfcSpatialZone 3D 메쉬 생성
     const tempVec = new THREE.Vector3();
 
     for (const [expressId, zoneData] of relationData.spatialZones.entries()) {
@@ -183,36 +195,16 @@ export async function buildModelGeometries(
 
             for (let i = 0; i < flatMesh.geometries.size(); i++) {
               const placed = flatMesh.geometries.get(i);
-              const geom = api.GetGeometry(modelID, placed.geometryExpressID);
-              const verts = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
-              const indices = api.GetIndexArray(geom.GetIndexData(), geom.GetIndexDataSize());
-              const matrix = new THREE.Matrix4().fromArray(placed.flatTransformation);
-
-              const numVerts = Math.floor(verts.length / 6);
-              const positions = new Float32Array(numVerts * 3);
-              const normals = new Float32Array(numVerts * 3);
-
-              for (let j = 0, p = 0; j < verts.length; j += 6, p += 3) {
-                positions[p] = verts[j];
-                positions[p + 1] = verts[j + 1];
-                positions[p + 2] = verts[j + 2];
-                normals[p] = verts[j + 3];
-                normals[p + 1] = verts[j + 4];
-                normals[p + 2] = verts[j + 5];
-              }
-
-              const bufferGeo = new THREE.BufferGeometry();
-              bufferGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-              bufferGeo.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
-              bufferGeo.setIndex(Array.from(indices));
-              bufferGeo.applyMatrix4(matrix);
-
-              const mesh = new THREE.Mesh(bufferGeo, zoneMaterial);
-              mesh.userData = zoneGroup.userData;
+              const { mesh, line } = buildBufferGeometryAndLine(
+                api,
+                modelID,
+                placed,
+                SHARED_MATERIALS.zone,
+                SHARED_MATERIALS.zoneEdge,
+                zoneGroup.userData,
+                5
+              );
               zoneGroup.add(mesh);
-
-              const edges = new THREE.EdgesGeometry(bufferGeo, 24);
-              const line = new THREE.LineSegments(edges, zoneEdgeMaterial);
               zoneGroup.add(line);
             }
 
@@ -223,7 +215,7 @@ export async function buildModelGeometries(
           }
         } catch (err) { }
 
-        // 직접 메쉬가 없고 참조 부재들이 있는 경우, Bounding Box 기반 볼륨 박스 구성
+        // 직접 메쉬가 없고 참조 부재들이 있는 경우: Bounding Box 볼륨 박스 자동 생성
         if (!hasDirectMesh && zoneData.referencedElementIds.length > 0) {
           const zoneBox = new THREE.Box3();
           let count = 0;
@@ -247,12 +239,10 @@ export async function buildModelGeometries(
             } catch (err) { }
           }
 
-
           if (count > 0 && !zoneBox.isEmpty()) {
             const size = new THREE.Vector3();
             zoneBox.getSize(size);
-            // 약간 여유 패딩 적용
-            size.addScalar(0.2);
+            size.addScalar(0.2); // 시각적 여유 패딩
 
             const center = new THREE.Vector3();
             zoneBox.getCenter(center);
@@ -270,19 +260,21 @@ export async function buildModelGeometries(
               referencedElementIds: zoneData.referencedElementIds,
             };
 
-            const mesh = new THREE.Mesh(boxGeo, zoneMaterial);
+            const mesh = new THREE.Mesh(boxGeo, SHARED_MATERIALS.zone);
             mesh.userData = zoneGroup.userData;
+            mesh.renderOrder = 5;
             zoneGroup.add(mesh);
 
             const edges = new THREE.EdgesGeometry(boxGeo);
-            const line = new THREE.LineSegments(edges, zoneEdgeMaterial);
+            const line = new THREE.LineSegments(edges, SHARED_MATERIALS.zoneEdge);
+            line.renderOrder = 6;
             zoneGroup.add(line);
 
             spatialZonesGroup.add(zoneGroup);
           }
         }
       } catch (e) {
-        // 공간 구역 생성 예외 무시
+        // 개별 공간 구역 오류 격리
       }
     }
   } finally {

@@ -429,6 +429,7 @@ const contentGridIcons: Record<TEMPLATES.ContentGridLayouts[number], string> = {
   Queries: appIcons.SEARCH,
   Properties: appIcons.EDIT,
   Quantities: appIcons.TABLE,
+  Opening: appIcons.OPENING,
   FullScreen: appIcons.FULL_SCREEN,
   ViewPoints: appIcons.CAMERA,
   RuleCheck: appIcons.Rule_CHECK,

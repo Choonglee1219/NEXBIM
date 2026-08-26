@@ -2,7 +2,7 @@ import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import { SharedIFC } from "../SharedIFC";
-import { ModelRelationData } from "./src/types";
+import { ModelRelationData, IfcOpeningElementData, IfcSpatialZoneData } from "./src/types";
 import { parseIfcStepRelations } from "./src/step-parser";
 import { buildModelGeometries, GeometryBuildResult } from "./src/geometry-builder";
 
@@ -14,33 +14,46 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
   static readonly uuid = "5b82c19e-9d24-4f81-bb03-e89c086d9a12" as const;
 
   enabled = true;
-
+  readonly onDisposed = new OBC.Event<string>();
   readonly onRelationsParsed = new OBC.Event<{ modelKey: string; data: ModelRelationData }>();
   readonly onOpeningsVisibilityChanged = new OBC.Event<boolean>();
   readonly onSpatialZonesVisibilityChanged = new OBC.Event<boolean>();
-  readonly onDisposed = new OBC.Event<string>();
 
   private _modelRelationsCache = new Map<string, ModelRelationData>();
   private _parsingPromises = new Map<string, Promise<ModelRelationData>>();
+  private _directIfcBuffers = new Map<string, Uint8Array>();
 
+  // 3D 지오메트리 메쉬 캐시 및 씬 그룹
   private _geometryCache = new Map<string, GeometryBuildResult>();
   private _geometryPromises = new Map<string, Promise<GeometryBuildResult>>();
-
   private _openingsSceneGroup = new THREE.Group();
   private _spatialZonesSceneGroup = new THREE.Group();
 
-  public get openingsSceneGroup(): THREE.Group {
+  get openingsSceneGroup(): THREE.Group {
     return this._openingsSceneGroup;
   }
 
-  public get spatialZonesSceneGroup(): THREE.Group {
+  get spatialZonesSceneGroup(): THREE.Group {
     return this._spatialZonesSceneGroup;
   }
 
   isOpeningsVisible = false;
   isSpatialZonesVisible = false;
 
-  private _highlightMeshes = new Map<string, THREE.Mesh[]>();
+  private _selectedMeshes = new Set<THREE.Mesh>();
+  private _customStyleMaterials = new Map<string, THREE.Material>();
+  private _meshStyles = new Map<THREE.Mesh, Map<string, THREE.Material>>();
+  private _defaultMaterials = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+
+  private _selectMaterial = new THREE.MeshStandardMaterial({
+    color: new THREE.Color("#8fbc0c"),
+    transparent: true,
+    opacity: 0.7,
+    roughness: 0.2,
+    metalness: 0.1,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
 
   constructor(components: OBC.Components) {
     super(components);
@@ -52,16 +65,11 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
     this._spatialZonesSceneGroup.name = "NEXBIM_IfcSpatialZones_Group";
     this._spatialZonesSceneGroup.visible = false;
 
-    this._initFragmentsListener();
-  }
-
-  private _initFragmentsListener() {
-    const fragments = this.components.get(OBC.FragmentsManager);
+    // 모델 삭제 시 캐시 자동 청소 (메모리 누수 방지)
+    const fragments = components.get(OBC.FragmentsManager);
     fragments.list.onItemDeleted.add((e: any) => {
-      const modelId = e?.id || (typeof e === "string" ? e : undefined);
-      if (modelId) {
-        this.clearCache(modelId);
-      }
+      const modelId = e?.modelId || (typeof e === "string" ? e : null);
+      if (modelId) this.clearCache(modelId);
     });
   }
 
@@ -85,47 +93,6 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
     }
   }
 
-  getCustomMeshes(): THREE.Mesh[] {
-    const meshes: THREE.Mesh[] = [];
-    if (this._openingsSceneGroup.visible) {
-      this._openingsSceneGroup.traverse((child) => {
-        if (child instanceof THREE.Mesh) meshes.push(child);
-      });
-    }
-    if (this._spatialZonesSceneGroup.visible) {
-      this._spatialZonesSceneGroup.traverse((child) => {
-        if (child instanceof THREE.Mesh) meshes.push(child);
-      });
-    }
-    return meshes;
-  }
-
-  getAllCustomMeshes(): THREE.Mesh[] {
-    const meshes: THREE.Mesh[] = [];
-    this._openingsSceneGroup.traverse((child) => {
-      if (child instanceof THREE.Mesh) meshes.push(child);
-    });
-    this._spatialZonesSceneGroup.traverse((child) => {
-      if (child instanceof THREE.Mesh) meshes.push(child);
-    });
-    return meshes;
-  }
-
-  getCustomMeshByExpressId(_modelKey: string, expressId: number): THREE.Object3D | null {
-    let target: THREE.Object3D | null = null;
-    const findInGroup = (group: THREE.Group) => {
-      group.traverse((child) => {
-        if (target) return;
-        if (child.userData && child.userData.expressId === expressId) {
-          target = child;
-        }
-      });
-    };
-    findInGroup(this._openingsSceneGroup);
-    if (!target) findInGroup(this._spatialZonesSceneGroup);
-    return target;
-  }
-
   async dispose() {
     this.hideOpenings();
     this.hideSpatialZones();
@@ -141,9 +108,9 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
 
     this._modelRelationsCache.clear();
     this._parsingPromises.clear();
+    this._directIfcBuffers.clear();
     this._geometryCache.clear();
     this._geometryPromises.clear();
-    this._directIfcBuffers.clear();
 
     this.onRelationsParsed.reset();
     this.onOpeningsVisibilityChanged.reset();
@@ -156,6 +123,11 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
     group.traverse((child) => {
       if (child instanceof THREE.Mesh || child instanceof THREE.LineSegments) {
         if (child.geometry) child.geometry.dispose();
+        if (child instanceof THREE.Mesh) {
+          this._selectedMeshes.delete(child);
+          this._meshStyles.delete(child);
+          this._defaultMaterials.delete(child);
+        }
       }
     });
     group.clear();
@@ -203,11 +175,18 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
 
   async getModelRelations(model: FRAGS.FragmentsModel | any): Promise<ModelRelationData> {
     const modelKey = this.getModelKey(model);
+    const candidateKeys = [
+      modelKey,
+      (model as any)?.modelId,
+      (model as any)?.uuid,
+      (model as any)?.name,
+      String((model as any)?.dbId || "")
+    ].filter(Boolean) as string[];
 
-    if (this._modelRelationsCache.has(modelKey)) {
-      const cached = this._modelRelationsCache.get(modelKey)!;
-      if (cached.openings.size > 0 || cached.spatialZones.size > 0) {
-        return cached;
+    for (const key of candidateKeys) {
+      if (this._modelRelationsCache.has(key)) {
+        const cached = this._modelRelationsCache.get(key)!;
+        if (cached.openings.size > 0 || cached.spatialZones.size > 0) return cached;
       }
     }
 
@@ -220,7 +199,7 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
 
     try {
       const result = await parsePromise;
-      this._modelRelationsCache.set(modelKey, result);
+      for (const key of candidateKeys) this._modelRelationsCache.set(key, result);
       this._parsingPromises.delete(modelKey);
       this.onRelationsParsed.trigger({ modelKey, data: result });
       return result;
@@ -238,65 +217,43 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
         elementToZones: new Map(),
         zoneToElements: new Map(),
       };
+      for (const key of candidateKeys) this._modelRelationsCache.set(key, emptyData);
       return emptyData;
     }
   }
 
-  private _directIfcBuffers = new Map<string, Uint8Array>();
-
-  /**
-   * 직접 IFC 버퍼(Uint8Array)를 등록하여 네트워크 호출 없이 즉시 파싱할 수 있도록 지원합니다.
-   */
   public addIfcBuffer(modelKey: string, buffer: Uint8Array) {
+    if (!modelKey || !buffer) return;
     this._directIfcBuffers.set(modelKey, buffer);
-    const cached = this._modelRelationsCache.get(modelKey);
-    if (!cached || (cached.openings.size === 0 && cached.spatialZones.size === 0)) {
-      this._modelRelationsCache.delete(modelKey);
-      this._parsingPromises.delete(modelKey);
-    }
   }
 
   private async _getIfcBuffer(model: any): Promise<{ name: string; content: Uint8Array } | null> {
-    if (!model) return null;
-
-    // 0. model 객체 자체에 버퍼 속성이 있는 경우 (최우선)
-    if (model.ifcBuffer instanceof Uint8Array && model.ifcBuffer.length > 0) {
-      return { name: model.name || "model.ifc", content: model.ifcBuffer };
-    }
-    if (model.rawBuffer instanceof Uint8Array && model.rawBuffer.length > 0) {
-      return { name: model.name || "model.ifc", content: model.rawBuffer };
-    }
-
     const modelKey = this.getModelKey(model);
-    const rawModelId = (model as any).modelId || (model as any).uuid;
+    const rawModelId = (model as any).modelId;
     const modelName = (model as any).name;
+    const rawUuid = (model as any).uuid;
 
-    // 1. 직접 등록된 버퍼 확인 (Direct In-Memory Buffer)
-    if (this._directIfcBuffers.has(modelKey)) {
-      return { name: modelName || "model.ifc", content: this._directIfcBuffers.get(modelKey)! };
-    }
-    if (rawModelId && this._directIfcBuffers.has(rawModelId)) {
-      return { name: modelName || "model.ifc", content: this._directIfcBuffers.get(rawModelId)! };
-    }
-    if (modelName && this._directIfcBuffers.has(modelName)) {
-      return { name: modelName, content: this._directIfcBuffers.get(modelName)! };
+    const keysToCheck = [modelKey, rawModelId, modelName, rawUuid].filter(Boolean) as string[];
+
+    // 1. 직접 메모리 캐시 확인
+    for (const k of keysToCheck) {
+      if (this._directIfcBuffers.has(k)) {
+        return { name: modelName || "model.ifc", content: this._directIfcBuffers.get(k)! };
+      }
     }
 
-    // 2. ClashService에 캐싱된 메모리 버퍼 확인
+    // 2. ClashService 캐시 확인
     try {
       const clashService = this.components.get<any>({ uuid: "e456950d-bcba-4f18-bc1c-5d18d4513dbf" } as any);
       if (clashService && typeof clashService.getIfcBuffer === "function") {
-        const memBuf =
-          clashService.getIfcBuffer(modelKey) ||
-          (rawModelId ? clashService.getIfcBuffer(rawModelId) : undefined) ||
-          (modelName ? clashService.getIfcBuffer(modelName) : undefined);
-        if (memBuf && memBuf.length > 0) {
-          return { name: modelName || "model.ifc", content: memBuf };
+        for (const k of keysToCheck) {
+          const memBuf = clashService.getIfcBuffer(k);
+          if (memBuf && memBuf.length > 0) return { name: modelName || "model.ifc", content: memBuf };
         }
       }
     } catch (e) { }
 
-    // 3. SharedIFC DB 조회 (네트워크)
+    // 3. SharedIFC DB 조회
     const sharedIFC = new SharedIFC();
     let ifcData: { name: string; content: Uint8Array } | null = null;
 
@@ -317,9 +274,7 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
         const matched = sharedIFC.list.find(
           (f) => f.name === modelName || modelName.includes(f.name) || f.name.includes(modelName)
         );
-        if (matched) {
-          ifcData = await sharedIFC.loadIFC(matched.id);
-        }
+        if (matched) ifcData = await sharedIFC.loadIFC(matched.id);
       } catch (e) { }
     }
 
@@ -330,11 +285,7 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
     const ifcData = await this._getIfcBuffer(model);
     if (ifcData && ifcData.content) {
       const text = new TextDecoder().decode(ifcData.content);
-      const parsed = parseIfcStepRelations(text, modelKey);
-      if (parsed.openings.size > 0 || parsed.spatialZones.size > 0) {
-        console.log(`[RelationParsingService] Parsed ${parsed.openings.size} openings and ${parsed.spatialZones.size} spatial zones for ${modelKey}`);
-      }
-      return parsed;
+      return parseIfcStepRelations(text, modelKey);
     }
 
     return {
@@ -408,11 +359,8 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
 
   async toggleOpenings(visible?: boolean): Promise<boolean> {
     const target = visible !== undefined ? visible : !this.isOpeningsVisible;
-    if (target) {
-      await this.showOpenings();
-    } else {
-      this.hideOpenings();
-    }
+    if (target) await this.showOpenings();
+    else this.hideOpenings();
     return this.isOpeningsVisible;
   }
 
@@ -436,83 +384,190 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
 
   async toggleSpatialZones(visible?: boolean): Promise<boolean> {
     const target = visible !== undefined ? visible : !this.isSpatialZonesVisible;
-    if (target) {
-      await this.showSpatialZones();
-    } else {
-      this.hideSpatialZones();
-    }
+    if (target) await this.showSpatialZones();
+    else this.hideSpatialZones();
     return this.isSpatialZonesVisible;
   }
 
-  // --- Highlighting Integration with Custom Meshes ---
+  // --- Internal Scene Traversal Helper ---
 
-  applySelectionHighlight(
-    name: string,
-    selectionMap: { [modelId: string]: Set<number> },
-    materialDefinition?: any
+  private _forEachCustomMesh(
+    modelIdMap: OBC.ModelIdMap | null,
+    callback: (mesh: THREE.Mesh, expressId: number, modelId: string, type: "openings" | "spatialZones") => void
   ) {
-    if (!this._highlightMeshes.has(name)) {
-      this._highlightMeshes.set(name, []);
+    const checkGroup = (group: THREE.Group, type: "openings" | "spatialZones") => {
+      group.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        const uData = child.userData || child.parent?.userData;
+        if (!uData || uData.expressId === undefined) return;
+        const meshModelId = uData.modelId || "default";
+        const meshExpressId = uData.expressId as number;
+
+        if (modelIdMap) {
+          const ids = modelIdMap[meshModelId];
+          if (!ids || !ids.has(meshExpressId)) return;
+        }
+
+        callback(child, meshExpressId, meshModelId, type);
+      });
+    };
+
+    checkGroup(this._openingsSceneGroup, "openings");
+    checkGroup(this._spatialZonesSceneGroup, "spatialZones");
+  }
+
+  // --- Bounding Box & Selection Focus Helpers ---
+
+  async getBoundingBox(modelIdMap: OBC.ModelIdMap): Promise<THREE.Box3 | null> {
+    const box = new THREE.Box3();
+    let count = 0;
+    const fragments = this.components.get(OBC.FragmentsManager);
+
+    for (const modelId in modelIdMap) {
+      const model = fragments.list.get(modelId);
+      if (model) await this.ensureModelGeometries(model);
     }
-    const currentHighlights = this._highlightMeshes.get(name)!;
 
-    for (const mesh of currentHighlights) {
-      if (mesh.parent) mesh.parent.remove(mesh);
-      if (mesh.geometry) mesh.geometry.dispose();
-    }
-    currentHighlights.length = 0;
-
-    if (!selectionMap || Object.keys(selectionMap).length === 0) return;
-
-    const highlightColor = materialDefinition?.color || new THREE.Color("#f59e0b");
-    const highlightMat = new THREE.MeshBasicMaterial({
-      color: highlightColor,
-      transparent: true,
-      opacity: 0.6,
-      depthTest: true,
-      side: THREE.DoubleSide,
+    this._forEachCustomMesh(modelIdMap, (mesh) => {
+      mesh.geometry.computeBoundingBox();
+      if (mesh.geometry.boundingBox) {
+        const meshBox = mesh.geometry.boundingBox.clone().applyMatrix4(mesh.matrixWorld);
+        box.union(meshBox);
+        count++;
+      }
     });
 
-    for (const modelKey in selectionMap) {
-      const expressIds = selectionMap[modelKey];
-      for (const expressId of expressIds) {
-        const customObj = this.getCustomMeshByExpressId(modelKey, expressId);
-        if (customObj) {
-          customObj.traverse((child) => {
-            if (child instanceof THREE.Mesh && child.geometry) {
-              const hMesh = new THREE.Mesh(child.geometry.clone(), highlightMat);
-              hMesh.renderOrder = 999;
-              hMesh.applyMatrix4(child.matrixWorld);
-              const world = this._getWorld();
-              if (world?.scene?.three) {
-                world.scene.three.add(hMesh);
-                currentHighlights.push(hMesh);
-              }
-            }
-          });
+    return count > 0 && !box.isEmpty() ? box : null;
+  }
+
+  async highlightElements(modelIdMap: OBC.ModelIdMap, autoShow = true) {
+    let hasOpenings = false;
+    let hasZones = false;
+
+    this._forEachCustomMesh(modelIdMap, (_mesh, _id, _mId, type) => {
+      if (type === "openings") hasOpenings = true;
+      if (type === "spatialZones") hasZones = true;
+    });
+
+    if (autoShow) {
+      if (hasOpenings && !this.isOpeningsVisible) await this.showOpenings();
+      if (hasZones && !this.isSpatialZonesVisible) await this.showSpatialZones();
+    }
+  }
+
+  applySelectionHighlight(styleName: string, modelIdMap: OBC.ModelIdMap, styleDef?: any) {
+    let styleMaterial: THREE.Material;
+
+    if (styleName === "select") {
+      styleMaterial = this._selectMaterial;
+    } else {
+      if (this._customStyleMaterials.has(styleName)) {
+        styleMaterial = this._customStyleMaterials.get(styleName)!;
+      } else {
+        let color: THREE.Color;
+        let opacity = 0.6;
+        if (styleDef?.color instanceof THREE.Color) {
+          color = styleDef.color;
+          opacity = typeof styleDef.opacity === "number" ? styleDef.opacity : 0.6;
+        } else {
+          try {
+            color = new THREE.Color(styleName);
+          } catch (e) {
+            color = new THREE.Color("#00ff00");
+          }
+        }
+        styleMaterial = new THREE.MeshStandardMaterial({
+          color,
+          transparent: true,
+          opacity: Math.max(opacity, 0.4),
+          roughness: 0.2,
+          metalness: 0.1,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        });
+        this._customStyleMaterials.set(styleName, styleMaterial);
+      }
+    }
+
+    if (styleName === "select") this.clearSelectionHighlight("select");
+
+    this._forEachCustomMesh(modelIdMap, (mesh) => {
+      if (!this._defaultMaterials.has(mesh)) {
+        this._defaultMaterials.set(mesh, mesh.material);
+      }
+      let meshStyles = this._meshStyles.get(mesh);
+      if (!meshStyles) {
+        meshStyles = new Map();
+        this._meshStyles.set(mesh, meshStyles);
+      }
+      meshStyles.set(styleName, styleMaterial);
+      mesh.material = styleMaterial;
+      this._selectedMeshes.add(mesh);
+    });
+  }
+
+  clearSelectionHighlight(styleName?: string) {
+    if (!styleName) {
+      for (const mesh of this._selectedMeshes) {
+        const defaultMat = this._defaultMaterials.get(mesh);
+        if (defaultMat) mesh.material = defaultMat;
+      }
+      this._meshStyles.clear();
+      this._selectedMeshes.clear();
+      this._defaultMaterials.clear();
+      return;
+    }
+
+    for (const mesh of Array.from(this._selectedMeshes)) {
+      const meshStyles = this._meshStyles.get(mesh);
+      if (meshStyles) {
+        meshStyles.delete(styleName);
+        if (meshStyles.size === 0) {
+          const defaultMat = this._defaultMaterials.get(mesh);
+          if (defaultMat) mesh.material = defaultMat;
+          this._selectedMeshes.delete(mesh);
+        } else {
+          const activeStyleMat = meshStyles.get("select") || meshStyles.values().next().value;
+          if (activeStyleMat) mesh.material = activeStyleMat;
         }
       }
     }
   }
 
-  clearSelectionHighlight(name?: string) {
-    if (name) {
-      const meshes = this._highlightMeshes.get(name);
-      if (meshes) {
-        for (const mesh of meshes) {
-          if (mesh.parent) mesh.parent.remove(mesh);
-          if (mesh.geometry) mesh.geometry.dispose();
-        }
-        meshes.length = 0;
-      }
-    } else {
-      for (const [_, meshes] of this._highlightMeshes) {
-        for (const mesh of meshes) {
-          if (mesh.parent) mesh.parent.remove(mesh);
-          if (mesh.geometry) mesh.geometry.dispose();
-        }
-      }
-      this._highlightMeshes.clear();
-    }
+  // --- Convenience Helper Methods ---
+
+  getOpeningsForElement(modelKey: string, expressId: number): IfcOpeningElementData[] {
+    const relData = this._modelRelationsCache.get(modelKey);
+    if (!relData) return [];
+    const openingIds = relData.elementToOpenings.get(expressId) || [];
+    return openingIds.map((id) => relData.openings.get(id) || { expressId: id, fillingExpressIds: [] });
+  }
+
+  getParentForOpening(modelKey: string, openingExpressId: number): number | null {
+    return this._modelRelationsCache.get(modelKey)?.openingToParent.get(openingExpressId) ?? null;
+  }
+
+  getFillingsForOpening(modelKey: string, openingExpressId: number): number[] {
+    return this._modelRelationsCache.get(modelKey)?.openingToFillings.get(openingExpressId) || [];
+  }
+
+  getOpeningForFilling(modelKey: string, fillingExpressId: number): number | null {
+    return this._modelRelationsCache.get(modelKey)?.fillingToOpening.get(fillingExpressId) ?? null;
+  }
+
+  getSpatialZones(modelKey: string): IfcSpatialZoneData[] {
+    const relData = this._modelRelationsCache.get(modelKey);
+    return relData ? Array.from(relData.spatialZones.values()) : [];
+  }
+
+  getZonesForElement(modelKey: string, expressId: number): IfcSpatialZoneData[] {
+    const relData = this._modelRelationsCache.get(modelKey);
+    if (!relData) return [];
+    const zoneIds = relData.elementToZones.get(expressId) || [];
+    return zoneIds.map((id) => relData.spatialZones.get(id) || { expressId: id, referencedElementIds: [] });
+  }
+
+  getReferencedElementsForZone(modelKey: string, zoneExpressId: number): number[] {
+    return this._modelRelationsCache.get(modelKey)?.zoneToElements.get(zoneExpressId) || [];
   }
 }
