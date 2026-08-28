@@ -2,6 +2,7 @@ import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import { ItemsDataState, ItemsDataTableData } from "./types";
+import { getCategoryBadgeStyle } from "../../../globals";
 
 const modelUnitsCache = new Map<string, FRAGS.ItemData[]>();
 const boundDeletedModels = new Set<string>();
@@ -143,9 +144,43 @@ export const setDefaults = (
   }
 
   table.columns = [{ name: "Name", width: "12rem" }, { name: "Value", width: "auto" }];
-  table.hiddenColumns = ["modelId", "localId", "type", "dataType"];
+  table.hiddenColumns = ["modelId", "localId", "type", "dataType", "category"];
   table.headersHidden = true;
   table.dataTransform = {
+    Name: (value, rowData) => {
+      const text = value !== null && value !== undefined ? String(value) : "";
+      const category = (rowData as ItemsDataTableData)?.category;
+
+      if (!category) {
+        return BUI.html`<bim-label style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; width: 100%;" title=${text}>${text}</bim-label>`;
+      }
+
+      const badgeStyle = getCategoryBadgeStyle(category);
+      const badgeLabel = category.replace(/^IFC/i, "");
+
+      return BUI.html`
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; min-width: 0; gap: 0.5rem;">
+          <bim-label style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1;" title=${text}>
+            ${text}
+          </bim-label>
+          <span style="
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.1rem 0.45rem;
+            font-size: 0.675rem;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            border-radius: 999px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            line-height: 1.2;
+            user-select: none;
+            ${badgeStyle}
+          ">${badgeLabel}</span>
+        </div>
+      `;
+    },
     Value: (value, rowData) => {
       const { dataType, modelId } = rowData;
       if (!dataType) return value;

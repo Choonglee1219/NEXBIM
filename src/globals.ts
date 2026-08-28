@@ -213,6 +213,26 @@ export const tooltips = {
   },
 };
 
+export const getCategoryBadgeStyle = (category: string) => {
+  const cat = category.toUpperCase();
+  if (cat.includes("ZONE")) {
+    return "background-color: rgba(156, 39, 176, 0.15); color: #ce93d8; border: 1px solid rgba(156, 39, 176, 0.35);";
+  }
+  if (cat.includes("SPACE")) {
+    return "background-color: rgba(0, 188, 212, 0.15); color: #4dd0e1; border: 1px solid rgba(0, 188, 212, 0.35);";
+  }
+  if (cat.includes("STOREY")) {
+    return "background-color: rgba(255, 152, 0, 0.15); color: #ffb74d; border: 1px solid rgba(255, 152, 0, 0.35);";
+  }
+  if (cat.includes("BUILDING") || cat.includes("SITE") || cat.includes("PROJECT")) {
+    return "background-color: rgba(33, 150, 243, 0.15); color: #64b5f6; border: 1px solid rgba(33, 150, 243, 0.35);";
+  }
+  if (cat.includes("OPENING")) {
+    return "background-color: rgba(255, 87, 34, 0.15); color: #ff8a65; border: 1px solid rgba(255, 87, 34, 0.35);";
+  }
+  return "background-color: var(--bim-ui_bg-contrast-20); color: var(--bim-ui_bg-contrast-80, #b0b0b0); border: 1px solid var(--bim-ui_bg-contrast-40, rgba(255,255,255,0.15));";
+};
+
 export const tableDefaultContentTemplate = (value: any) => {
   const text = value !== null && value !== undefined ? String(value) : "";
   return BUI.html`<bim-label style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; width: 100%;" title=${text}>${text}</bim-label>`;

@@ -5,7 +5,7 @@ import { SpatialTreeItem } from "@thatopen/fragments";
 import { SpatialTreeState, SpatialTreeData } from "./types";
 import { Highlighter } from "../../../bim-components/Highlighter";
 import { RelationParsingService } from "../../../bim-components/RelationParsingService";
-import { setupBIMTable, onTableCellCreated, onTableRowCreated } from "../../../globals";
+import { setupBIMTable, onTableCellCreated, onTableRowCreated, getCategoryBadgeStyle } from "../../../globals";
 
 const getModelTree = (
   model: FRAGS.FragmentsModel,
@@ -27,11 +27,10 @@ const getModelTree = (
   if (localId !== undefined && localId !== null) {
     const name = nameMap.get(localId) || "Untitled";
 
-    const content = categoryPrefix ? `${categoryPrefix}  ||  ${name}` : name;
-
     const row: BUI.TableGroupData<SpatialTreeData> = {
       data: {
-        Name: content,
+        Name: name,
+        category: categoryPrefix || undefined,
         modelId: model.modelId,
         localId,
       },
@@ -123,7 +122,8 @@ const computeRowData = async (models: Iterable<FRAGS.FragmentsModel>, components
         }
         zoneRows.push({
           data: {
-            Name: `Spatial Zone  ||  ${zName}`,
+            Name: zName,
+            category: "Spatial Zone",
             modelId: model.modelId,
             localId: zoneId,
             children: JSON.stringify(zone.referencedElementIds),
@@ -143,9 +143,10 @@ const computeRowData = async (models: Iterable<FRAGS.FragmentsModel>, components
     }
 
     if (tree.length === 0) continue;
+    const modelName = (model as any).name || model.modelId;
     const modelData: BUI.TableGroupData<SpatialTreeData> = {
       data: {
-        Name: model.modelId,
+        Name: modelName,
         modelId: model.modelId,
         children: JSON.stringify(Array.from(allLocalIds)), // 전체 객체 선택 기능을 위한 하위 ID 문자열화
       },
@@ -226,7 +227,48 @@ export const spatialTreeTemplate = (state: SpatialTreeState) => {
 
     // 열 너비를 제한하여 텍스트 오버플로우 시 말줄임표(...)가 적용되도록 설정
     table.columns = [{ name: "Name", width: "minmax(0, 1fr)" }];
-    table.hiddenColumns = ["modelId", "localId", "children", "categoryPrefix"];
+    table.hiddenColumns = ["modelId", "localId", "children", "categoryPrefix", "category"];
+
+    table.dataTransform = {
+      Name: (value, rowData) => {
+        const nameText = value !== null && value !== undefined ? String(value) : "";
+        const category = (rowData as SpatialTreeData)?.category;
+
+        if (!category) {
+          return BUI.html`
+            <bim-label style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; width: 100%;" title=${nameText}>
+              ${nameText}
+            </bim-label>
+          `;
+        }
+
+        const badgeStyle = getCategoryBadgeStyle(category);
+        const badgeLabel = category.replace(/^IFC/i, "");
+
+        return BUI.html`
+          <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; min-width: 0; gap: 0.5rem;">
+            <bim-label style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1;" title=${nameText}>
+              ${nameText}
+            </bim-label>
+            <span style="
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              padding: 0.1rem 0.45rem;
+              font-size: 0.675rem;
+              font-weight: 500;
+              letter-spacing: 0.02em;
+              border-radius: 999px;
+              white-space: nowrap;
+              flex-shrink: 0;
+              line-height: 1.2;
+              user-select: none;
+              ${badgeStyle}
+            ">${badgeLabel}</span>
+          </div>
+        `;
+      },
+    };
 
     table.loadFunction = async () => {
       return new Promise((resolve) => {

@@ -11,6 +11,7 @@ export type ItemsDataTableData = {
   type: "item" | "relation" | "attribute";
   dataType: string;
   Name: string;
+  category?: string;
   Value: any;
   Actions: string;
 };

@@ -111,13 +111,14 @@ const getItemRow = (
     const rawCat = propertyData && propertyData._category;
     const category = extractValue(rawCat) || (typeof rawCat === "string" ? rawCat : undefined) || "Unknown";
 
+    const itemName = name?.toString().length > 0 ? name.toString() : (category ?? String(localId));
+    const itemCategory = !parentRelation && category ? category : undefined;
+
     if (!isRestricted && modelProcessings.has(localId)) {
       const cachedRow = modelProcessings.get(localId)!;
       const newRow = { ...cachedRow, data: { ...cachedRow.data } };
-      newRow.data.Name =
-        name?.toString().length > 0
-          ? (category && !parentRelation ? `${category} || ${name}` : name.toString())
-          : category ?? String(localId);
+      newRow.data.Name = itemName;
+      newRow.data.category = itemCategory;
       return newRow;
     }
 
@@ -126,10 +127,8 @@ const getItemRow = (
         modelId,
         localId,
         type: "item",
-        Name:
-          name?.toString().length > 0
-            ? (category && !parentRelation ? `${category} || ${name}` : name.toString())
-            : category ?? String(localId),
+        Name: itemName,
+        category: itemCategory,
       },
     };
 

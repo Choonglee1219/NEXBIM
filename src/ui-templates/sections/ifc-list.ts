@@ -556,25 +556,36 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     }
   };
 
-  const downloadIFCModel = async (ifcid: number, cascade = true) => {
+  const downloadIFCModel = async (ifcid: number) => {
     const ifc = await sharedIFC.loadIFC(ifcid);
     if (ifc && ifc.content) {
       const blob = new Blob([ifc.content], { type: "application/octet-stream" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${ifc.name}.ifc`;
+      a.download = ifc.name.toLowerCase().endsWith(".ifc") ? ifc.name : `${ifc.name}.ifc`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    }
+  };
 
-      if (cascade) {
-        const fragFile = sharedFRAG.list.find(f => f.name === ifc.name);
-        if (fragFile) {
-          await downloadFRAGModel(fragFile.id, false);
-        }
-      }
+  const downloadIfcByFragId = async (fragid: number) => {
+    const fragFile = sharedFRAG.list.find(f => f.id === fragid);
+    if (!fragFile) {
+      alert("모델 정보를 찾을 수 없습니다.");
+      return;
+    }
+    let ifcFile = sharedIFC.list.find(f => f.name === fragFile.name);
+    if (!ifcFile) {
+      await sharedIFC.loadIFCFiles(appState.currentProject?.id);
+      ifcFile = sharedIFC.list.find(f => f.name === fragFile.name);
+    }
+    if (ifcFile) {
+      await downloadIFCModel(ifcFile.id);
+    } else {
+      alert(`"${fragFile.name}"에 해당하는 IFC 파일을 찾을 수 없습니다.`);
     }
   };
 
@@ -631,28 +642,6 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       if (modelId) {
         sharedFRAG.addModelUUID(fragid, modelId);
         bcfTopics.onRefresh.trigger();
-      }
-    }
-  };
-
-  const downloadFRAGModel = async (fragid: number, cascade = true) => {
-    const frag = await sharedFRAG.loadFRAG(fragid);
-    if (frag && frag.content) {
-      const blob = new Blob([frag.content], { type: "application/octet-stream" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${frag.name}.frag`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      if (cascade) {
-        const ifcFile = sharedIFC.list.find(f => f.name === frag.name);
-        if (ifcFile) {
-          await downloadIFCModel(ifcFile.id, false);
-        }
       }
     }
   };
@@ -790,6 +779,48 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     }
   };
 
+  const onDownloadSelectedFragModels = async (target: BUI.Button) => {
+    if (selectedFragModels.size === 0) {
+      alert("선택된 모델이 없습니다.");
+      return;
+    }
+    target.loading = true;
+    let failCount = 0;
+    try {
+      if (sharedIFC.list.length === 0) {
+        await sharedIFC.loadIFCFiles(appState.currentProject?.id);
+      }
+
+      for (const fragId of selectedFragModels) {
+        const fragFile = sharedFRAG.list.find(f => f.id === fragId);
+        if (!fragFile) {
+          failCount++;
+          continue;
+        }
+        let ifcFile = sharedIFC.list.find(f => f.name === fragFile.name);
+        if (!ifcFile) {
+          await sharedIFC.loadIFCFiles(appState.currentProject?.id);
+          ifcFile = sharedIFC.list.find(f => f.name === fragFile.name);
+        }
+        if (ifcFile) {
+          await downloadIFCModel(ifcFile.id);
+          await new Promise((r) => setTimeout(r, 200));
+        } else {
+          failCount++;
+        }
+      }
+
+      if (failCount > 0) {
+        alert(`${failCount}개 모델의 IFC 파일을 다운로드하지 못했습니다.`);
+      }
+    } catch (error) {
+      console.error("Error downloading selected models:", error);
+      alert("선택된 모델을 다운로드하는 중 오류가 발생했습니다.");
+    } finally {
+      target.loading = false;
+    }
+  };
+
   // 커스텀 UI 렌더링 설정 (Name 컬럼 하나에 Flexbox를 사용해 빽빽하게 배치)
   fragTable.dataTransform = {
     Name: (value, rowData) => {
@@ -823,7 +854,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
           </div>
           <div style="flex: 0 0 auto; display: flex; gap: 0.25rem; margin: 0; padding: 0;">
           <bim-button @click=${() => loadFRAGModel(id)} icon=${appIcons.OPEN} style=${tableButtonStyle} title="Load Model"></bim-button>
-          <bim-button @click=${() => downloadFRAGModel(id)} icon=${appIcons.DOWNLOAD} style=${tableButtonStyle} title="Download Model"></bim-button>
+          <bim-button @click=${() => downloadIfcByFragId(id)} icon=${appIcons.DOWNLOAD} style=${tableButtonStyle} title="Download Model"></bim-button>
           <bim-button @click=${() => deleteFRAGModel(id)} icon=${appIcons.DELETE} style=${tableButtonStyle} title="Delete Model"></bim-button>
           </div>
         </div>
@@ -1070,6 +1101,11 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       const target = (e.target as HTMLElement).closest("bim-button") as BUI.Button;
       if (target) onLoadSelectedFragModels(target);
     }} label="Load" icon=${appIcons.OPEN} style="flex: 0;"></bim-button>
+                <bim-button @click=${(e: Event) => {
+      e.stopPropagation();
+      const target = (e.target as HTMLElement).closest("bim-button") as BUI.Button;
+      if (target) onDownloadSelectedFragModels(target);
+    }} label="Down" icon=${appIcons.DOWNLOAD} style="flex: 0;"></bim-button>
               </div>
             </div>
             <div style="display: flex; gap: 0.375rem; align-items: center;">
