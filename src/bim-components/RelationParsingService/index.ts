@@ -227,6 +227,10 @@ export class RelationParsingService extends OBC.Component implements OBC.Disposa
     this._directIfcBuffers.set(modelKey, buffer);
   }
 
+  public async getIfcBuffer(model: any): Promise<{ name: string; content: Uint8Array } | null> {
+    return this._getIfcBuffer(model);
+  }
+
   private async _getIfcBuffer(model: any): Promise<{ name: string; content: Uint8Array } | null> {
     const modelKey = this.getModelKey(model);
     const rawModelId = (model as any).modelId;

@@ -14,4 +14,5 @@ export type SpatialTreeData = {
   category?: string;
   children?: string;
   categoryPrefix?: string;
+  hasChildren?: boolean;
 };

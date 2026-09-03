@@ -6,7 +6,7 @@ import { SharedFRAG } from '../../bim-components/SharedFRAG';
 import { BCFTopics } from "../../bim-components/BCFTopics";
 import { ClashService } from "../../bim-components/ClashService";
 import { Highlighter } from "../../bim-components/Highlighter";
-import { GISMapComponent } from "../../bim-components/GISMap";
+import { GISMapComponent, normalizeIfcSitePlacement } from "../../bim-components/GISMap";
 import { RelationParsingService } from "../../bim-components/RelationParsingService";
 
 export interface IFCListPanelState {
@@ -289,7 +289,11 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
     try {
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
-      const model = await ifcLoader.load(bytes, false, newModelName, {
+
+      // 방어로직: IfcSite.ObjectPlacement 대형 전역 좌표 및 이중 지리정보 원점 정규화
+      const { buffer: renderBytes } = normalizeIfcSitePlacement(bytes);
+
+      const model = await ifcLoader.load(renderBytes, false, newModelName, {
         instanceCallback: (importer: any) => {
           if (typeof importer.addAllAttributes === "function") importer.addAllAttributes();
           if (typeof importer.addAllRelations === "function") importer.addAllRelations();
@@ -311,7 +315,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
       // Detect georeferencing from raw IFC buffer (before any caching)
       const gisMap = components.get(GISMapComponent);
-      gisMap.detectGeorefFromBuffer(bytes);
+      gisMap.detectGeorefFromBuffer(bytes, modelId);
 
       // 파일 로드 시 원본 버퍼를 ClashService 및 RelationParsingService에 캐싱
       if (modelId) {
@@ -511,7 +515,10 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
     const ifc = await sharedIFC.loadIFC(ifcid);
     if (ifc && ifc.content) {
-      const model = await ifcLoader.load(ifc.content, false, ifc.name, {
+      const rawBytes = ifc.content as Uint8Array;
+      const { buffer: renderBytes } = normalizeIfcSitePlacement(rawBytes);
+
+      const model = await ifcLoader.load(renderBytes, false, ifc.name, {
         instanceCallback: (importer: any) => {
           if (typeof importer.addAllAttributes === "function") importer.addAllAttributes();
           if (typeof importer.addAllRelations === "function") importer.addAllRelations();
@@ -534,22 +541,22 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
       // Detect georeferencing from raw IFC buffer
       const gisMap = components.get(GISMapComponent);
-      gisMap.detectGeorefFromBuffer(ifc.content as Uint8Array);
+      gisMap.detectGeorefFromBuffer(rawBytes, modelId);
 
       if (modelId) {
         sharedIFC.addModelUUID(ifcid, modelId);
         fragments.list.set(modelId, model);
 
-        // 간섭 검토를 위한 원본 IFC 버퍼 캐싱
+        // 간섭 검토를 위한 버퍼 캐싱
         const clashService = components.get(ClashService);
-        clashService.addIfcBuffer(modelId, ifc.content as Uint8Array);
+        clashService.addIfcBuffer(modelId, rawBytes);
 
-        // 관계 파싱 및 개구부 지오메트리 빌드를 위한 원본 IFC 버퍼 캐싱
+        // 관계 파싱 및 개구부 지오메트리 빌드를 위한 버퍼 캐싱
         try {
           const relService = components.get(RelationParsingService);
           if (relService) {
-            relService.addIfcBuffer(modelId, ifc.content as Uint8Array);
-            if (ifc.name) relService.addIfcBuffer(ifc.name, ifc.content as Uint8Array);
+            relService.addIfcBuffer(modelId, rawBytes);
+            if (ifc.name) relService.addIfcBuffer(ifc.name, rawBytes);
           }
         } catch (e) {}
       }
@@ -642,6 +649,23 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       if (modelId) {
         sharedFRAG.addModelUUID(fragid, modelId);
         bcfTopics.onRefresh.trigger();
+
+        // Detect georeferencing from companion IFC file if available
+        try {
+          const gisMap = components.get(GISMapComponent);
+          const baseName = frag.name.replace(/\.[^/.]+$/, "");
+          const ifcEntry = sharedIFC.list.find(
+            (f) => f.name.replace(/\.[^/.]+$/, "") === baseName || f.id === fragid
+          );
+          if (ifcEntry) {
+            const ifcData = await sharedIFC.loadIFC(ifcEntry.id);
+            if (ifcData && ifcData.content) {
+              gisMap.detectGeorefFromBuffer(ifcData.content as Uint8Array, modelId);
+            }
+          }
+        } catch (e) {
+          console.warn("[GISMap] Could not detect georeference for FRAG model:", e);
+        }
       }
     }
   };

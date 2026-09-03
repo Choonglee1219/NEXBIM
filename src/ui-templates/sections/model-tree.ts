@@ -7,8 +7,9 @@ import { entityTree } from "../../ui-components/EntityTree";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { SharedIFC } from "../../bim-components/SharedIFC";
 import { SharedFRAG } from "../../bim-components/SharedFRAG";
-import { GISMapComponent } from "../../bim-components/GISMap";
+import { GISMapComponent, normalizeIfcSitePlacement } from "../../bim-components/GISMap";
 import { ClashService } from "../../bim-components/ClashService";
+import { RelationParsingService } from "../../bim-components/RelationParsingService";
 
 export interface ModelTreePanelState {
   components: OBC.Components;
@@ -164,8 +165,9 @@ export const modelTreePanelTemplate: BUI.StatefullComponent<
       const ifcLoader = components.get(OBC.IfcLoader);
       const buffer = await processedFile.arrayBuffer();
       const bytes = new Uint8Array(buffer);
+      const { buffer: renderBytes } = normalizeIfcSitePlacement(bytes);
 
-      const newModel = await ifcLoader.load(bytes, false, newModelName, {
+      const newModel = await ifcLoader.load(renderBytes, false, newModelName, {
         instanceCallback: (importer: any) => {
           if (typeof importer.addAllAttributes === "function") importer.addAllAttributes();
           if (typeof importer.addAllRelations === "function") importer.addAllRelations();
@@ -176,13 +178,19 @@ export const modelTreePanelTemplate: BUI.StatefullComponent<
       (newModel as any).name = newModelName;
       await fragments.core.update(true);
 
-      const gisMap = components.get(GISMapComponent);
-      gisMap.detectGeorefFromBuffer(bytes);
-
       const newModelId = (newModel as any).uuid;
+      const gisMap = components.get(GISMapComponent);
+      gisMap.detectGeorefFromBuffer(bytes, newModelId);
       if (newModelId) {
         const clashService = components.get(ClashService);
         clashService.addIfcBuffer(newModelId, bytes);
+        try {
+          const relService = components.get(RelationParsingService);
+          if (relService) {
+            relService.addIfcBuffer(newModelId, bytes);
+            if (newModelName) relService.addIfcBuffer(newModelName, bytes);
+          }
+        } catch (e) {}
       }
 
       const fragData = await (newModel as any).getBuffer(false);

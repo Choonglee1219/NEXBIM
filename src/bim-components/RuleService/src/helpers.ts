@@ -352,7 +352,7 @@ export const buildModelClassificationMap = async (
   _components: any,
   model: any
 ): Promise<Map<number, { system: string | null; code: string | null; full: string | null }>> => {
-  const modelKey = (model as any).uuid || (model as any).name || String((model as any).dbId || "default");
+  const modelKey = (model as any).modelId || (model as any).uuid || (model as any).name || String((model as any).dbId || "default");
   if (stepClassificationCache.has(modelKey)) {
     return stepClassificationCache.get(modelKey)!;
   }

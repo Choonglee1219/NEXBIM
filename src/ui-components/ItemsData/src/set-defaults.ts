@@ -183,6 +183,22 @@ export const setDefaults = (
     },
     Value: (value, rowData) => {
       const { dataType, modelId } = rowData;
+      const rawName = (rowData as ItemsDataTableData)?.Name;
+
+      // RefLatitude, RefLongitude, RefElevation, Global X/Y/Z 등 정밀 포맷된 지리/좌표 속성은 그대로 표시
+      if (
+        rawName === "RefLatitude" ||
+        rawName === "RefLongitude" ||
+        rawName === "RefElevation" ||
+        rawName === "Global X" ||
+        rawName === "Global Y" ||
+        rawName === "Global Z" ||
+        String(rawName).toLowerCase().includes("elevation")
+      ) {
+        const text = value !== null && value !== undefined ? String(value) : "";
+        return BUI.html`<bim-label style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; width: 100%;" title=${text}>${text}</bim-label>`;
+      }
+
       if (!dataType) return value;
 
       const onCreated = async (e?: Element) => {

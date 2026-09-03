@@ -3,7 +3,7 @@ import * as OBC from "@thatopen/components";
 import * as BUI from "@thatopen/ui";
 import { EntityTreeState, EntityTreeData } from "./types";
 import { Highlighter } from "../../../bim-components/Highlighter";
-import { setupBIMTable, onTableCellCreated, onTableRowCreated } from "../../../globals";
+import { setupBIMTable, onTableCellCreated, onTableRowCreated, appIcons } from "../../../globals";
 
 const computeRowData = async (models: Iterable<FRAGS.FragmentsModel>, components: OBC.Components) => {
   const rows: BUI.TableGroupData[] = [];
@@ -116,17 +116,11 @@ export const entityTreeTemplate = (state: EntityTreeState) => {
     
     row.onclick = async () => {
       if (!selectHighlighterName) return;
-      const { data: { modelId, localId, children } } = row;
-      if (!(modelId && (localId !== undefined || children))) return;
+      const { data: { modelId, localId } } = row;
+      if (!modelId || localId === undefined) return;
 
-      if (localId !== undefined) {
-        const modelIdMap = { [modelId]: new Set([localId]) };
-        highlighter.highlightByID(selectHighlighterName, modelIdMap, true, true);
-      } else if (children) {
-        const localIds = JSON.parse(children);
-        const modelIdMap = { [modelId]: new Set(localIds) };
-        highlighter.highlightByID(selectHighlighterName, modelIdMap as any, true, true);
-      }
+      const modelIdMap = { [modelId]: new Set([localId]) };
+      highlighter.highlightByID(selectHighlighterName, modelIdMap, true, true);
     };
   };
 
@@ -136,6 +130,49 @@ export const entityTreeTemplate = (state: EntityTreeState) => {
     setupBIMTable(table);
     table.columns = [{ name: "Name", width: "minmax(0, 1fr)" }];
     table.hiddenColumns = ["modelId", "localId", "children"];
+
+    const highlighter = components.get(Highlighter);
+    table.dataTransform = {
+      Name: (value, rowData) => {
+        const data = rowData as EntityTreeData;
+        const nameText = value !== null && value !== undefined ? String(value) : "";
+        const isContainer = Boolean(data?.children && data.localId === undefined);
+
+        return BUI.html`
+          <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; min-width: 0; gap: 0.35rem;">
+            <bim-label style="display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1;" title=${nameText}>
+              ${nameText}
+            </bim-label>
+            ${isContainer ? BUI.html`
+              <bim-button
+                icon=${appIcons.SELECT}
+                title="소속 객체 모두 선택 (Highlight All)"
+                style="
+                  flex: 0 0 auto;
+                  width: 1.45rem;
+                  height: 1.45rem;
+                  min-width: 1.45rem;
+                  padding: 0;
+                  margin: 0;
+                  border-radius: 4px;
+                  opacity: 0.85;
+                  --bim-icon--c: var(--bim-ui_main-base, #8fbc0c);
+                "
+                @click=${(e: Event) => {
+                  e.stopPropagation();
+                  if (!selectHighlighterName || !data.children || !data.modelId) return;
+                  try {
+                    const localIds = JSON.parse(data.children);
+                    highlighter.highlightByID(selectHighlighterName, { [data.modelId]: new Set(localIds) } as any, true, true);
+                  } catch (_) {}
+                }}
+              ></bim-button>
+            ` : ""}
+          </div>
+        `;
+      },
+    };
+
     table.loadFunction = async () => new Promise((resolve) => setTimeout(() => resolve(computeRowData(models, components))));
     table.loadData(true);
   };

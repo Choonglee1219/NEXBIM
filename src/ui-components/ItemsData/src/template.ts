@@ -6,6 +6,13 @@ import { setupBIMTable, onTableCellCreated, onTableRowCreated, appIcons } from "
 import { RelationParsingService } from "../../../bim-components/RelationParsingService";
 import { Highlighter } from "../../../bim-components/Highlighter";
 import { buildModelClassificationMap, extractClassificationValue } from "../../../bim-components/RuleService/src/helpers";
+import {
+  formatCompoundPlaneAngle,
+  formatToMetersWith3Decimals,
+  parseAllSiteGeoDataFromBuffer,
+  extractRefElevationValue,
+  SiteGeoMetadata,
+} from "./geo-utils";
 
 export interface EntityInfo {
   category: string;
@@ -15,6 +22,7 @@ export interface EntityInfo {
 // Global caches across renderings
 let itemsRowsCache: { [modelID: string]: Map<number, BUI.TableGroupData> } = {};
 const entityInfoCache = new Map<string, EntityInfo>();
+const siteGeoDataCache = new Map<string, SiteGeoMetadata>();
 const boundDeletedModels = new Set<string>();
 
 const attrMappings: Record<string, string> = {
@@ -26,7 +34,11 @@ const attrMappings: Record<string, string> = {
 const extractValue = (attr: any): any => {
   if (attr === null || attr === undefined) return null;
   if (Array.isArray(attr)) return attr.length > 0 ? extractValue(attr[0]) : null;
-  if (typeof attr === "object" && "value" in attr) return attr.value;
+  if (typeof attr === "object") {
+    if ("value" in attr) return attr.value;
+    if ("_representationValue" in attr) return attr._representationValue;
+    if ("_internalValue" in attr) return attr._internalValue;
+  }
   return attr;
 };
 
@@ -194,6 +206,21 @@ const getItemRow = (
     for (const key in propertyData) {
       const data = propertyData[key];
       if (data === null || data === undefined) continue;
+
+      // IFCSITE 지리 및 표고 속성(RefLatitude, RefLongitude, RefElevation) 정밀 포맷
+      if (key.toLowerCase() === "reflatitude" || key.toLowerCase() === "reflongitude") {
+        const angleStr = formatCompoundPlaneAngle(data);
+        if (angleStr) {
+          addDataToRow(row, key, angleStr, modelId, localId);
+          continue;
+        }
+      } else if (key.toLowerCase().includes("elevation")) {
+        const elevVal = extractRefElevationValue(data);
+        if (elevVal !== null) {
+          addDataToRow(row, key, formatToMetersWith3Decimals(elevVal, 0.001), modelId, localId);
+          continue;
+        }
+      }
 
       const isRelation = Array.isArray(data) || (typeof data === "object" && !("value" in data));
 
@@ -696,10 +723,28 @@ const computeTableData = async (
 
       let relData: any = null;
       let classMap: Map<number, { system: string | null; code: string | null; full: string | null }> | undefined;
-      try {
-        const relService = components.get(RelationParsingService);
-        relData = relService.getRelationsByModelKey(modelId) || (await relService.getModelRelations(model));
-      } catch (e) { }
+      let siteGeoData = siteGeoDataCache.get(modelId);
+      if (!siteGeoData) {
+        siteGeoData = {
+          unitScale: 0.001,
+          elevations: new Map(),
+          placements: new Map(),
+        };
+        try {
+          const relService = components.get(RelationParsingService);
+          relData = relService.getRelationsByModelKey(modelId) || (await relService.getModelRelations(model));
+          const ifcRes = await relService.getIfcBuffer(model);
+          if (ifcRes?.content) {
+            siteGeoData = parseAllSiteGeoDataFromBuffer(ifcRes.content);
+            siteGeoDataCache.set(modelId, siteGeoData);
+          }
+        } catch (e) { }
+      } else {
+        try {
+          const relService = components.get(RelationParsingService);
+          relData = relService.getRelationsByModelKey(modelId) || (await relService.getModelRelations(model));
+        } catch (e) { }
+      }
 
       try {
         classMap = await buildModelClassificationMap(components, model);
@@ -767,6 +812,61 @@ const computeTableData = async (
 
         if (!elementRow) {
           elementRow = getItemRow(modelId, elementAttrs, state);
+        }
+
+        // 🛡️ IfcSite 지리/표고/전역좌표 보정 (Project 길이 단위 고려 -> m 단위 소수점 3자리)
+        const targetRow = elementRow;
+        if (targetRow && targetRow.children) {
+          const { elevations, placements, unitScale } = siteGeoData;
+
+          // 1. RefElevation 보정
+          if (elevations.has(numLocalId)) {
+            const formattedElev = formatToMetersWith3Decimals(elevations.get(numLocalId), unitScale);
+            const elevRow = targetRow.children.find(
+              (c) => c.data?.Name === "RefElevation" || String(c.data?.Name || "").toLowerCase().includes("elevation")
+            );
+            if (elevRow && elevRow.data) {
+              elevRow.data.Value = formattedElev;
+              elevRow.data.dataType = undefined;
+            } else if (!elevRow) {
+              targetRow.children.push({
+                data: {
+                  type: "attribute",
+                  modelId,
+                  localId: numLocalId,
+                  Name: "RefElevation",
+                  Value: formattedElev,
+                },
+              });
+            }
+          }
+
+          // 2. Global X, Global Y, Global Z 주입
+          if (placements.has(numLocalId)) {
+            const coords = placements.get(numLocalId)!;
+            const setPlacementProp = (name: string, val: number) => {
+              const formattedVal = formatToMetersWith3Decimals(val, unitScale);
+              const existing = targetRow.children!.find((c) => c.data?.Name === name);
+              if (existing && existing.data) {
+                existing.data.Value = formattedVal;
+                existing.data.dataType = undefined;
+              } else {
+                targetRow.children!.push({
+                  data: {
+                    type: "attribute",
+                    modelId,
+                    localId: numLocalId,
+                    Name: name,
+                    Value: formattedVal,
+                  },
+                });
+              }
+            };
+
+            setPlacementProp("Global X", coords.x);
+            setPlacementProp("Global Y", coords.y);
+            setPlacementProp("Global Z", coords.z);
+          }
         }
 
         // Subgroups Building
@@ -871,6 +971,7 @@ export const itemsDataTemplate = (_state: ItemsDataState) => {
     boundDeletedModels.add(fragmentsKey);
     fragments.list.onItemDeleted.add((modelId) => {
       delete itemsRowsCache[modelId];
+      siteGeoDataCache.delete(modelId);
       for (const key of entityInfoCache.keys()) {
         if (key.startsWith(`${modelId}_`)) {
           entityInfoCache.delete(key);

@@ -4,6 +4,7 @@ import { appIcons, appState, onToggleSection } from "../../globals";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { SharedIFC } from "../../bim-components/SharedIFC";
 import { SharedFRAG } from "../../bim-components/SharedFRAG";
+import { normalizeIfcSitePlacement } from "../../bim-components/GISMap";
 
 export interface GlobalPropsSectionState {
   components: OBC.Components;
@@ -348,7 +349,8 @@ export const globalPropsPanelTemplate: BUI.StatefullComponent<
       // main.ts의 전역 onItemDeleted 비동기 이벤트가 워커를 정리할 시간을 충분히 확보 (데드락 방지)
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      const reloadedModel = await ifcLoader.load(modifiedBuffer, false, modelName, {
+      const { buffer: renderBuffer } = normalizeIfcSitePlacement(modifiedBuffer);
+      const reloadedModel = await ifcLoader.load(renderBuffer, false, modelName, {
         instanceCallback: (importer: any) => {
           if (typeof importer.addAllAttributes === "function") importer.addAllAttributes();
           if (typeof importer.addAllRelations === "function") importer.addAllRelations();

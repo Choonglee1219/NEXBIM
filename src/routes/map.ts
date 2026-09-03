@@ -158,6 +158,8 @@ router.post("/api/inject-georeferencing", (req, res, next) => upload.single("fil
       northings, 
       orthogonalHeight, 
       rotationAngle, 
+      xAxisAbscissa,
+      xAxisOrdinate,
       crsName, 
       crsDescription, 
       crsGeodeticDatum, 
@@ -168,7 +170,7 @@ router.post("/api/inject-georeferencing", (req, res, next) => upload.single("fil
       scaleY 
     } = req.body;
 
-    if (eastings === undefined || northings === undefined || rotationAngle === undefined) {
+    if (eastings === undefined || northings === undefined || (rotationAngle === undefined && xAxisAbscissa === undefined)) {
       return res.status(400).json({ error: "Missing required georeferencing input parameters." });
     }
 
@@ -178,7 +180,9 @@ router.post("/api/inject-georeferencing", (req, res, next) => upload.single("fil
     formData.append("eastings", String(eastings));
     formData.append("northings", String(northings));
     formData.append("orthogonalHeight", String(orthogonalHeight ?? 0.0));
-    formData.append("rotationAngle", String(rotationAngle));
+    if (rotationAngle !== undefined) formData.append("rotationAngle", String(rotationAngle));
+    if (xAxisAbscissa !== undefined) formData.append("xAxisAbscissa", String(xAxisAbscissa));
+    if (xAxisOrdinate !== undefined) formData.append("xAxisOrdinate", String(xAxisOrdinate));
     
     if (crsName) formData.append("crsName", String(crsName));
     if (crsDescription) formData.append("crsDescription", String(crsDescription));

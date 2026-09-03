@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import * as OBC from "@thatopen/components";
-import { krovakToWgs84, wgs84ToKrovak } from "./krovak";
+import { krovakToWgs84 } from "./krovak";
+import { normalizeIfcSitePlacement, parseStepArguments, parseDmsToDecimal } from "./georef-defense";
+export * from "./georef-defense";
 
 export interface GISMapData {
   eastings: number;
@@ -10,6 +12,9 @@ export interface GISMapData {
   xAxisOrdinate: number;
   scale: number;
   crsName: string;
+  sourceType?: "IFC4_MAP_CONVERSION" | "LEGACY_IFC_SITE" | "MANUAL";
+  latitude?: number;
+  longitude?: number;
 }
 
 export type MapSourceType = "offline" | "osm" | "carto-light";
@@ -20,12 +25,23 @@ export const MapSourceUrls: Record<MapSourceType, string> = {
   "carto-light": "https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png"
 };
 
+export const DEFAULT_MANUAL_GEOREF: Readonly<GISMapData> = {
+  eastings: -634016.937824,
+  northings: -1168325.998753,
+  orthogonalHeight: 389.400,
+  xAxisAbscissa: 0.878091,
+  xAxisOrdinate: -0.478494,
+  scale: 1.0,
+  crsName: "EPSG:5514",
+  sourceType: "MANUAL",
+};
 
 export class GISMapComponent extends OBC.Component implements OBC.Disposable {
   static readonly uuid = "cf2b4b24-b152-4416-a36c-94a0d9b4b0e5" as const;
 
   readonly onDisposed = new OBC.Event();
-  
+  readonly onGeorefChanged = new OBC.Event<GISMapData | null>();
+
   // Three.js elements
   private _world: OBC.World | null = null;
   mapGroup = new THREE.Group();
@@ -35,31 +51,216 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
   // Settings state
   private _enabled = false;
   private _opacity = 0.3;
-  private _heightOffset = -0.5; // Default slightly below 0 to avoid Z-fighting
+  private _heightOffset = -0.5;
   private _zoom = 15;
-  private _tileUrlTemplate = "/map-tiles/{z}/{x}/{y}.png"; // Offline tile directory default
-  private _gridSize = 5; // 5x5 grid around center
+  private _tileUrlTemplate = "/map-tiles/{z}/{x}/{y}.png";
+  private _gridSize = 5;
   private _mapSource: MapSourceType = "offline";
-
 
   // Georeferencing parameters
   private _mapData: GISMapData | null = null;
+  private _modelsGeoref = new Map<string, GISMapData>();
+  private _modelsAvailableGeoref = new Map<string, { ifc4?: GISMapData; legacy?: GISMapData }>();
+  private _globalAvailableGeoref: { ifc4?: GISMapData; legacy?: GISMapData } | null = null;
 
   // Custom manual settings fallback
-  manualData: GISMapData = {
-    eastings: -634016.937824,
-    northings: -1168325.998753,
-    orthogonalHeight: 389,
-    xAxisAbscissa: 0.878091, // cos(331.4129 deg)
-    xAxisOrdinate: -0.478494, // sin(331.4129 deg)
-    scale: 1.0,
-    crsName: "EPSG:5514"
-  };
+  manualData: GISMapData = { ...DEFAULT_MANUAL_GEOREF };
 
   constructor(components: OBC.Components) {
     super(components);
     this.mapGroup.name = "GIS_Map_Group";
     this.mapGroup.visible = this._enabled;
+  }
+
+  private _fragmentsListenerAttached = false;
+
+  private setupFragmentsListener() {
+    if (this._fragmentsListenerAttached) return;
+    try {
+      const fragments = this.components.get(OBC.FragmentsManager);
+      if (fragments?.initialized) {
+        this._fragmentsListenerAttached = true;
+        fragments.list.onItemDeleted.add((id) => {
+          this._modelsGeoref.delete(id);
+          this._modelsAvailableGeoref.delete(id);
+          if (fragments.list.size === 0) {
+            this.resetGeoref();
+          } else {
+            this.applyGISTransforms();
+          }
+        });
+      }
+    } catch (_) { }
+  }
+
+  get modelsGeoref(): ReadonlyMap<string, GISMapData> {
+    return this._modelsGeoref;
+  }
+
+  get modelsAvailableGeoref(): ReadonlyMap<string, { ifc4?: GISMapData; legacy?: GISMapData }> {
+    return this._modelsAvailableGeoref;
+  }
+
+  get globalAvailableGeoref(): { ifc4?: GISMapData; legacy?: GISMapData } | null {
+    return this._globalAvailableGeoref;
+  }
+
+  /**
+   * Switches the applied georeference type for all loaded models
+   */
+  setModelGeorefType(
+    modelId: string | null | undefined,
+    type: "IFC4_MAP_CONVERSION" | "LEGACY_IFC_SITE" | "MANUAL",
+    customManualData?: GISMapData
+  ): boolean {
+    if (type === "MANUAL") {
+      if (customManualData) {
+        this.manualData = { ...customManualData, sourceType: "MANUAL" };
+      } else if (!this.manualData || this.manualData.sourceType !== "MANUAL") {
+        this.manualData = { ...DEFAULT_MANUAL_GEOREF };
+      }
+      const manualTarget: GISMapData = { ...this.manualData };
+      if (!modelId) {
+        for (const [id] of this._modelsAvailableGeoref) {
+          this._modelsGeoref.set(id, manualTarget);
+        }
+      } else {
+        this._modelsGeoref.set(modelId, manualTarget);
+      }
+      this._mapData = manualTarget;
+      this.onGeorefChanged.trigger(manualTarget);
+      this.applyGISTransforms();
+      if (this._enabled) {
+        this.updateMapTiles();
+      }
+      if (typeof window !== "undefined" && typeof (window as any).refreshGISMapSettingsSection === "function") {
+        (window as any).refreshGISMapSettingsSection();
+      }
+      return true;
+    }
+
+    if (!modelId) {
+      for (const [id, avail] of this._modelsAvailableGeoref) {
+        const target = type === "IFC4_MAP_CONVERSION" ? avail.ifc4 : avail.legacy;
+        if (target) this._modelsGeoref.set(id, target);
+      }
+    } else {
+      const avail = this._modelsAvailableGeoref.get(modelId) || this._globalAvailableGeoref;
+      if (avail) {
+        const target = type === "IFC4_MAP_CONVERSION" ? avail.ifc4 : avail.legacy;
+        if (target) this._modelsGeoref.set(modelId, target);
+      }
+    }
+
+    // Set primary anchor target
+    let firstLoadedId: string | undefined = undefined;
+    try {
+      const fragments = this.components.get(OBC.FragmentsManager);
+      if (fragments?.initialized && fragments.list) {
+        firstLoadedId = Array.from(fragments.list.keys())[0];
+      }
+    } catch (_) {}
+
+    const primaryTarget = (firstLoadedId && this._modelsGeoref.get(firstLoadedId))
+      || (modelId && this._modelsGeoref.get(modelId))
+      || (type === "IFC4_MAP_CONVERSION" ? this._globalAvailableGeoref?.ifc4 : this._globalAvailableGeoref?.legacy);
+
+    if (primaryTarget) {
+      this._mapData = primaryTarget;
+      this.onGeorefChanged.trigger(primaryTarget);
+    }
+
+    this.applyGISTransforms();
+    if (this._enabled) {
+      this.updateMapTiles();
+    }
+
+    if (typeof window !== "undefined" && typeof (window as any).refreshGISMapSettingsSection === "function") {
+      (window as any).refreshGISMapSettingsSection();
+    }
+    return true;
+  }
+
+  registerModelGeoref(modelId: string, data: GISMapData) {
+    this._modelsGeoref.set(modelId, data);
+    if (!this._mapData) {
+      this._mapData = data;
+    }
+    this.setupFragmentsListener();
+    this.applyGISTransforms();
+    if (this._enabled) {
+      this.updateMapTiles();
+    }
+  }
+
+  applyGISTransforms() {
+    this.setupFragmentsListener();
+    let fragments: OBC.FragmentsManager;
+    try {
+      fragments = this.components.get(OBC.FragmentsManager);
+      if (!fragments.initialized) return;
+    } catch (_) {
+      return;
+    }
+
+    for (const [id] of fragments.list) {
+      this.applyGISTransformToModel(id);
+    }
+  }
+
+  applyGISTransformToModel(modelId: string) {
+    let fragments: OBC.FragmentsManager;
+    try {
+      fragments = this.components.get(OBC.FragmentsManager);
+      if (!fragments.initialized) return;
+    } catch (_) {
+      return;
+    }
+
+    const model = fragments.list.get(modelId);
+    if (!model || !model.object) return;
+
+    const anchorData = this._mapData || this.manualData;
+    const data = this._modelsGeoref.get(modelId) || anchorData;
+
+    const toMeters = (v: number | undefined) => {
+      if (v === undefined || isNaN(v)) return 0;
+      return Math.abs(v) > 10_000_000 ? v / 1000 : v;
+    };
+
+    // Metric offset from Project Anchor: Three.js +X = East, -Z = North, +Y = Height
+    const deltaX = toMeters(data.eastings) - toMeters(anchorData.eastings);
+    const deltaZ = -(toMeters(data.northings) - toMeters(anchorData.northings));
+    const deltaY = toMeters(data.orthogonalHeight) - toMeters(anchorData.orthogonalHeight);
+
+    if (this._enabled && (data.sourceType === "IFC4_MAP_CONVERSION" || data.sourceType === "MANUAL")) {
+      const phi = (data.xAxisAbscissa !== undefined && data.xAxisOrdinate !== undefined)
+        ? Math.atan2(data.xAxisOrdinate, data.xAxisAbscissa)
+        : 0;
+      model.object.position.set(deltaX, deltaY, deltaZ);
+      model.object.rotation.set(0, phi, 0);
+    } else {
+      model.object.position.set(deltaX, deltaY, deltaZ);
+      model.object.rotation.set(0, 0, 0);
+    }
+
+    model.object.updateMatrix();
+    model.object.updateMatrixWorld(true);
+  }
+
+  resetGeoref() {
+    this._mapData = null;
+    this._modelsGeoref.clear();
+    this._modelsAvailableGeoref.clear();
+    this._globalAvailableGeoref = null;
+    this.applyGISTransforms();
+    this.onGeorefChanged.trigger(null);
+    if (typeof window !== "undefined" && typeof (window as any).refreshGISMapSettingsSection === "function") {
+      (window as any).refreshGISMapSettingsSection();
+    }
+    if (this._enabled && this._world) {
+      this.updateMapTiles();
+    }
   }
 
   get enabled(): boolean {
@@ -70,6 +271,7 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
     if (this._enabled !== value) {
       this._enabled = value;
       this.mapGroup.visible = value;
+      this.applyGISTransforms();
       if (value && this._world) {
         this.updateMapTiles();
       }
@@ -132,7 +334,6 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
     }
   }
 
-
   get tileUrlTemplate(): string {
     return this._tileUrlTemplate;
   }
@@ -185,55 +386,143 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
    * Call this right after ifcLoader.load() or fragments.core.load() where the
    * raw IFC bytes are available (ifc-list.ts load functions).
    */
-  detectGeorefFromBuffer(buffer: Uint8Array): boolean {
+  detectGeorefFromBuffer(buffer: Uint8Array, modelId?: string): boolean {
     try {
-      const text = new TextDecoder().decode(buffer);
+      let text = new TextDecoder().decode(buffer);
+      let mcBlockMatch = text.match(
+        /#\d+\s*=\s*IFCMAPCONVERSION\s*\(([^;]+)\)\s*;/i
+      );
 
       // ── IfcProjectedCRS: first parameter is the CRS name string ──────────────
       // Format: #NNN= IFCPROJECTEDCRS('CRS_NAME', ...);
-      const crsMatch = text.match(/#\d+=\s*IFCPROJECTEDCRS\s*\(\s*'([^']+)'/i);
+      const crsMatch = text.match(/#\d+\s*=\s*IFCPROJECTEDCRS\s*\(\s*'([^']+)'/i);
       const crsName = crsMatch ? crsMatch[1] : "EPSG:5514";
 
-      // ── IfcMapConversion: params 3-8 are eastings/northings/height/vectors/scale ──
-      // Format: #NNN= IFCMAPCONVERSION(#src, #tgt, eastings, northings, height, xAbs, xOrd, scale);
-      // Values may be integers, floats, or scientific notation; nulls are '$'
-      const paramRe = /[-\d.E+]+|\$/gi;
-      const mcBlockMatch = text.match(
-        /#\d+=\s*IFCMAPCONVERSION\s*\(([^)]+)\)/i
-      );
+      // Also extract WGS84 RefLatitude / RefLongitude from IfcSite if available
+      let siteLat: number | undefined = undefined;
+      let siteLon: number | undefined = undefined;
+      const siteMatch = text.match(/#\d+\s*=\s*IFCSITE\s*\(([^;]+)\)\s*;/i);
+      if (siteMatch) {
+        const siteArgs = parseStepArguments(siteMatch[1]);
+        if (siteArgs.length >= 11) {
+          const lat = parseDmsToDecimal(siteArgs[9]);
+          const lon = parseDmsToDecimal(siteArgs[10]);
+          if (lat !== null && lon !== null) {
+            siteLat = lat;
+            siteLon = lon;
+          }
+        }
+      }
 
-      if (!mcBlockMatch) return false;
+      let ifc4Georef: GISMapData | null = null;
+      let legacyGeoref: GISMapData | null = null;
 
-      // Extract all tokens from the parenthesised block
-      const tokens = mcBlockMatch[1].match(paramRe) ?? [];
-      // tokens[0] = SourceCRS ref (e.g. "#193"), tokens[1] = TargetCRS ref
-      // tokens[2..7] = eastings, northings, height, xAbscissa, xOrdinate, scale
-      const parse = (t: string | undefined, def: number) =>
-        !t || t === "$" ? def : Number(t);
+      // 1. Check IfcMapConversion (IFC4 standard)
+      if (mcBlockMatch) {
+        const mcArgs = parseStepArguments(mcBlockMatch[1]);
+        const parseVal = (str: string | undefined, def: number) => {
+          if (!str || str === "$") return def;
+          const n = parseFloat(str);
+          return isNaN(n) ? def : n;
+        };
 
-      this._mapData = {
-        eastings:         parse(tokens[2], 0),
-        northings:        parse(tokens[3], 0),
-        orthogonalHeight: parse(tokens[4], 0),
-        xAxisAbscissa:    parse(tokens[5], 1.0),
-        xAxisOrdinate:    parse(tokens[6], 0.0),
-        scale:            parse(tokens[7], 1.0),
-        crsName,
+        ifc4Georef = {
+          eastings: parseVal(mcArgs[2], 0),
+          northings: parseVal(mcArgs[3], 0),
+          orthogonalHeight: parseVal(mcArgs[4], 0),
+          xAxisAbscissa: parseVal(mcArgs[5], 1.0),
+          xAxisOrdinate: parseVal(mcArgs[6], 0.0),
+          scale: parseVal(mcArgs[7], 1.0),
+          crsName,
+          sourceType: "IFC4_MAP_CONVERSION",
+          latitude: siteLat,
+          longitude: siteLon,
+        };
+      }
+
+      // 2. Check Legacy IfcSite georeference (IfcSite.ObjectPlacement / TrueNorth / DMS)
+      const { legacySiteGeoref } = normalizeIfcSitePlacement(buffer);
+      if (legacySiteGeoref) {
+        legacyGeoref = {
+          eastings: legacySiteGeoref.eastings,
+          northings: legacySiteGeoref.northings,
+          orthogonalHeight: legacySiteGeoref.orthogonalHeight,
+          xAxisAbscissa: legacySiteGeoref.xAxisAbscissa,
+          xAxisOrdinate: legacySiteGeoref.xAxisOrdinate,
+          scale: 1.0,
+          crsName: "EPSG:5514",
+          sourceType: "LEGACY_IFC_SITE",
+          latitude: legacySiteGeoref.latitude,
+          longitude: legacySiteGeoref.longitude,
+        };
+      }
+
+      // 3. If neither detected, set default manualData as active georeference
+      if (!ifc4Georef && !legacyGeoref) {
+        console.log("[GISMap] No georeferencing detected in file. Defaulting to MANUAL with default coordinates.");
+        this._globalAvailableGeoref = null;
+        const manualTarget: GISMapData = {
+          ...this.manualData,
+          sourceType: "MANUAL",
+        };
+        this._mapData = manualTarget;
+        if (modelId) {
+          this._modelsGeoref.set(modelId, manualTarget);
+        }
+        this.onGeorefChanged.trigger(manualTarget);
+        this.applyGISTransforms();
+        if (typeof window !== "undefined" && typeof (window as any).refreshGISMapSettingsSection === "function") {
+          (window as any).refreshGISMapSettingsSection();
+        }
+        return false;
+      }
+
+      // 4. Save available georeferences for dual-type manual selection
+      const dualEntry = {
+        ifc4: ifc4Georef || undefined,
+        legacy: legacyGeoref || undefined,
       };
+      this._globalAvailableGeoref = dualEntry;
+      if (modelId) {
+        this._modelsAvailableGeoref.set(modelId, dualEntry);
+      }
 
+      // 5. Default priority:
+      // If legacy IfcSite georeference contains large global coordinates (> 100,000m / 100km),
+      // prioritize it so legacy global building placements are placed at their actual locations!
+      let chosenGeoref: GISMapData;
+      if (legacyGeoref && (!ifc4Georef || Math.abs(legacyGeoref.eastings) > 100000 || Math.abs(legacyGeoref.northings) > 100000)) {
+        chosenGeoref = legacyGeoref;
+      } else {
+        chosenGeoref = ifc4Georef || legacyGeoref || { ...this.manualData, sourceType: "MANUAL" };
+      }
 
-      // Mirror into manual fallback
-      this.manualData = { ...this._mapData };
+      if (ifc4Georef && legacyGeoref) {
+        console.log(
+          `[GISMap] Dual georeferencing detected for model '${modelId || "active"}': Both IFC4 and Legacy IfcSite are available. Defaulting to ${chosenGeoref.sourceType}. User can toggle in settings.`
+        );
+      } else {
+        console.log(`[GISMap] Georeferencing detected: ${chosenGeoref.sourceType}`);
+      }
+
+      // Set anchor data from the first loaded model
+      if (!this._mapData) {
+        this._mapData = chosenGeoref;
+      }
+      if (modelId) {
+        this.registerModelGeoref(modelId, chosenGeoref);
+      }
+      this.onGeorefChanged.trigger(this._mapData || chosenGeoref);
 
       // Refresh settings UI
-      if (typeof (window as any).refreshGISMapSettingsCard === "function") {
-        (window as any).refreshGISMapSettingsCard();
-      }
-      if (typeof (window as any).refreshGISMapSettingsSection === "function") {
+      if (typeof window !== "undefined" && typeof (window as any).refreshGISMapSettingsSection === "function") {
         (window as any).refreshGISMapSettingsSection();
       }
 
-      if (this._enabled) this.updateMapTiles();
+      this.applyGISTransforms();
+      if (this._enabled) {
+        this.updateMapTiles();
+      }
       return true;
 
     } catch (err) {
@@ -241,9 +530,6 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
       return false;
     }
   }
-
-
-
 
   /**
    * Helper math to convert slippy map tile to Longitude & Latitude
@@ -270,44 +556,39 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
   }
 
   /**
-   * Convert EPSG:5514 plane coordinates to Three.js scene coordinates
+   * Converts WGS84 Longitude & Latitude to Three.js scene coordinates (meters)
+   * relative to the anchor origin (lon0, lat0).
+   * Resulting in a perfectly orthogonal, untilted, straight map canvas!
    */
-  private crsToThree(easting: number, northing: number, data: GISMapData): THREE.Vector3 {
-    // Rotation values
-    const A = data.xAxisAbscissa;
-    const B = data.xAxisOrdinate;
-    const L = Math.sqrt(A * A + B * B);
-    const cosTheta = L > 0 ? A / L : 1;
-    const sinTheta = L > 0 ? B / L : 0;
+  private wgs84ToThree(lon: number, lat: number, lon0: number, lat0: number): THREE.Vector3 {
+    const R = 6378137.0; // WGS84 semi-major axis in meters
+    const rad = Math.PI / 180;
+    const cosLat0 = Math.cos(lat0 * rad);
 
-    const E = data.eastings;
-    const N = data.northings;
-    const S = data.scale;
+    // Easting distance in meters (+X = East)
+    const x = (lon - lon0) * rad * R * cosLat0;
+    // Northing distance in meters (-Z = North in Three.js standard)
+    const z = -(lat - lat0) * rad * R;
 
-    // Relative offset from Map Conversion origin
-    const deltaX = (easting - E) / S;
-    const deltaY = (northing - N) / S;
-
-    // Apply rotation (inverse Map Conversion coordinate transform)
-    const xIfc = deltaX * cosTheta + deltaY * sinTheta;
-    const yIfc = -deltaX * sinTheta + deltaY * cosTheta;
-    const zIfc = 0; // Relative height to orthogonal height is 0 for ground plane
-
-    // Map IFC local axes to Three.js axes:
-    // Three X = IFC X
-    // Three Y = IFC Z (Up)
-    // Three Z = -IFC Y
-    return new THREE.Vector3(xIfc, zIfc, -yIfc);
+    return new THREE.Vector3(x, 0, z);
   }
 
   /**
    * Clear and dispose of loaded tile resources
    */
   clearMap() {
+    let post: any = null;
+    if (this._world && this._world.renderer && "postproduction" in this._world.renderer) {
+      post = (this._world.renderer as any).postproduction;
+    }
+
     this._tileCache.forEach((mesh) => {
       this.mapGroup.remove(mesh);
-      mesh.geometry.dispose();
       const material = mesh.material as THREE.MeshBasicMaterial;
+      if (post && post.excludedObjectsPass) {
+        post.excludedObjectsPass.removeExcludedMaterial(material);
+      }
+      mesh.geometry.dispose();
       if (material.map) material.map.dispose();
       material.dispose();
     });
@@ -324,36 +605,44 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
 
     // Use detected georeferencing or manual fallback settings
     const activeData = this._mapData || this.manualData;
+    const sanitize = (v: number) => (Math.abs(v) > 10_000_000 ? v / 1000 : v);
+    const eCenter = sanitize(activeData.eastings);
+    const nCenter = sanitize(activeData.northings);
 
     // Step 1: Convert the center georeferenced coordinate (Eastings, Northings) to Latitude/Longitude
     let lonCenter = 14.41; // Fallbacks
     let latCenter = 50.08;
+
     try {
-      const [lon, lat] = krovakToWgs84(activeData.eastings, activeData.northings);
+      const [lon, lat] = krovakToWgs84(eCenter, nCenter);
       lonCenter = lon;
       latCenter = lat;
     } catch (err) {
       console.error("[GISMap] Failed to convert EPSG:5514 coordinates:", err);
+      if (activeData.latitude !== undefined && activeData.longitude !== undefined) {
+        latCenter = activeData.latitude;
+        lonCenter = activeData.longitude;
+      }
     }
 
     // Step 2: Compute slippy map tile index of the center
     const centerTile = this.lonLatToTile(lonCenter, latCenter, this._zoom);
     // Step 3: Draw a grid of tiles around the center
     const halfGrid = Math.floor(this._gridSize / 2);
-    
+
     for (let dx = -halfGrid; dx <= halfGrid; dx++) {
       for (let dy = -halfGrid; dy <= halfGrid; dy++) {
         const tx = centerTile.x + dx;
         const ty = centerTile.y + dy;
-        this.loadTile(tx, ty, this._zoom, activeData);
+        this.loadTile(tx, ty, this._zoom, lonCenter, latCenter);
       }
     }
   }
 
   /**
-   * Create plane geometry and load texture for a specific tile
+   * Create plane geometry and load texture for a specific tile (straight orthogonal rectangle)
    */
-  private loadTile(tx: number, ty: number, z: number, data: GISMapData) {
+  private loadTile(tx: number, ty: number, z: number, lonCenter: number, latCenter: number) {
     const tileKey = `${z}_${tx}_${ty}`;
 
     // Get WGS84 coordinates of the four corners of this tile
@@ -362,23 +651,18 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
     const br = this.tileToLonLat(tx + 1, ty + 1, z);
     const bl = this.tileToLonLat(tx, ty + 1, z);
 
-    const tlEPSG = wgs84ToKrovak(tl.lon, tl.lat);
-    const trEPSG = wgs84ToKrovak(tr.lon, tr.lat);
-    const brEPSG = wgs84ToKrovak(br.lon, br.lat);
-    const blEPSG = wgs84ToKrovak(bl.lon, bl.lat);
+    // Map WGS84 corners directly to straight Three.js orthogonal space
+    const pTL = this.wgs84ToThree(tl.lon, tl.lat, lonCenter, latCenter);
+    const pTR = this.wgs84ToThree(tr.lon, tr.lat, lonCenter, latCenter);
+    const pBR = this.wgs84ToThree(br.lon, br.lat, lonCenter, latCenter);
+    const pBL = this.wgs84ToThree(bl.lon, bl.lat, lonCenter, latCenter);
 
-    // Map EPSG:5514 corners to Three.js local space
-    const pTL = this.crsToThree(tlEPSG[0], tlEPSG[1], data);
-    const pTR = this.crsToThree(trEPSG[0], trEPSG[1], data);
-    const pBR = this.crsToThree(brEPSG[0], brEPSG[1], data);
-    const pBL = this.crsToThree(blEPSG[0], blEPSG[1], data);
-
-    // Create a custom skewed BufferGeometry representing this tile
+    // Create a perfectly straight rectangular BufferGeometry representing this tile
     const vertices = new Float32Array([
-      pTL.x, pTL.y, pTL.z, // 0: Top-Left
-      pTR.x, pTR.y, pTR.z, // 1: Top-Right
-      pBR.x, pBR.y, pBR.z, // 2: Bottom-Right
-      pBL.x, pBL.y, pBL.z, // 3: Bottom-Left
+      pTL.x, 0, pTL.z, // 0: Top-Left
+      pTR.x, 0, pTR.z, // 1: Top-Right
+      pBR.x, 0, pBR.z, // 2: Bottom-Right
+      pBL.x, 0, pBL.z, // 3: Bottom-Left
     ]);
 
     const uvs = new Float32Array([
@@ -422,7 +706,7 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
       () => {
         // Log error and apply dummy placeholder texture
         console.warn(`[GISMap] Failed to load map tile image: ${url}`);
-        
+
         // Draw a placeholder checkered/outline texture for offline visual helper
         const canvas = document.createElement("canvas");
         canvas.width = 128;
@@ -450,5 +734,13 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
     mesh.name = `Map_Tile_${tileKey}`;
     this.mapGroup.add(mesh);
     this._tileCache.set(tileKey, mesh);
+
+    // Exclude this specific mesh material from postproduction outlines
+    if (this._world && this._world.renderer && "postproduction" in this._world.renderer) {
+      const post = (this._world.renderer as any).postproduction;
+      if (post && post.excludedObjectsPass) {
+        post.excludedObjectsPass.addExcludedMaterial(material);
+      }
+    }
   }
 }
