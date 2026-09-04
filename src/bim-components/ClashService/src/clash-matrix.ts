@@ -1,6 +1,6 @@
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
-import { appIcons } from "../../../globals";
+import { appIcons, createModalDialog } from "../../../globals";
 import { Highlighter } from "../../Highlighter";
 import { getDiscipline, clashDisciplineMap } from "./clash-grouping";
 
@@ -30,25 +30,16 @@ const getRank = (item: string) => {
 };
 
 const openDisciplineMapModal = () => {
-  const dialog = document.createElement("dialog");
-  dialog.style.width = "85vw";
-  dialog.style.height = "80vh";
-  dialog.style.maxWidth = "900px";
-  dialog.style.maxHeight = "700px";
-  dialog.style.padding = "1.5rem";
-  dialog.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
-  dialog.style.borderRadius = "8px";
-  dialog.style.backgroundColor = "var(--bim-ui_bg-base)";
-  dialog.style.display = "flex";
-  dialog.style.flexDirection = "column";
-  dialog.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
-  
+  const { dialog, header, contentContainer, closeButton } = createModalDialog({
+    title: "Discipline Group Mapping Guide",
+    width: "85vw",
+    height: "80vh",
+    maxWidth: "900px",
+    maxHeight: "700px",
+  });
+
   const style = document.createElement("style");
   style.textContent = `
-    dialog::backdrop {
-      background-color: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(4px);
-    }
     .modal-scroll-wrapper::-webkit-scrollbar {
       width: 6px;
     }
@@ -98,24 +89,10 @@ const openDisciplineMapModal = () => {
   `;
   dialog.appendChild(style);
 
-  // Header
-  const headerDiv = document.createElement("div");
-  headerDiv.style.display = "flex";
-  headerDiv.style.justifyContent = "space-between";
-  headerDiv.style.alignItems = "center";
-  headerDiv.style.marginBottom = "1rem";
-  headerDiv.style.flexShrink = "0";
-
-  const title = document.createElement("bim-label");
-  title.textContent = "Discipline Group Mapping Guide";
-  title.style.fontSize = "1.1rem";
-  title.style.fontWeight = "bold";
-  headerDiv.appendChild(title);
-
   // Search input
   const searchInput = document.createElement("input");
   searchInput.placeholder = "Search IFC Category (e.g. BEAM, PUMP)...";
-  searchInput.style.padding = "0.4rem 0.8rem";
+  searchInput.style.padding = "0.35rem 0.75rem";
   searchInput.style.fontSize = "0.75rem";
   searchInput.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
   searchInput.style.borderRadius = "4px";
@@ -123,17 +100,8 @@ const openDisciplineMapModal = () => {
   searchInput.style.color = "var(--bim-ui_main-contrast)";
   searchInput.style.width = "250px";
   searchInput.style.marginLeft = "auto";
-  searchInput.style.marginRight = "1rem";
-  headerDiv.appendChild(searchInput);
-
-  // Close Button
-  const closeBtn = document.createElement("bim-button");
-  (closeBtn as any).label = "Close";
-  (closeBtn as any).title = "Close";
-  closeBtn.addEventListener("click", () => dialog.close());
-  headerDiv.appendChild(closeBtn);
-
-  dialog.appendChild(headerDiv);
+  searchInput.style.marginRight = "0.75rem";
+  header.insertBefore(searchInput, closeButton);
 
   // Body Container
   const bodyDiv = document.createElement("div");
@@ -144,7 +112,7 @@ const openDisciplineMapModal = () => {
   bodyDiv.style.gridTemplateColumns = "repeat(auto-fill, minmax(250px, 1fr))";
   bodyDiv.style.gap = "1rem";
   bodyDiv.style.padding = "0.25rem";
-  
+
   // Render cards
   const cards: { cardEl: HTMLDivElement; badges: { badgeEl: HTMLSpanElement; text: string }[] }[] = [];
 
@@ -177,15 +145,15 @@ const openDisciplineMapModal = () => {
     cards.push({ cardEl: card, badges: badgeList });
   }
 
-  dialog.appendChild(bodyDiv);
+  contentContainer.appendChild(bodyDiv);
 
   // Search filter handler
   searchInput.addEventListener("input", () => {
     const query = searchInput.value.trim().toUpperCase();
-    
+
     cards.forEach(({ cardEl, badges }) => {
       let visibleCount = 0;
-      
+
       badges.forEach(({ badgeEl, text }) => {
         if (!query) {
           badgeEl.style.display = "inline-block";
@@ -207,20 +175,6 @@ const openDisciplineMapModal = () => {
         cardEl.style.display = "none";
       }
     });
-  });
-
-  dialog.addEventListener("click", (e: MouseEvent) => {
-    const rect = dialog.getBoundingClientRect();
-    const isClickInside =
-      rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
-      rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
-    if (!isClickInside) {
-      dialog.close();
-    }
-  });
-
-  dialog.addEventListener("close", () => {
-    dialog.remove();
   });
 
   document.body.appendChild(dialog);
@@ -302,10 +256,10 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
 
       if (!clashMatrix[key1]) clashMatrix[key1] = {};
       clashMatrix[key1][key2] = (clashMatrix[key1][key2] || 0) + 1;
-      
+
       if (!clashItemsMap[key1]) clashItemsMap[key1] = {};
       if (!clashItemsMap[key1][key2]) clashItemsMap[key1][key2] = {};
-      
+
       if (!clashItemsMap[key1][key2][res.id1.modelId]) clashItemsMap[key1][key2][res.id1.modelId] = new Set();
       clashItemsMap[key1][key2][res.id1.modelId].add(res.id1.expressID);
 
@@ -343,7 +297,7 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
     table.style.minWidth = `calc(${sortedItems.length * 3.6}rem + 8rem)`;
 
     table.columns = [
-      ...sortedItems.map(item => ({ name: item, width: "3.5rem" })), 
+      ...sortedItems.map(item => ({ name: item, width: "3.5rem" })),
       { name: "_Category", width: "8rem" },
     ];
 
@@ -414,9 +368,9 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
 
         const c1 = rowItem < colItem ? rowItem : colItem;
         const c2 = rowItem < colItem ? colItem : rowItem;
-        
+
         const count = value as number;
-        
+
         let cellBadge = "New";
         const cellItems = clashDataMap[c1]?.[c2];
         if (cellItems && cellItems.length > 0) {
@@ -441,117 +395,117 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
         let cursor = "default";
 
         if (count === 0) {
-            displayValue = "OK";
-            bgColor = "hsl(147, 65%, 40%)"; // 초록색
-            textColor = "#ffffff";
+          displayValue = "OK";
+          bgColor = "hsl(147, 65%, 40%)"; // 초록색
+          textColor = "#ffffff";
         } else if (cellBadge === "Exclude") {
-            displayValue = "E";
-            bgColor = "hsl(205, 65%, 40%)"; // 파란색 (Exclude)
-            textColor = "#ffffff";
+          displayValue = "E";
+          bgColor = "hsl(205, 65%, 40%)"; // 파란색 (Exclude)
+          textColor = "#ffffff";
         } else if (cellBadge === "Hold") {
-            displayValue = "H";
-            bgColor = "hsl(45, 65%, 40%)"; // 노란색 (Hold)
-            textColor = "#ffffff";
-            cursor = "pointer";
+          displayValue = "H";
+          bgColor = "hsl(45, 65%, 40%)"; // 노란색 (Hold)
+          textColor = "#ffffff";
+          cursor = "pointer";
         } else {
-            displayValue = count.toString();
-            bgColor = "hsl(0, 65%, 40%)"; // 빨간색
-            textColor = "#ffffff";
-            cursor = "pointer";
+          displayValue = count.toString();
+          bgColor = "hsl(0, 65%, 40%)"; // 빨간색
+          textColor = "#ffffff";
+          cursor = "pointer";
         }
-        
+
         const isSelected = selectedCell?.c1 === c1 && selectedCell?.c2 === c2;
         const border = isSelected ? `3px solid #ffffff` : "3px solid transparent";
-        
+
         return BUI.html`
           <div 
             title="${c1} vs ${c2}${selectedCell ? ' (선택 해제 후 상태 변경 가능)' : ' (우클릭하여 상태 변경 메뉴 호출)'}"
             @click=${() => { if (count > 0 && cellBadge !== "Exclude") onCellClick(c1, c2); }}
             @contextmenu=${(e: MouseEvent) => {
-              e.preventDefault();
-              if (selectedCell) return;
-              if (state.onBadgeChanged) {
-                const existingMenu = document.getElementById("clash-matrix-context-menu");
-                if (existingMenu) existingMenu.remove();
-                
-                const menu = document.createElement("div");
-                menu.id = "clash-matrix-context-menu";
-                menu.style.position = "fixed";
-                menu.style.left = e.clientX + "px";
-                menu.style.top = e.clientY + "px";
-                menu.style.zIndex = "9999";
-                menu.style.background = "var(--bim-ui_bg-base)";
-                menu.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
-                menu.style.borderRadius = "4px";
-                menu.style.boxShadow = "0 2px 10px rgba(0,0,0,0.5)";
-                menu.style.display = "flex";
-                menu.style.flexDirection = "column";
-                menu.style.overflow = "hidden";
-                
-                const options = [
-                  { label: "New", value: "New", color: "hsl(0, 65%, 40%)" },
-                  { label: "Hold", value: "Hold", color: "hsl(45, 65%, 40%)" },
-                  { label: "Exclude", value: "Exclude", color: "hsl(205, 65%, 40%)" }
-                ];
-                
-                options.forEach(opt => {
-                  const btn = document.createElement("bim-button") as any;
-                  btn.label = opt.label;
-                  btn.style.color = opt.color;
-                  btn.style.setProperty("--bim-ui_bg-contrast-100", opt.color);
-                  btn.style.margin = "0";
-                  btn.style.borderRadius = "0";
-                  btn.style.borderBottom = "1px solid var(--bim-ui_bg-contrast-20)";
-                  btn.style.background = "transparent";
-                  btn.style.width = "100px";
-                  
-                  btn.onmouseover = () => btn.style.background = "var(--bim-ui_bg-contrast-20)";
-                  btn.onmouseout = () => btn.style.background = "transparent";
-                  
-                  btn.addEventListener("click", () => {
-                    let pairs: [string, string][] = [];
-                    if (matrixViewMode === "Entity") {
-                      pairs = [[c1, c2]];
-                    } else {
-                      const cats1 = catsByDiscipline[c1] || [];
-                      const cats2 = catsByDiscipline[c2] || [];
-                      const uniquePairs = new Set<string>();
-                      for (const catA of cats1) {
-                        for (const catB of cats2) {
-                          const key1 = catA.toUpperCase() + "|" + catB.toUpperCase();
-                          const key2 = catB.toUpperCase() + "|" + catA.toUpperCase();
-                          if (!uniquePairs.has(key1) && !uniquePairs.has(key2)) {
-                            uniquePairs.add(key1);
-                            uniquePairs.add(key2);
-                            pairs.push([catA, catB]);
-                          }
+            e.preventDefault();
+            if (selectedCell) return;
+            if (state.onBadgeChanged) {
+              const existingMenu = document.getElementById("clash-matrix-context-menu");
+              if (existingMenu) existingMenu.remove();
+
+              const menu = document.createElement("div");
+              menu.id = "clash-matrix-context-menu";
+              menu.style.position = "fixed";
+              menu.style.left = e.clientX + "px";
+              menu.style.top = e.clientY + "px";
+              menu.style.zIndex = "9999";
+              menu.style.background = "var(--bim-ui_bg-base)";
+              menu.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
+              menu.style.borderRadius = "4px";
+              menu.style.boxShadow = "0 2px 10px rgba(0,0,0,0.5)";
+              menu.style.display = "flex";
+              menu.style.flexDirection = "column";
+              menu.style.overflow = "hidden";
+
+              const options = [
+                { label: "New", value: "New", color: "hsl(0, 65%, 40%)" },
+                { label: "Hold", value: "Hold", color: "hsl(45, 65%, 40%)" },
+                { label: "Exclude", value: "Exclude", color: "hsl(205, 65%, 40%)" }
+              ];
+
+              options.forEach(opt => {
+                const btn = document.createElement("bim-button") as any;
+                btn.label = opt.label;
+                btn.style.color = opt.color;
+                btn.style.setProperty("--bim-ui_bg-contrast-100", opt.color);
+                btn.style.margin = "0";
+                btn.style.borderRadius = "0";
+                btn.style.borderBottom = "1px solid var(--bim-ui_bg-contrast-20)";
+                btn.style.background = "transparent";
+                btn.style.width = "100px";
+
+                btn.onmouseover = () => btn.style.background = "var(--bim-ui_bg-contrast-20)";
+                btn.onmouseout = () => btn.style.background = "transparent";
+
+                btn.addEventListener("click", () => {
+                  let pairs: [string, string][] = [];
+                  if (matrixViewMode === "Entity") {
+                    pairs = [[c1, c2]];
+                  } else {
+                    const cats1 = catsByDiscipline[c1] || [];
+                    const cats2 = catsByDiscipline[c2] || [];
+                    const uniquePairs = new Set<string>();
+                    for (const catA of cats1) {
+                      for (const catB of cats2) {
+                        const key1 = catA.toUpperCase() + "|" + catB.toUpperCase();
+                        const key2 = catB.toUpperCase() + "|" + catA.toUpperCase();
+                        if (!uniquePairs.has(key1) && !uniquePairs.has(key2)) {
+                          uniquePairs.add(key1);
+                          uniquePairs.add(key2);
+                          pairs.push([catA, catB]);
                         }
                       }
                     }
-                    
-                    if (pairs.length > 0) {
-                      state.onBadgeChanged!(pairs, opt.value);
-                    }
-                    menu.remove();
-                  });
-                  menu.appendChild(btn);
-                });
-                
-                document.body.appendChild(menu);
-                
-                const closeMenu = (evt: Event) => {
-                  if (!menu.contains(evt.target as Node)) {
-                    menu.remove();
-                    document.removeEventListener("click", closeMenu);
-                    document.removeEventListener("contextmenu", closeMenu);
                   }
-                };
-                setTimeout(() => {
-                  document.addEventListener("click", closeMenu);
-                  document.addEventListener("contextmenu", closeMenu);
-                }, 0);
-              }
-            }}
+
+                  if (pairs.length > 0) {
+                    state.onBadgeChanged!(pairs, opt.value);
+                  }
+                  menu.remove();
+                });
+                menu.appendChild(btn);
+              });
+
+              document.body.appendChild(menu);
+
+              const closeMenu = (evt: Event) => {
+                if (!menu.contains(evt.target as Node)) {
+                  menu.remove();
+                  document.removeEventListener("click", closeMenu);
+                  document.removeEventListener("contextmenu", closeMenu);
+                }
+              };
+              setTimeout(() => {
+                document.addEventListener("click", closeMenu);
+                document.addEventListener("contextmenu", closeMenu);
+              }, 0);
+            }
+          }}
             style="display: flex; width: 100%; height: 100%; min-height: 1.5rem; align-items: center; justify-content: center; background-color: ${bgColor}; color: ${textColor}; font-size: 0.65rem; font-weight: normal; border-radius: 4px; cursor: ${cursor}; border: ${border}; transition: filter 0.2s, border 0.2s; box-sizing: border-box;"
             onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter='none'">
             ${displayValue}
@@ -559,7 +513,7 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
         `;
       };
     }
-    
+
     table.dataTransform = dataTransform;
 
     const headerRow: any = { _Category: "@@HEADER@@" };
@@ -583,7 +537,7 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
 
     table.data = tableData;
   };
-  
+
   const onTableCreated = (el?: Element) => {
     if (!el || !hasData) return;
     if (currentTable !== el) {
@@ -614,13 +568,13 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
 
       for (let j = 0; j < currentSortedItems.length; j++) {
         const colItem = currentSortedItems[j];
-        
+
         if (j > i) {
           rowValues.push("-");
         } else {
           const c1 = rowItem < colItem ? rowItem : colItem;
           const c2 = rowItem < colItem ? colItem : rowItem;
-          
+
           const count = currentClashMatrix[c1]?.[c2] || 0;
 
           let cellBadge = "New";
@@ -682,66 +636,35 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
 
   const openExpandModal = () => {
     if (!currentTable) return;
-    
-    const dialog = document.createElement("dialog");
-    dialog.style.width = "95vw";
-    dialog.style.height = "95vh";
-    dialog.style.maxWidth = "1600px";
-    dialog.style.maxHeight = "1200px";
-    dialog.style.padding = "1.5rem";
-    dialog.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
-    dialog.style.borderRadius = "8px";
-    dialog.style.backgroundColor = "var(--bim-ui_bg-base)";
-    dialog.style.display = "flex";
-    dialog.style.flexDirection = "column";
-    dialog.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
-    
+
+    const originalParent = currentTable.parentElement;
+
+    const { dialog, contentContainer } = createModalDialog({
+      title: "Clash Matrix",
+      width: "95vw",
+      height: "95vh",
+      maxWidth: "1600px",
+      maxHeight: "1200px",
+      onClose: () => {
+        if (originalParent && currentTable) {
+          originalParent.appendChild(currentTable);
+        }
+      },
+    });
+
     const style = document.createElement("style");
     style.textContent = `
-      dialog::backdrop { background-color: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); }
       .matrix-scroll-wrapper bim-table::part(cell) { overflow: visible !important; }
     `;
     dialog.appendChild(style);
-
-    const headerDiv = document.createElement("div");
-    headerDiv.style.display = "flex";
-    headerDiv.style.justifyContent = "space-between";
-    headerDiv.style.alignItems = "center";
-    headerDiv.style.marginBottom = "1rem";
-    
-    const title = document.createElement("bim-label");
-    title.textContent = "Clash Matrix";
-    title.style.fontSize = "1.25rem";
-    title.style.fontWeight = "bold";
-    headerDiv.appendChild(title);
-
-    dialog.appendChild(headerDiv);
-
-    dialog.addEventListener("click", (e: MouseEvent) => {
-      const rect = dialog.getBoundingClientRect();
-      const isClickInside =
-        rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
-        rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
-      if (!isClickInside) {
-        dialog.close();
-      }
-    });
 
     const tableContainer = document.createElement("div");
     tableContainer.style.flex = "1";
     tableContainer.style.overflow = "auto";
     tableContainer.className = "matrix-scroll-wrapper";
-    
-    const originalParent = currentTable.parentElement;
-    tableContainer.appendChild(currentTable);
-    dialog.appendChild(tableContainer);
 
-    dialog.addEventListener("close", () => {
-      if (originalParent && currentTable) {
-        originalParent.appendChild(currentTable);
-      }
-      dialog.remove();
-    });
+    tableContainer.appendChild(currentTable);
+    contentContainer.appendChild(tableContainer);
 
     document.body.appendChild(dialog);
     dialog.showModal();
@@ -788,15 +711,15 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
             <input type="radio" name="matrixMode" value="Discipline" ?checked=${matrixViewMode === "Discipline"} @change=${onMatrixModeChange} style="margin: 0; cursor: pointer; accent-color: var(--bim-ui_main-base);">
             <bim-label style="pointer-events: none; margin: 0; font-size: 0.75rem;">Discipline</bim-label>
           </label>
-          <bim-button @click=${openDisciplineMapModal} icon=${appIcons.HELP} tooltip-title="Discipline Mapping Guide" style="margin-left: 0.25rem; height: 1.5rem; width: 1.5rem;"></bim-button>
+          <bim-button @click=${openDisciplineMapModal} icon=${appIcons.HELP} title="Discipline Mapping Guide"></bim-button>
         </div>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
           <bim-label ${BUI.ref(e => {
-            selectionLabel = e;
-            if (selectionLabel) {
-              selectionLabel.textContent = selectedCell ? `${selectedCell.c1} vs ${selectedCell.c2}` : "None";
-            }
-          })} style="color: var(--bim-ui_main-contrast); margin: 0;"></bim-label>
+    selectionLabel = e;
+    if (selectionLabel) {
+      selectionLabel.textContent = selectedCell ? `${selectedCell.c1} vs ${selectedCell.c2}` : "None";
+    }
+  })} style="color: var(--bim-ui_main-contrast); margin: 0;"></bim-label>
           <bim-button @click=${openExpandModal} icon=${appIcons.EXPAND} tooltip-title="Expand Matrix"></bim-button>
           <bim-button @click=${onExportCSV} icon=${appIcons.EXPORT} title="Export to CSV"></bim-button>
         </div>

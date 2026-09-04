@@ -1,35 +1,20 @@
 import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
-import { appIcons, tooltips } from "../../globals";
+import { appIcons, createModalDialog, tooltips } from "../../globals";
 import { hideSelection, isolateSelection, toggleClipperBox } from "../../ui-templates/toolbars/viewer-toolbar";
 import { Highlighter } from "../../bim-components/Highlighter";
 import { itemsData } from "../ItemsData";
 
 const openItemsDataDialog = (components: OBC.Components, selection: OBC.ModelIdMap) => {
-  const dialog = document.createElement("dialog");
-  dialog.style.width = "50vw";
-  dialog.style.height = "70vh";
-  dialog.style.maxWidth = "900px";
-  dialog.style.maxHeight = "700px";
-  dialog.style.minWidth = "400px";
-  dialog.style.minHeight = "450px";
-  dialog.style.padding = "1.5rem";
-  dialog.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
-  dialog.style.borderRadius = "8px";
-  dialog.style.backgroundColor = "var(--bim-ui_bg-base)";
-  dialog.style.display = "flex";
-  dialog.style.flexDirection = "column";
-  dialog.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
-  dialog.style.color = "var(--bim-ui_main-contrast)";
-
-  const style = document.createElement("style");
-  style.textContent = `
-    dialog::backdrop {
-      background-color: rgba(0, 0, 0, 0.6);
-      backdrop-filter: blur(4px);
-    }
-  `;
-  dialog.appendChild(style);
+  const { dialog, header, contentContainer, closeButton } = createModalDialog({
+    title: "Selection Data",
+    width: "50vw",
+    height: "70vh",
+    maxWidth: "900px",
+    maxHeight: "700px",
+    minWidth: "400px",
+    minHeight: "450px",
+  });
 
   // Table
   const [propsTable] = itemsData({
@@ -40,31 +25,17 @@ const openItemsDataDialog = (components: OBC.Components, selection: OBC.ModelIdM
   propsTable.style.flex = "1";
   propsTable.style.overflow = "auto";
 
-  // Header
-  const headerDiv = document.createElement("div");
-  headerDiv.style.display = "flex";
-  headerDiv.style.justifyContent = "space-between";
-  headerDiv.style.alignItems = "center";
-  headerDiv.style.marginBottom = "1rem";
-  headerDiv.style.flexShrink = "0";
-
-  const title = document.createElement("bim-label");
-  title.textContent = "Selection Data";
-  title.style.fontSize = "1.1rem";
-  title.style.fontWeight = "bold";
-  headerDiv.appendChild(title);
-
   // Search & Toolbar Container
   const toolbarDiv = document.createElement("div");
   toolbarDiv.style.display = "flex";
   toolbarDiv.style.gap = "0.5rem";
   toolbarDiv.style.alignItems = "center";
   toolbarDiv.style.marginLeft = "auto";
-  toolbarDiv.style.marginRight = "1rem";
+  toolbarDiv.style.marginRight = "0.75rem";
 
   const searchInput = document.createElement("input");
   searchInput.placeholder = "Search...";
-  searchInput.style.padding = "0.4rem 0.8rem";
+  searchInput.style.padding = "0.35rem 0.75rem";
   searchInput.style.fontSize = "0.75rem";
   searchInput.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
   searchInput.style.borderRadius = "4px";
@@ -76,36 +47,25 @@ const openItemsDataDialog = (components: OBC.Components, selection: OBC.ModelIdM
   });
   toolbarDiv.appendChild(searchInput);
 
-  const expandBtn = document.createElement("bim-button");
+  const expandBtn = document.createElement("bim-button") as BUI.Button;
   expandBtn.style.flex = "0";
-  (expandBtn as any).icon = appIcons.EXPAND;
-  expandBtn.setAttribute("tooltip-title", "Toggle Expanded");
+  expandBtn.icon = appIcons.EXPAND;
+  expandBtn.title = "Toggle Expanded";
   expandBtn.addEventListener("click", () => {
     propsTable.expanded = !propsTable.expanded;
   });
   toolbarDiv.appendChild(expandBtn);
-
-  const exportBtn = document.createElement("bim-button");
+  
+  const exportBtn = document.createElement("bim-button") as BUI.Button;
   exportBtn.style.flex = "0";
-  (exportBtn as any).icon = appIcons.EXPORT;
-  exportBtn.setAttribute("tooltip-title", "Export Data");
-  exportBtn.setAttribute("tooltip-text", "Export the shown properties.");
+  exportBtn.icon = appIcons.EXPORT;
+  exportBtn.title = "Export Data";
   exportBtn.addEventListener("click", () => {
     propsTable.downloadData("ElementData", "json");
   });
   toolbarDiv.appendChild(exportBtn);
-
-  headerDiv.appendChild(toolbarDiv);
-
-  // Close Button
-  const closeBtn = document.createElement("bim-button");
-  closeBtn.style.flex = "0";
-  (closeBtn as any).label = "Close";
-  closeBtn.setAttribute("tooltip-title", "Close Dialog");
-  closeBtn.addEventListener("click", () => dialog.close());
-  headerDiv.appendChild(closeBtn);
-
-  dialog.appendChild(headerDiv);
+  
+  header.insertBefore(toolbarDiv, closeButton);
 
   // Append Table directly as a DOM element
   const bodyDiv = document.createElement("div");
@@ -114,22 +74,7 @@ const openItemsDataDialog = (components: OBC.Components, selection: OBC.ModelIdM
   bodyDiv.style.display = "flex";
   bodyDiv.appendChild(propsTable);
 
-  dialog.appendChild(bodyDiv);
-
-  // Backdrop click close handler
-  dialog.addEventListener("click", (e: MouseEvent) => {
-    const rect = dialog.getBoundingClientRect();
-    const isClickInside =
-      rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
-      rect.left <= e.clientX && e.clientX <= rect.left + rect.width;
-    if (!isClickInside) {
-      dialog.close();
-    }
-  });
-
-  dialog.addEventListener("close", () => {
-    dialog.remove();
-  });
+  contentContainer.appendChild(bodyDiv);
 
   document.body.appendChild(dialog);
   dialog.showModal();

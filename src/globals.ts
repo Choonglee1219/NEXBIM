@@ -144,6 +144,8 @@ export const appIcons = {
   DRAWING: "/icons/hugeicons--drawing-compass.svg",
   DIAGRAM: "/icons/ph--flow-arrow-bold.svg",
   OPENING: "/icons/hugeicons--golf-hole.svg",
+  CHECK_ALL: "/icons/mdi--check-all.svg",
+  SELECT_ALL: "/icons/mdi--check-all.svg",
 };
 
 // 테이블 내 아이콘 버튼들의 공통 컴팩트 스타일
@@ -374,4 +376,151 @@ export const createPaginationTemplate = (
       <bim-button ${BUI.ref(e => refs.next = e as BUI.Button)} @click=${onNext} icon=${appIcons.FORWARD} title="Next Page" style="flex: 0; margin: 0;"></bim-button>
     </div>
   `;
+};
+
+export interface ModalDialogOptions {
+  title?: string;
+  icon?: string;
+  width?: string;
+  height?: string;
+  maxWidth?: string;
+  maxHeight?: string;
+  minWidth?: string;
+  minHeight?: string;
+  closeOnBackdropClick?: boolean;
+  onClose?: () => void;
+}
+
+export interface ModalDialogResult {
+  dialog: HTMLDialogElement;
+  header: HTMLDivElement;
+  titleContainer: HTMLDivElement;
+  closeButton: BUI.Button;
+  contentContainer: HTMLDivElement;
+  close: () => void;
+}
+
+/**
+ * 프로젝트 전역 표준 Modal Dialog 팩토리 헬퍼
+ */
+export const createModalDialog = (options: ModalDialogOptions = {}): ModalDialogResult => {
+  const {
+    title = "",
+    icon = "",
+    width = "85vw",
+    height = "auto",
+    maxWidth = "800px",
+    maxHeight = "85vh",
+    minWidth = "320px",
+    minHeight = "auto",
+    closeOnBackdropClick = true,
+    onClose,
+  } = options;
+
+  const dialog = document.createElement("dialog");
+  dialog.style.width = width;
+  dialog.style.height = height;
+  dialog.style.maxWidth = maxWidth;
+  dialog.style.maxHeight = maxHeight;
+  dialog.style.minWidth = minWidth;
+  dialog.style.minHeight = minHeight;
+  dialog.style.padding = "1.25rem";
+  dialog.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
+  dialog.style.borderRadius = "8px";
+  dialog.style.backgroundColor = "var(--bim-ui_bg-base)";
+  dialog.style.display = "flex";
+  dialog.style.flexDirection = "column";
+  dialog.style.gap = "0.75rem";
+  dialog.style.boxShadow = "0 10px 30px rgba(0,0,0,0.5)";
+  dialog.style.color = "var(--bim-ui_main-contrast)";
+  dialog.style.boxSizing = "border-box";
+
+  const style = document.createElement("style");
+  style.textContent = `
+    dialog::backdrop {
+      background-color: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+    }
+  `;
+  dialog.appendChild(style);
+
+  // Header
+  const header = document.createElement("div");
+  header.style.display = "flex";
+  header.style.justifyContent = "space-between";
+  header.style.alignItems = "center";
+  header.style.borderBottom = "1px solid var(--bim-ui_bg-contrast-20)";
+  header.style.paddingBottom = "0.75rem";
+  header.style.flexShrink = "0";
+
+  const titleContainer = document.createElement("div");
+  titleContainer.style.display = "flex";
+  titleContainer.style.alignItems = "center";
+  titleContainer.style.gap = "0.5rem";
+
+  if (icon) {
+    const img = document.createElement("img");
+    img.src = icon;
+    img.style.width = "1.25rem";
+    img.style.height = "1.25rem";
+    titleContainer.appendChild(img);
+  }
+
+  if (title) {
+    const titleSpan = document.createElement("span");
+    titleSpan.textContent = title;
+    titleSpan.style.fontWeight = "700";
+    titleSpan.style.fontSize = "1.05rem";
+    titleContainer.appendChild(titleSpan);
+  }
+
+  const closeButton = document.createElement("bim-button") as BUI.Button;
+  closeButton.icon = appIcons.CLEAR;
+  closeButton.style.flex = "0 0 auto";
+  closeButton.title = "Close";
+
+  const close = () => {
+    dialog.close();
+    dialog.remove();
+    if (onClose) onClose();
+  };
+
+  closeButton.addEventListener("click", close);
+
+  header.appendChild(titleContainer);
+  header.appendChild(closeButton);
+  dialog.appendChild(header);
+
+  // Content Container
+  const contentContainer = document.createElement("div");
+  contentContainer.style.display = "flex";
+  contentContainer.style.flexDirection = "column";
+  contentContainer.style.flex = "1";
+  contentContainer.style.minHeight = "0";
+  contentContainer.style.gap = "0.75rem";
+  contentContainer.style.overflow = "hidden";
+  dialog.appendChild(contentContainer);
+
+  if (closeOnBackdropClick) {
+    dialog.addEventListener("click", (e: MouseEvent) => {
+      const rect = dialog.getBoundingClientRect();
+      const isOutside =
+        e.clientX < rect.left ||
+        e.clientX > rect.right ||
+        e.clientY < rect.top ||
+        e.clientY > rect.bottom;
+      if (isOutside) {
+        close();
+      }
+    });
+  }
+
+  return {
+    dialog,
+    header,
+    titleContainer,
+    closeButton,
+    contentContainer,
+    close,
+  };
 };
