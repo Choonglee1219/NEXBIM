@@ -12,7 +12,7 @@ export interface GISMapData {
   xAxisOrdinate: number;
   scale: number;
   crsName: string;
-  sourceType?: "IFC4_MAP_CONVERSION" | "LEGACY_IFC_SITE" | "MANUAL";
+  sourceType?: "MapConversion" | "Site.ObjectPlacement" | "Manual";
   latitude?: number;
   longitude?: number;
 }
@@ -26,14 +26,14 @@ export const MapSourceUrls: Record<MapSourceType, string> = {
 };
 
 export const DEFAULT_MANUAL_GEOREF: Readonly<GISMapData> = {
-  eastings: -634016.937824,
-  northings: -1168325.998753,
+  eastings: -634016.9392,
+  northings: -1168325.9995,
   orthogonalHeight: 389.400,
   xAxisAbscissa: 0.878091,
   xAxisOrdinate: -0.478494,
   scale: 1.0,
   crsName: "EPSG:5514",
-  sourceType: "MANUAL",
+  sourceType: "Manual",
 };
 
 export class GISMapComponent extends OBC.Component implements OBC.Disposable {
@@ -110,13 +110,13 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
    */
   setModelGeorefType(
     modelId: string | null | undefined,
-    type: "IFC4_MAP_CONVERSION" | "LEGACY_IFC_SITE" | "MANUAL",
+    type: "MapConversion" | "Site.ObjectPlacement" | "Manual",
     customManualData?: GISMapData
   ): boolean {
-    if (type === "MANUAL") {
+    if (type === "Manual") {
       if (customManualData) {
-        this.manualData = { ...customManualData, sourceType: "MANUAL" };
-      } else if (!this.manualData || this.manualData.sourceType !== "MANUAL") {
+        this.manualData = { ...customManualData, sourceType: "Manual" };
+      } else if (!this.manualData || this.manualData.sourceType !== "Manual") {
         this.manualData = { ...DEFAULT_MANUAL_GEOREF };
       }
       const manualTarget: GISMapData = { ...this.manualData };
@@ -141,13 +141,13 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
 
     if (!modelId) {
       for (const [id, avail] of this._modelsAvailableGeoref) {
-        const target = type === "IFC4_MAP_CONVERSION" ? avail.ifc4 : avail.legacy;
+        const target = type === "MapConversion" ? avail.ifc4 : avail.legacy;
         if (target) this._modelsGeoref.set(id, target);
       }
     } else {
       const avail = this._modelsAvailableGeoref.get(modelId) || this._globalAvailableGeoref;
       if (avail) {
-        const target = type === "IFC4_MAP_CONVERSION" ? avail.ifc4 : avail.legacy;
+        const target = type === "MapConversion" ? avail.ifc4 : avail.legacy;
         if (target) this._modelsGeoref.set(modelId, target);
       }
     }
@@ -159,11 +159,11 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
       if (fragments?.initialized && fragments.list) {
         firstLoadedId = Array.from(fragments.list.keys())[0];
       }
-    } catch (_) {}
+    } catch (_) { }
 
     const primaryTarget = (firstLoadedId && this._modelsGeoref.get(firstLoadedId))
       || (modelId && this._modelsGeoref.get(modelId))
-      || (type === "IFC4_MAP_CONVERSION" ? this._globalAvailableGeoref?.ifc4 : this._globalAvailableGeoref?.legacy);
+      || (type === "MapConversion" ? this._globalAvailableGeoref?.ifc4 : this._globalAvailableGeoref?.legacy);
 
     if (primaryTarget) {
       this._mapData = primaryTarget;
@@ -233,15 +233,29 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
     const deltaZ = -(toMeters(data.northings) - toMeters(anchorData.northings));
     const deltaY = toMeters(data.orthogonalHeight) - toMeters(anchorData.orthogonalHeight);
 
-    if (this._enabled && (data.sourceType === "IFC4_MAP_CONVERSION" || data.sourceType === "MANUAL")) {
-      const phi = (data.xAxisAbscissa !== undefined && data.xAxisOrdinate !== undefined)
-        ? Math.atan2(data.xAxisOrdinate, data.xAxisAbscissa)
-        : 0;
+    const phi = (data.xAxisAbscissa !== undefined && data.xAxisOrdinate !== undefined)
+      ? Math.atan2(data.xAxisOrdinate, data.xAxisAbscissa)
+      : 0;
+    const deg = ((phi * 180) / Math.PI + 360) % 360;
+
+    const needsThreeRotation =
+      this._enabled &&
+      (data.sourceType === "MapConversion" || data.sourceType === "Manual");
+
+    if (needsThreeRotation) {
       model.object.position.set(deltaX, deltaY, deltaZ);
       model.object.rotation.set(0, phi, 0);
+      console.log(
+        `%c[GISMap] Applied Three.js transform to '${modelId}' (${data.sourceType}): Pos=(${deltaX.toFixed(2)}, ${deltaY.toFixed(2)}, ${deltaZ.toFixed(2)}), RotY=${deg.toFixed(4)}° (${phi.toFixed(4)} rad)`,
+        "color: #8fbc0c; font-weight: bold;"
+      );
     } else {
       model.object.position.set(deltaX, deltaY, deltaZ);
       model.object.rotation.set(0, 0, 0);
+      console.log(
+        `%c[GISMap] Applied transform to '${modelId}' (${data.sourceType}): Pos=(${deltaX.toFixed(2)}, ${deltaY.toFixed(2)}, ${deltaZ.toFixed(2)}), RotY=0 (Mesh baked with RefDirection: ${deg.toFixed(4)}°)`,
+        "color: #00b4d8; font-weight: bold;"
+      );
     }
 
     model.object.updateMatrix();
@@ -333,6 +347,7 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
       }
     }
   }
+
 
   get tileUrlTemplate(): string {
     return this._tileUrlTemplate;
@@ -434,7 +449,7 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
           xAxisOrdinate: parseVal(mcArgs[6], 0.0),
           scale: parseVal(mcArgs[7], 1.0),
           crsName,
-          sourceType: "IFC4_MAP_CONVERSION",
+          sourceType: "MapConversion",
           latitude: siteLat,
           longitude: siteLon,
         };
@@ -451,7 +466,7 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
           xAxisOrdinate: legacySiteGeoref.xAxisOrdinate,
           scale: 1.0,
           crsName: "EPSG:5514",
-          sourceType: "LEGACY_IFC_SITE",
+          sourceType: "Site.ObjectPlacement",
           latitude: legacySiteGeoref.latitude,
           longitude: legacySiteGeoref.longitude,
         };
@@ -463,7 +478,7 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
         this._globalAvailableGeoref = null;
         const manualTarget: GISMapData = {
           ...this.manualData,
-          sourceType: "MANUAL",
+          sourceType: "Manual",
         };
         this._mapData = manualTarget;
         if (modelId) {
@@ -488,18 +503,20 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
       }
 
       // 5. Default priority:
-      // If legacy IfcSite georeference contains large global coordinates (> 100,000m / 100km),
-      // prioritize it so legacy global building placements are placed at their actual locations!
+      // Prioritize Site.ObjectPlacement when distinct global coordinates (>100km) exist in IfcSite.ObjectPlacement,
+      // ensuring multi-building federations preserve individual relative placements without overlapping at (0,0,0).
       let chosenGeoref: GISMapData;
-      if (legacyGeoref && (!ifc4Georef || Math.abs(legacyGeoref.eastings) > 100000 || Math.abs(legacyGeoref.northings) > 100000)) {
+      if (legacyGeoref) {
         chosenGeoref = legacyGeoref;
+      } else if (ifc4Georef) {
+        chosenGeoref = ifc4Georef;
       } else {
-        chosenGeoref = ifc4Georef || legacyGeoref || { ...this.manualData, sourceType: "MANUAL" };
+        chosenGeoref = { ...this.manualData, sourceType: "Manual" };
       }
 
       if (ifc4Georef && legacyGeoref) {
         console.log(
-          `[GISMap] Dual georeferencing detected for model '${modelId || "active"}': Both IFC4 and Legacy IfcSite are available. Defaulting to ${chosenGeoref.sourceType}. User can toggle in settings.`
+          `[GISMap] Dual georeferencing detected for model '${modelId || "active"}': Both MapConversion and Site.ObjectPlacement are available. Defaulting to ${chosenGeoref.sourceType} (preserving multi-building positioning). User can toggle in settings.`
         );
       } else {
         console.log(`[GISMap] Georeferencing detected: ${chosenGeoref.sourceType}`);
@@ -530,6 +547,9 @@ export class GISMapComponent extends OBC.Component implements OBC.Disposable {
       return false;
     }
   }
+
+
+
 
   /**
    * Helper math to convert slippy map tile to Longitude & Latitude

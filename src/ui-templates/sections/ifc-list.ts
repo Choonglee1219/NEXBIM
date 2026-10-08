@@ -335,7 +335,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
             relService.addIfcBuffer(modelId, bytes);
             if (newModelName) relService.addIfcBuffer(newModelName, bytes);
           }
-        } catch (e) {}
+        } catch (e) { }
       }
 
       const fragData = await (model as any).getBuffer(false);
@@ -437,18 +437,17 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
 
   const onAddIfcFolder = async (e: Event) => {
     const target = (e.target as HTMLElement).closest("bim-button") as BUI.Button | null;
+    const files = await getIfcFilesFromFolder();
+    if (!files) return;
+
+    if (files.length === 0) {
+      alert("선택한 폴더 내에 .ifc 파일이 존재하지 않습니다.");
+      return;
+    }
+
+    if (target) target.loading = true;
+
     try {
-      const files = await getIfcFilesFromFolder();
-      if (!files) return;
-
-      if (files.length === 0) {
-        alert("선택한 폴더 내에 .ifc 파일이 존재하지 않습니다.");
-        return;
-      }
-
-      if (target) target.loading = true;
-
-      // 파일명 오름차순 순차 처리
       files.sort((a, b) => a.name.localeCompare(b.name));
 
       let successCount = 0;
@@ -456,14 +455,12 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
       let failCount = 0;
 
       for (const file of files) {
-        // 일괄 처리 시 불필요한 반복 목록 갱신을 방지하기 위해 refreshLists=false 전달
         const res = await processAndSaveIfc(file, false, false);
         if (res === "success") successCount++;
         else if (res === "skipped") skipCount++;
         else failCount++;
       }
 
-      // 배치 완료 후 목록 및 주제 1회 일괄 갱신
       if (successCount > 0) {
         bcfTopics.onRefresh.trigger();
         await refreshSharedIFCList();
@@ -566,7 +563,7 @@ export const ifcListPanelTemplate: BUI.StatefullComponent<IFCListPanelState> = (
             relService.addIfcBuffer(modelId, rawBytes);
             if (ifc.name) relService.addIfcBuffer(ifc.name, rawBytes);
           }
-        } catch (e) {}
+        } catch (e) { }
       }
     }
   };

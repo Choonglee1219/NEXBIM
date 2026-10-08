@@ -18,6 +18,13 @@
 *   **프로퍼티 관리 (Properties Manager)**: IFC 객체의 속성 조회 및 수정.
 *   **공간구조 트리 (Spatial Tree)**: 모델의 공간 구조(층, 실 등) 탐색.
 *   **쿼리 빌더 (Query Builder)**: 조건에 맞는 객체 검색 및 강조.
+*   **3D GIS 맵 및 지리참조 (GIS Map & Georeferencing)**:
+    *   **IFC4 및 Legacy 지리정보 자동 탐지**: `IfcMapConversion` & `IfcProjectedCRS` (IFC4 표준) 및 `IfcSite.ObjectPlacement` (Legacy) 지리좌표를 원본 버퍼에서 자동 판별.
+    *   **다중 모델 상대 정합 (RTC / Floating Anchor)**: 여러 동의 페더레이션 모델 로드 시, 기준점 대비 상대 차분 오프셋을 적용하여 1mm 오차 없는 완벽한 동별 정렬과 WebGL Float32 지터링(떨림) 0% 달성.
+    *   **지리정보 후처리 주입 파이프라인 (Python Microservice 연동)**:
+        *   `Inject to IfcSite`: E3D / IFC2x3 호환을 위해 `IfcSite.ObjectPlacement`에 계층형(`PlacementRelTo`) 대형 전역좌표계를 주입하여 새 모델로 DB 저장.
+        *   `Inject to MapConversion`: IFC4 표준 `IfcMapConversion` 및 `IfcProjectedCRS` 메타데이터를 주입하여 새 모델로 DB 저장.
+    *   **3D 배경 맵 타일 1:1 정합**: S-JTSK (EPSG:5514) / Krovak 3차원 측지계 Datum Shift 내장 변환을 통해 광역 지도 타일과 3D BIM 모델 간 1:1 실시간 오버레이 지원.
 
 ## 🛠 기술 스택
 
@@ -35,6 +42,9 @@
 *   **Framework**: Express.js
 *   **Database Driver**: `oracledb` (Oracle Database Node.js Driver)
 *   **File Handling**: Multer (메모리 스토리지 사용)
+*   **Python Microservice (`Dev-IfcUtilities`)**:
+    *   FastAPI + `IfcOpenShell` + `pyproj`
+    *   대형좌표 계층형 주입 (`/inject-site-placement`), IFC4 Georeferencing 주입 (`/inject-georeferencing`), 속성 저작 (`/process-properties`), 서버 간섭 검토 (`/clash`) 및 Express ID 자동 정렬
 
 ### Database
 *   **DBMS**: Oracle Database

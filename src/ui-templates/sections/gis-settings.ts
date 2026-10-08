@@ -61,8 +61,8 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
     });
   }
 
-  const isDetected = gisMap.mapData !== null && gisMap.mapData.sourceType !== "MANUAL";
-  const data = (gisMap.mapData && gisMap.mapData.sourceType !== "MANUAL")
+  const isDetected = gisMap.mapData !== null && gisMap.mapData.sourceType !== "Manual";
+  const data = (gisMap.mapData && gisMap.mapData.sourceType !== "Manual")
     ? gisMap.mapData
     : gisMap.manualData;
   const availableTypes = gisMap.globalAvailableGeoref;
@@ -154,13 +154,13 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
       xAxisOrdinate: sin,
       scale: 1.0,
       crsName: "EPSG:5514",
-      sourceType: "MANUAL" as const,
+      sourceType: "Manual" as const,
     };
 
     if (!gisMap.enabled) {
       gisMap.enabled = true;
     }
-    gisMap.setModelGeorefType(null, "MANUAL", manualDataObj);
+    gisMap.setModelGeorefType(null, "Manual", manualDataObj);
 
     try {
       const res = await fetch("/api/download-map-tiles", {
@@ -168,8 +168,8 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ 
-          eastings: east, 
+        body: JSON.stringify({
+          eastings: east,
           northings: north,
           zoom: gisMap.zoom,
           gridSize: gisMap.gridSize
@@ -214,14 +214,14 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
 
     const injectBtn = document.getElementById("gis-manual-inject-btn") as BUI.Button | null;
     if (injectBtn) {
-      const canInject = isModified || data.sourceType === "LEGACY_IFC_SITE" || data.sourceType === "MANUAL";
+      const canInject = isModified || data.sourceType === "Site.ObjectPlacement" || data.sourceType === "Manual";
       injectBtn.disabled = !canInject;
     }
   };
 
   const onInjectGeoreferencing = async (e: Event) => {
     const injectBtn = e.target as BUI.Button;
-    
+
     const loadedModels = Array.from(fragments.list.values()) as any[];
     if (loadedModels.length === 0) {
       alert("현재 3D 뷰어에 로드된 모델이 없습니다.");
@@ -282,12 +282,12 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
         // 2. 백엔드 파이썬 마이크로서비스 호출을 위한 FormData 생성
         const formData = new FormData();
         const blob = new Blob([ifcBuffer as any], { type: "application/octet-stream" });
-        
+
         let baseName = originalName;
         if (baseName.toLowerCase().endsWith(".ifc")) {
           baseName = baseName.substring(0, baseName.length - 4);
         }
-        const geoName = `${baseName}_geo`;
+        const geoName = `${baseName}_GIS(MapConversion)`;
 
         const rad = (rotationDeg * Math.PI) / 180;
         const xAxisAbscissa = Math.cos(rad);
@@ -300,7 +300,7 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
         formData.append("rotationAngle", String(rotationDeg));
         formData.append("xAxisAbscissa", String(xAxisAbscissa));
         formData.append("xAxisOrdinate", String(xAxisOrdinate));
-        
+
         // S-JTSK 디폴트 좌표 파라미터 주입
         formData.append("crsName", "EPSG:5514");
         formData.append("crsDescription", "S-JTSK / Krovak East North");
@@ -324,6 +324,21 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
         const arrayBuffer = await response.arrayBuffer();
         const modifiedBuffer = new Uint8Array(arrayBuffer);
 
+        // 로컬 PC 자동 다운로드 (IFC 파일만)
+        try {
+          const downloadBlob = new Blob([modifiedBuffer as any], { type: "application/octet-stream" });
+          const downloadUrl = URL.createObjectURL(downloadBlob);
+          const link = document.createElement("a");
+          link.href = downloadUrl;
+          link.download = `${geoName}.ifc`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(downloadUrl);
+        } catch (dlErr) {
+          console.error(`[GISMap] IFC 로컬 다운로드 실패. Model: ${geoName}`, dlErr);
+        }
+
         // 4. 뷰어 리로딩 처리
         const currentInstance = target.model;
         if (currentInstance) {
@@ -345,6 +360,8 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
         });
 
         (reloadedModel as any).name = geoName;
+        const newModelId = (reloadedModel as any).id;
+        gisMap.detectGeorefFromBuffer(modifiedBuffer, newModelId);
         await fragments.core.update(true);
 
         // 5. Oracle 데이터베이스에 새 파일들 저장 (현재 프로젝트 ID 바인딩)
@@ -376,14 +393,190 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
       }
 
       alert(`성공적으로 총 ${modelTargets.length}개 중 ${successCount}개 모델에 Georeferencing 정보가 주입되어 데이터베이스에 새로운 모델로 저장 및 리로드되었습니다!`);
-      
+
+      if ((window as any).refreshGISMapSettingsSection) {
+        (window as any).refreshGISMapSettingsSection();
+      }
+
+    } finally {
+      injectBtn.loading = false;
+    }
+  };
+
+  const onInjectSitePlacement = async (e: Event) => {
+    const injectBtn = e.target as BUI.Button;
+
+    const loadedModels = Array.from(fragments.list.values()) as any[];
+    if (loadedModels.length === 0) {
+      alert("현재 3D 뷰어에 로드된 모델이 없습니다.");
+      return;
+    }
+
+    const validModels = loadedModels.filter(m => m.dbId !== undefined && m.dbId !== null);
+    if (validModels.length === 0) {
+      alert("데이터베이스 ID(dbId)가 존재하는 로드된 모델이 없습니다. DB에서 로드된 모델만 IfcSite 대형좌표 주입이 가능합니다.");
+      return;
+    }
+
+    if (!eastingInput || !northingInput || !heightInput || !rotationInput) {
+      alert("좌표 입력 양식이 준비되지 않았습니다.");
+      return;
+    }
+
+    const east = Number(eastingInput.value);
+    const north = Number(northingInput.value);
+    const height = Number(heightInput.value);
+    const rotationDeg = Number(rotationInput.value);
+
+    if (isNaN(east) || isNaN(north) || isNaN(height) || isNaN(rotationDeg)) {
+      alert("동향(Eastings), 북향(Northings), 높이 및 회전각에 올바른 숫자를 입력해주세요.");
+      return;
+    }
+
+    const targetModels = validModels;
+
+    const modelTargets = targetModels.map(m => ({
+      model: m,
+      dbId: (m as any).dbId,
+      name: (m as any).name || "model"
+    }));
+
+    const activeProjectId = appState.currentProject?.id;
+    injectBtn.loading = true;
+
+    try {
+      // 뷰어 리셋 및 하이라이트 지우기
+      await highlighter.clear("select");
+      highlighter.events.select.onClear.trigger();
+      await fragments.core.update(true);
+
+      let successCount = 0;
+
+      for (const target of modelTargets) {
+        const { dbId, name: originalName } = target;
+
+        // 1. DB에서 원본 IFC 다운로드
+        const ifcData = await sharedIFC.loadIFC(dbId);
+        if (!ifcData || !ifcData.content) {
+          console.warn(`[GISMap] DB에서 원본 IFC 바이너리를 로드하는 데 실패했습니다. Target ID: ${dbId}`);
+          continue;
+        }
+        const ifcBuffer = ifcData.content as Uint8Array;
+
+        // 2. 백엔드 파이썬 마이크로서비스 호출을 위한 FormData 생성
+        const formData = new FormData();
+        const blob = new Blob([ifcBuffer as any], { type: "application/octet-stream" });
+
+        let baseName = originalName;
+        if (baseName.toLowerCase().endsWith(".ifc")) {
+          baseName = baseName.substring(0, baseName.length - 4);
+        }
+        const geoName = `${baseName}_GIS(IfcSite)`;
+
+        const rad = (rotationDeg * Math.PI) / 180;
+        const xAxisAbscissa = Math.cos(rad);
+        const xAxisOrdinate = Math.sin(rad);
+
+        formData.append("file", blob, `${geoName}.ifc`);
+        formData.append("eastings", String(east));
+        formData.append("northings", String(north));
+        formData.append("orthogonalHeight", String(height));
+        formData.append("rotationAngle", String(rotationDeg));
+        formData.append("xAxisAbscissa", String(xAxisAbscissa));
+        formData.append("xAxisOrdinate", String(xAxisOrdinate));
+        formData.append("crsName", "EPSG:5514");
+
+        const response = await fetch("/api/inject-site-placement", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errJson = await response.json();
+          throw new Error(`모델 '${originalName}' IfcSite 주입 실패: ${errJson.details || errJson.error || "알 수 없는 에러"}`);
+        }
+
+        // 3. 가공된 새 IFC 바이너리 획득
+        const arrayBuffer = await response.arrayBuffer();
+        const modifiedBuffer = new Uint8Array(arrayBuffer);
+
+        // 로컬 PC 자동 다운로드 (IFC 파일만)
+        try {
+          const downloadBlob = new Blob([modifiedBuffer as any], { type: "application/octet-stream" });
+          const downloadUrl = URL.createObjectURL(downloadBlob);
+          const link = document.createElement("a");
+          link.href = downloadUrl;
+          link.download = `${geoName}.ifc`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(downloadUrl);
+        } catch (dlErr) {
+          console.error(`[GISMap] IFC 로컬 다운로드 실패. Model: ${geoName}`, dlErr);
+        }
+
+        // 4. 뷰어 리로딩 처리
+        const currentInstance = target.model;
+        if (currentInstance) {
+          currentInstance.dispose();
+        }
+
+        // 워커 정리/메모리 해제 데드락 예방을 위한 딜레이
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        const modelName = `${geoName}.ifc`;
+        const { buffer: renderBuffer } = normalizeIfcSitePlacement(modifiedBuffer);
+        const reloadedModel = await ifcLoader.load(renderBuffer, false, modelName, {
+          instanceCallback: (importer: any) => {
+            if (typeof importer.addAllAttributes === "function") importer.addAllAttributes();
+            if (typeof importer.addAllRelations === "function") importer.addAllRelations();
+            importer.includeUniqueAttributes = true;
+            importer.includeRelationNames = true;
+          },
+        });
+
+        (reloadedModel as any).name = geoName;
+        const newModelId = (reloadedModel as any).id;
+        gisMap.detectGeorefFromBuffer(modifiedBuffer, newModelId);
+        await fragments.core.update(true);
+
+        // 5. Oracle 데이터베이스에 새 파일들 저장 (현재 프로젝트 ID 바인딩)
+        const ifcFile = new File([modifiedBuffer as any], `${geoName}.ifc`, { type: "application/octet-stream" });
+        const fragData = await (reloadedModel as any).getBuffer(false);
+        const fragFile = new File([fragData as any], `${geoName}.frag`, { type: "application/octet-stream" });
+
+        const newIfcId = await sharedIFC.saveIFC(ifcFile, activeProjectId);
+        if (newIfcId) {
+          const newFragId = await sharedFRAG.saveFRAG(fragFile, activeProjectId);
+          if (newFragId) {
+            (reloadedModel as any).dbId = newIfcId;
+            successCount++;
+          } else {
+            console.error(`[GISMap] 가공된 FRAG 파일 저장 실패. Model: ${geoName}`);
+          }
+        } else {
+          console.error(`[GISMap] 가공된 IFC 파일 저장 실패. Model: ${geoName}`);
+        }
+      }
+
+      await fragments.core.update(true);
+
+      if ((window as any).refreshSharedModelLists) {
+        await (window as any).refreshSharedModelLists();
+      }
+      if ((window as any).refreshLoadedModelList) {
+        (window as any).refreshLoadedModelList();
+      }
+
+      alert(`성공적으로 총 ${modelTargets.length}개 중 ${successCount}개 모델의 IfcSite.ObjectPlacement에 계층형 대형좌표가 주입되어 데이터베이스에 새로운 모델로 저장 및 리로드되었습니다!`);
+
       if ((window as any).refreshGISMapSettingsSection) {
         (window as any).refreshGISMapSettingsSection();
       }
 
     } catch (err: any) {
-      console.error("[GISMap] Error injecting georeferencing to all models:", err);
-      alert(`Georeferencing 주입 실패: ${err.message}`);
+      console.error("[GISMap] Error injecting site placement to all models:", err);
+      alert(`IfcSite 대형좌표 주입 실패: ${err.message}`);
     } finally {
       injectBtn.loading = false;
     }
@@ -431,27 +624,26 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
       <div style="border-top: 1px solid var(--bim-ui_bg-contrast-20, rgba(255, 255, 255, 0.1)); padding-top: 12px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px; font-size: 0.8rem; color: var(--bim-ui_gray-10, #ccc);">
         <span style="font-weight: bold; color: var(--bim-ui_gray-10, #aaa); margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
           <span>Georeferencing</span>
-          ${
-            data.sourceType === "IFC4_MAP_CONVERSION"
-              ? BUI.html`<span style="color: #8fbc0c; font-size: 0.75rem; background: rgba(143, 188, 12, 0.15); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(143, 188, 12, 0.3);" title="IFC4 standard IfcMapConversion & IfcProjectedCRS detected${hasDualGeoref ? ' (Dual Georef Available)' : ''}">Detected (IFC4)${hasDualGeoref ? " [Dual]" : ""}</span>`
-              : data.sourceType === "LEGACY_IFC_SITE"
-              ? BUI.html`<span style="color: #00b4d8; font-size: 0.75rem; background: rgba(0, 180, 216, 0.15); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(0, 180, 216, 0.3);" title="Legacy IfcSite.ObjectPlacement / TrueNorth / DMS georeferencing detected${hasDualGeoref ? ' (Dual Georef Available)' : ''}">Detected (Legacy IfcSite)${hasDualGeoref ? " [Dual]" : ""}</span>`
-              : isDetected
-              ? BUI.html`<span style="color: #8fbc0c; font-size: 0.75rem;">Detected</span>`
-              : BUI.html`<span style="color: #e59c00; font-size: 0.75rem;">Manual Override</span>`
-          }
+          ${data.sourceType === "MapConversion"
+      ? BUI.html`<span style="color: #8fbc0c; font-size: 0.75rem; background: rgba(143, 188, 12, 0.15); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(143, 188, 12, 0.3);" title="MapConversion${hasDualGeoref ? ' (Dual)' : ''}">MapConversion${hasDualGeoref ? " [Dual]" : ""}</span>`
+      : data.sourceType === "Site.ObjectPlacement"
+        ? BUI.html`<span style="color: #00b4d8; font-size: 0.75rem; background: rgba(0, 180, 216, 0.15); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(0, 180, 216, 0.3);" title="Site.ObjectPlacement${hasDualGeoref ? ' (Dual)' : ''}">Site.ObjectPlacement${hasDualGeoref ? " [Dual]" : ""}</span>`
+        : isDetected
+          ? BUI.html`<span style="color: #8fbc0c; font-size: 0.75rem;">Detected</span>`
+          : BUI.html`<span style="color: #e59c00; font-size: 0.75rem;">Manual Override</span>`
+    }
         </span>
 
         <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(143, 188, 12, 0.08); border: 1px solid rgba(143, 188, 12, 0.25); border-radius: 4px; padding: 4px 6px; margin-bottom: 2px;">
           <span style="font-weight: 500; color: var(--bim-ui_main-base, #8fbc0c); font-size: 0.75rem;">Source Type</span>
           <select @change=${(e: Event) => {
-            const newType = (e.target as HTMLSelectElement).value as "IFC4_MAP_CONVERSION" | "LEGACY_IFC_SITE" | "MANUAL";
-            gisMap.setModelGeorefType(null, newType);
-            update();
-          }} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 4px; font-size: 0.75rem; cursor: pointer; box-sizing: border-box;">
-            ${availableTypes?.ifc4 ? BUI.html`<option value="IFC4_MAP_CONVERSION" ?selected=${data.sourceType === "IFC4_MAP_CONVERSION"}>IFC4 (MapConversion)</option>` : ""}
-            ${availableTypes?.legacy ? BUI.html`<option value="LEGACY_IFC_SITE" ?selected=${data.sourceType === "LEGACY_IFC_SITE"}>Legacy (IfcSite)</option>` : ""}
-            <option value="MANUAL" ?selected=${data.sourceType === "MANUAL" || (!availableTypes?.ifc4 && !availableTypes?.legacy)}>Manual Override</option>
+      const newType = (e.target as HTMLSelectElement).value as "MapConversion" | "Site.ObjectPlacement" | "Manual";
+      gisMap.setModelGeorefType(null, newType);
+      update();
+    }} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 4px; font-size: 0.75rem; cursor: pointer; box-sizing: border-box;">
+            ${availableTypes?.ifc4 ? BUI.html`<option value="MapConversion" ?selected=${data.sourceType === "MapConversion"}>MapConversion</option>` : ""}
+            ${availableTypes?.legacy ? BUI.html`<option value="Site.ObjectPlacement" ?selected=${data.sourceType === "Site.ObjectPlacement"}>Site.ObjectPlacement</option>` : ""}
+            <option value="Manual" ?selected=${data.sourceType === "Manual" || (!availableTypes?.ifc4 && !availableTypes?.legacy)}>Manual Override</option>
           </select>
         </div>
 
@@ -469,22 +661,22 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
 
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span>Eastings</span>
-          <input id="gis-easting-input" type="number" step="1" .value=${String(data.eastings)} @input=${checkValuesModified} ${BUI.ref(el => eastingInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
+          <input id="gis-easting-input" type="number" step="1" .value=${String(data.eastings)} ?disabled=${data.sourceType !== "Manual"} @input=${checkValuesModified} ${BUI.ref(el => eastingInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: ${data.sourceType !== "Manual" ? "var(--bim-ui_gray-10, #aaa)" : "white"}; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
         </div>
         
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span>Northings</span>
-          <input id="gis-northing-input" type="number" step="1" .value=${String(data.northings)} @input=${checkValuesModified} ${BUI.ref(el => northingInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
+          <input id="gis-northing-input" type="number" step="1" .value=${String(data.northings)} ?disabled=${data.sourceType !== "Manual"} @input=${checkValuesModified} ${BUI.ref(el => northingInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: ${data.sourceType !== "Manual" ? "var(--bim-ui_gray-10, #aaa)" : "white"}; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
         </div>
         
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span>Height (H)</span>
-          <input id="gis-height-input" type="number" step="0.5" .value=${String(data.orthogonalHeight)} @input=${checkValuesModified} ${BUI.ref(el => heightInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
+          <input id="gis-height-input" type="number" step="0.5" .value=${String(data.orthogonalHeight)} ?disabled=${data.sourceType !== "Manual"} @input=${checkValuesModified} ${BUI.ref(el => heightInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: ${data.sourceType !== "Manual" ? "var(--bim-ui_gray-10, #aaa)" : "white"}; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
         </div>
  
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span>Rotation (deg)</span>
-          <input id="gis-rotation-input" type="number" min="0" max="360" step="any" .value=${String(currentAngleDeg)} @input=${() => { onRotationInput(); checkValuesModified(); }} ${BUI.ref(el => rotationInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
+          <input id="gis-rotation-input" type="number" min="0" max="360" step="any" .value=${String(currentAngleDeg)} ?disabled=${data.sourceType !== "Manual"} @input=${() => { onRotationInput(); checkValuesModified(); }} ${BUI.ref(el => rotationInput = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: ${data.sourceType !== "Manual" ? "var(--bim-ui_gray-10, #aaa)" : "white"}; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
         </div>
  
         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -492,19 +684,31 @@ export const gisSettingsPanelTemplate: BUI.StatefullComponent<
           <input id="gis-rot-vector-val" type="text" .value=${`${data.xAxisAbscissa.toFixed(4)}, ${data.xAxisOrdinate.toFixed(4)}`} disabled ${BUI.ref(el => rotVectorVal = el as HTMLInputElement)} style="width: 150px; background: var(--bim-ui_bg-contrast-20, #333); color: var(--bim-ui_gray-10, #888); border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; box-sizing: border-box;">
         </div>
  
-        <div style="display: flex; gap: 8px;">
+        <!-- Action Buttons (Manual Override Only) -->
+        ${data.sourceType === "Manual" ? BUI.html`
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
           <button id="gis-manual-apply-btn" 
             @click=${onApplyManual}
-            style="flex: 1; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 6px; cursor: pointer; margin-top: 4px; font-size: 0.75rem;">
+            style="width: 100%; background: var(--bim-ui_bg-contrast-20, #333); color: white; border: 1px solid var(--bim-ui_bg-contrast-40, #555); border-radius: 4px; padding: 6px; cursor: pointer; font-size: 0.75rem;">
             Preview
           </button>
-          <bim-button id="gis-manual-inject-btn"
-            @click=${onInjectGeoreferencing}
-            label="${data.sourceType === "LEGACY_IFC_SITE" ? "Upgrade to IFC4 & Save" : "Apply to IFC & Save"}"
-            ?disabled=${isDetected && data.sourceType !== "LEGACY_IFC_SITE"}
-            style="flex: 1; margin-top: 4px; font-size: 0.75rem; background-color: var(--bim-ui_main-base); color: var(--bim-ui_main-contrast); font-weight: bold;">
-          </bim-button>
+          
+          <div style="display: flex; gap: 6px;">
+            <bim-button id="gis-site-placement-inject-btn"
+              @click=${onInjectSitePlacement}
+              label="Inject to IfcSite"
+              style="flex: 1; font-size: 0.75rem; background-color: #00b4d8; color: black; font-weight: bold;"
+              title="Inject to IfcSite.ObjectPlacement">
+            </bim-button>
+            <bim-button id="gis-manual-inject-btn"
+              @click=${onInjectGeoreferencing}
+              label="Inject to MapConversion"
+              style="flex: 1; font-size: 0.75rem; background-color: var(--bim-ui_main-base); color: var(--bim-ui_main-contrast); font-weight: bold;"
+              title="Inject to IfcMapConversion">
+            </bim-button>
+          </div>
         </div>
+        ` : ""}
       </div>
     </bim-panel-section>
   `;

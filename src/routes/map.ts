@@ -214,4 +214,60 @@ router.post("/api/inject-georeferencing", (req, res, next) => upload.single("fil
   }
 });
 
+// Process IFC via Python microservice: Inject Hierarchical IfcSite.ObjectPlacement (PlacementRelTo)
+router.post("/api/inject-site-placement", (req, res, next) => upload.single("file")(req, res, next), async (req: Request, res: Response): Promise<any> => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded." });
+    }
+
+    const { 
+      eastings, 
+      northings, 
+      orthogonalHeight, 
+      rotationAngle, 
+      xAxisAbscissa,
+      xAxisOrdinate,
+      crsName, 
+      scale 
+    } = req.body;
+
+    if (eastings === undefined || northings === undefined || (rotationAngle === undefined && xAxisAbscissa === undefined)) {
+      return res.status(400).json({ error: "Missing required georeferencing input parameters." });
+    }
+
+    const formData = new FormData();
+    const blob = new Blob([req.file.buffer as any], { type: req.file.mimetype || "application/octet-stream" });
+    formData.append("file", blob, req.file.originalname);
+    formData.append("eastings", String(eastings));
+    formData.append("northings", String(northings));
+    formData.append("orthogonalHeight", String(orthogonalHeight ?? 0.0));
+    if (rotationAngle !== undefined) formData.append("rotationAngle", String(rotationAngle));
+    if (xAxisAbscissa !== undefined) formData.append("xAxisAbscissa", String(xAxisAbscissa));
+    if (xAxisOrdinate !== undefined) formData.append("xAxisOrdinate", String(xAxisOrdinate));
+    if (crsName) formData.append("crsName", String(crsName));
+    if (scale) formData.append("scale", String(scale));
+
+    const response = await fetch("http://127.0.0.1:8000/inject-site-placement", {
+      method: "POST",
+      body: formData as any,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: "Error from Python site placement service", details: errorText });
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const processedBuffer = Buffer.from(arrayBuffer);
+
+    res.setHeader("Content-Type", response.headers.get("Content-Type") || "application/octet-stream");
+    res.send(processedBuffer);
+  } catch (err) {
+    console.error("Error in inject-site-placement route:", err);
+    res.status(500).json({ error: "Internal Server Error", details: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 export default router;
+

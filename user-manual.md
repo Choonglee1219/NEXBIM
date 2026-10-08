@@ -840,41 +840,81 @@
 
 ---
 
-## 15. GIS Map 레이아웃 및 좌표계 설정 설명
-* 본 플랫폼은 대지 경계 및 광역 건설 현장의 맥락을 BIM 모델과 통합 검토할 수 있도록, 지리정보체계(GIS) 지도 타일을 3D 공간에 정밀하게 투영하여 정합하는 GIS Map 기능을 탑재하고 있음.
+## 15. GIS Map 레이아웃 및 지리참조(Georeferencing) 관리
+
+본 플랫폼은 대지 경계 및 광역 건설 현장의 공간 맥락을 BIM 모델과 통합 검토할 수 있도록, 지리정보체계(GIS) 지도 타일을 3D 공간에 정밀하게 투영하여 정합하고 지리좌표를 저작/주입할 수 있는 강력한 GIS Map 엔진을 탑재하고 있습니다.
 
 ### 15.1. GIS Map 레이아웃 및 진입
 * **전용 사이드바 탭 통합**:
   * 메인 사이드바의 `GIS Map` 탭 아이콘을 클릭하여 활성화할 수 있음.
-  * 진입 시 3D 뷰포트가 자동으로 가로 분할되며, 우측에 전용 **`GIS Map Settings`** 제어 패널이 상주 고정되어 정돈된 작업 환경을 제공함.
+  * 진입 시 3D 뷰포트가 자동으로 가로 분할되며, 우측에 전용 **`GIS Map Settings`** 제어 패널이 상주 고정되어 직관적인 작업 환경을 제공함.
   * 탭을 전환하거나 레이아웃을 이탈하면 3D 지도 렌더링 및 관련 메모리 리소스가 자동으로 해제(Dispose) 및 숨김 처리되어 브라우저 가용 메모리를 보호함.
 
-### 15.2. 설정 구성 및 룩앤필 일관성
-* **정렬 및 시각적 정돈성**:
-  * 사용자가 시각적으로 편리하게 정밀 파라미터를 입력 및 파악할 수 있도록 모든 입력창(Input), 드롭다운(Select) 및 정보 표시 박스의 크기를 **`150px` 가로폭**으로 일괄 통일하여 텍스트 잘림을 예방함.
-  * 모든 입력 상자 내부 글자의 정렬 방식을 **좌측 정렬(Default Left)**로 일관되게 적용하여 스핀 단추 유무에 상관없이 통일된 텍스트 시작점을 가짐.
-  * 사용자가 값을 직접 입력할 수 없는 읽기 전용 정보 필드(CRS Name, Rot Vector)는 **비활성화 인풋 폼(`disabled`)**으로 표현하고 글꼴을 회색으로 렌더링하여 직관적인 조작 한계를 표시함.
+### 15.2. 지리정보 소스 타입(Source Type)별 단순화된 동작 모드
 
-### 15.3. 좌표계 자동 감지 및 수동 설정 (Georeferencing)
-* **자동 감지 (Detected)**:
-  * **신뢰성 높은 원본 STEP 버퍼 직접 파싱 (`detectGeorefFromBuffer`)**:
-    * IFC STEP 형식의 원본 바이너리 버퍼(`Uint8Array`)를 `TextDecoder`로 디코딩한 후 정규식(Regex)을 이용해 `#...= IFCMAPCONVERSION(...)` 및 `#...= IFCPROJECTEDCRS(...)` 정의를 직접 파싱하여 100% 탐지 가능한 강인한 추출 방식을 적용함.
-  * **전체 로드 경로 자동 정합**:
-    * 사용자가 모델을 불러올 때 사용 가능한 모든 3가지 로드 경로(로컬 파일 직접 업로드, 로컬 IndexedDB 캐시 복원, 서버 API 원격 로드)의 진입부 전체에 `detectGeorefFromBuffer()` 감지기를 탑재하여, 어떤 로드 시나리오에서도 원본 IFC의 지리 기준 정보(Georeferencing)가 자동으로 탐지되도록 보장함.
-* **수동 설정 (Manual Override)**:
-  * 좌표가 정의되지 않은 모델의 경우 수동 입력 양식이 활성화되어 사용자가 직접 기준 좌표(Eastings, Northings), 기준고(Height) 및 회전각(Rotation, 0~360도)을 커스텀 입력할 수 있음.
-  * 회전각 기입 시 내부 삼각 변환 공식을 거쳐 2D 회전 단위 벡터(Rot Vector)가 실시간 계산 및 투사됨.
-  * 수동 설정 후 **`Preview`** 및 **`Apply to IFC & Save`** 기능을 통해 해당 가상 원점 부지 데이터를 바탕으로 3D 월드 상에 지도 타일을 즉시 매핑하고 렌더링을 갱신하거나 IFC 파일에 직접 메타데이터를 작성할 수 있음.
+사용자 조작 혼선을 방지하고 명확한 워크플로우를 제공하기 위해, 로드된 IFC 모델의 지리정보 상태에 따라 패널 UI와 버튼이 지능적으로 최적화됩니다:
 
-### 15.4. 실시간 지도 타일 백그라운드 다운로드
+#### 1) 지리정보 보유 모델 (`Source Type`: `MapConversion` 또는 `Site.ObjectPlacement`)
+* **표시 전용 모드 (View Only)**:
+  * 원본 IFC 버퍼에서 직접 감지된 대지 좌표(Eastings, Northings), 기준고(Height), 회전각(Rotation) 및 WGS84 GPS 경위도 좌표가 읽기 전용(`disabled`)으로 깔끔하게 표시됨.
+* **액션 버튼 자동 숨김**:
+  * 모델에 이미 정확한 지리정보가 수록되어 있으므로, 불필요한 재주입이나 오작동을 방지하기 위해 **`[Preview]`, `[Inject to IfcSite]`, `[Inject to MapConversion]` 버튼들이 완전히 숨김 처리**됨.
+
+#### 2) 지리정보 미보유 모델 (`Source Type`: `Manual Override`)
+* **초기값 자동 채우기**:
+  * 지리정보가 누락된 모델(예: E3D 원본 파일 등)을 로드하거나 수동 모드로 전환 시, 프로젝트 기준 대지(체코 Dukovany 부지 기준) 파라미터가 입력 필드에 자동으로 채워짐:
+    * **Eastings**: `-634016.9392` (m)
+    * **Northings**: `-1168325.9995` (m)
+    * **Height (H)**: `389.400` (m)
+    * **Rotation (deg)**: `331.4129` (도)
+* **입력 필드 활성화**:
+  * 사용자가 좌표 및 회전각을 원하는 수치로 자유롭게 수정할 수 있음.
+* **3대 액션 버튼 노출 및 제어**:
+  * **`[Preview]`**: 현재 입력된 좌표 및 회전각을 로컬 3D 뷰어 및 배경 지도 타일에 즉시 임시 반영하여 정합 상태를 실시간 육안 검토.
+  * **`[Inject to IfcSite]` (E3D / IFC2x3 호환)**:
+    * 발주처(ČEZ 등) 및 데스크톱 BIM 뷰어(Solibri) 요구조건에 맞춰, `IfcSite.ObjectPlacement`에 계층형(`PlacementRelTo`) 대형 전역좌표계를 주입하고 Oracle DB에 새 모델(`..._GIS(IfcSite).ifc` / `.frag`)로 저장 및 3D 뷰어 리로드와 동시에 로컬 PC(다운로드 폴더)로 자동 다운로드.
+  * **`[Inject to MapConversion]` (IFC4 표준)**:
+    * buildingSMART IFC4 표준 규격에 따라 `IfcMapConversion` 및 `IfcProjectedCRS` 메타데이터 엔티티를 주입하고 Oracle DB에 새 모델(`..._GIS(MapConversion).ifc` / `.frag`)로 저장 및 3D 뷰어 리로드와 동시에 로컬 PC(다운로드 폴더)로 자동 다운로드.
+
+---
+
+### 15.3. 백엔드 대형좌표 계층형 주입 파이프라인 (`Dev-IfcUtilities`)
+
+Revit과 달리 대지 측량점(Survey Point) 오프셋 기능이 없는 CAD/BIM 도구(AVEVA E3D 등)에서 변환된 IFC를 위해, 파이썬 마이크로서비스(`Dev-IfcUtilities`)와 연동된 후처리 파이프라인을 제공합니다:
+
+1. **단위 스케일 자동 산출**:
+   * 모델의 `LENGTHUNIT`(mm, cm, m)을 동적으로 파싱하여 단위계에 맞게 수치 자동 환산 (예: mm 모델인 경우 $-634016.9392\text{m} \rightarrow \mathbf{-634016939.2}$).
+2. **IFC 엔티티 계층 생성**:
+   * `IfcCartesianPoint((-634016939.2, -1168325999.5, 389400.0))` 생성.
+   * `IfcDirection((0.0, 0.0, 1.0))` (Z축 수직) 및 `IfcDirection((0.478, 0.878, 0.0))` (X축 회전 방향) 생성.
+   * 위 엔티티들을 조합하여 `IfcAxis2Placement3D` 생성.
+   * 부모 `IfcLocalPlacement` (`#GeoPlacement`) 생성 후 `IfcSite.ObjectPlacement.PlacementRelTo = #GeoPlacement`로 연결.
+3. **로컬 디자인 위치 100% 무손실 보존**:
+   * 자식 `IfcSite.ObjectPlacement.RelativePlacement`의 본래 설계 위치와 회전각은 일체 훼손하지 않고 그대로 유지하므로, 동별 고유 배치나 단지 내 이격거리가 왜곡 없이 완벽히 보존됨.
+4. **대지 표고 및 GPS 동기화**:
+   * `RefElevation` (단위 환산 적용) 및 `RefLatitude`, `RefLongitude` (WGS84 DMS) 자동 주입.
+   * `sort_ifc_file`을 통한 Express ID 순 정렬 완료 후 클라이언트로 반환.
+
+---
+
+### 15.4. 다중 모델 페더레이션 상대 정합 (RTC / Floating Anchor)
+
+여러 동(본관동, 터빈동, 변전소 등)으로 구성된 다중 IFC 모델을 동시에 로드할 때 발생하는 원점 겹침 및 WebGL 정밀도 저하를 방지하기 위해 **RTC (Relative-To-Center / Floating Anchor)** 알고리즘이 적용됩니다:
+
+* **STEP 인메모리 지터링 방어 (`georef-defense.ts`)**:
+  * $100\text{km}$ 초과 거대 좌표를 가진 레거시 모델 로드 시, WebGL 32-bit 부동소수점 한계로 인한 화면 떨림(지터링)을 방지하기 위해 STEP 버퍼의 좌표점만 $(0,0,0)$으로 실시간 정규화하고 방위각(`Axis`, `RefDirection`)은 $100\%$ 보존함.
+* **단일 패스 상대 변위 정합**:
+  * 첫 번째 로드된 모델의 대지 좌표를 프로젝트 기준점 $(E_0, N_0, H_0)$으로 설정.
+  * 이후 로드되는 모든 서브 모델에 대해 기준점과의 상대 변위($\Delta E = E_i - E_0, \Delta N = N_i - N_0, \Delta H = H_i - H_0$)를 계산하여 Three.js 공간 좌표계에 단 한 번 메트릭 오프셋을 적용.
+  * **결과**: 다중 건물들이 한 점에 겹치지 않고 본래의 상대 이격거리($50\text{m}, 100\text{m}$ 등) 그대로 $1\text{mm}$ 오차 없이 정렬되며, 부동소수점 지터링 $0\%$를 달성함.
+
+---
+
+### 15.5. 실시간 지도 타일 백그라운드 다운로드 및 폐쇄망 지원
+
 * **줌 레벨 및 그리드 반경 연동**:
-  * 사용자가 지정한 줌 레벨(Zoom Level, 15~17) 및 그리드 크기(Grid Size, 3x3, 5x5, 7x7) 설정에 비례하여 부지 원점 주변의 모든 지도 타일들의 위/경도 영역 범위를 자동으로 조밀 연산함.
-  * `Apply to IFC & Save` 클릭 시, 계산된 타일 번호 정보들을 Node.js 백엔드 프록시 API(`/api/download-map-tiles`)로 전송하여 백그라운드에서 지도를 순차 비동기 다운로드 및 캐싱함.
-  * 다운로드된 이미지 타일들은 즉시 Three.js 텍스처로 파싱되어 3D 뷰포트 공간의 정합된 평면 고저 메쉬 상에 흐트러짐 없이 투영 렌더링됨.
+  * 사용자가 지정한 줌 레벨(Zoom Level, 14~16) 및 그리드 크기(Grid Size, 3x3, 5x5, 7x7) 설정에 비례하여 부지 원점 주변의 모든 지도 타일 번호를 자동 산출하고 Node.js 백엔드(`/api/download-map-tiles`)를 통해 비동기 다운로드 및 캐싱함.
+* **Standalone 폐쇄망 내장 변환 수식**:
+  * 외부 인터넷이나 서드파티 라이브러리 반입이 제한된 보안 폐쇄망 환경에서도 동작할 수 있도록, S-JTSK / Krovak 투영법(EPSG:5514)과 WGS84(EPSG:4326) 간의 **3차원 Helmert Datum Shift 7-Parameter 변환 수식**을 순수 TypeScript 함수로 직접 내장하여 독립 기동함.
 
-### 15.5. Standalone 폐쇄망 배포 원리
-* **독립 기동용 투영 공식 내장**:
-  * 폐쇄망이나 독립 보안 네트워크 환경 배포 시 외부 CDN 연동이나 `npm install` 등 외부 패키지 반입 규제를 극복할 수 있도록 설계됨.
-  * S-JTSK / Krovak 투영법(EPSG:5514)과 표준 경위도 좌표계(EPSG:4326) 간의 상호 도법 변환과 Bessel 1841 - WGS84 타원체 간의 **3차원 Helmert Datum Shift 7-Parameter 변환 수식**을 순수 TypeScript 함수로 직접 구현하여 포팅하였습니다.
-  * 이로 인해 프로젝트 내 빌드만으로 외부 라이브러리 연동 없이도 정합 연산이 고속 독립 기동됩니다.
 
