@@ -2,7 +2,7 @@ import * as BUI from "@thatopen/ui";
 import * as OBC from "@thatopen/components";
 import { appIcons, createModalDialog } from "../../../globals";
 import { Highlighter } from "../../Highlighter";
-import { getDiscipline, clashDisciplineMap } from "./clash-grouping";
+import { getDiscipline } from "./clash-grouping";
 
 export interface ClashMatrixState {
   components: OBC.Components;
@@ -14,171 +14,291 @@ export interface ClashMatrixState {
 
 // 리렌더링 시 상태 유지를 위한 모듈 레벨 변수
 let selectedCell: { c1: string, c2: string } | null = null;
+let selectedCellEl: HTMLElement | null = null;
+let matrixLevel: 1 | 2 | 3 = 2; // 1: Discipline, 2: Entity, 3: PredefinedType
 let matrixViewMode: string = "Entity";
 let currentSortedItems: string[] = [];
 let currentClashMatrix: Record<string, Record<string, number>> = {};
 let currentTable: BUI.Table<any> | null = null;
 let currentClashDataMap: Record<string, Record<string, any[]>> = {};
 let selectionLabel: any = null;
+let activeMatrixDialog: HTMLDialogElement | null = null;
+let currentMatrixComponent: HTMLDivElement | null = null;
+let currentUpdateTableFn: ((animate?: boolean) => void) | null = null;
+
+export const openClashMatrixModal = () => {
+  if (activeMatrixDialog && activeMatrixDialog.open) {
+    activeMatrixDialog.focus();
+    return;
+  }
+
+  const { dialog, contentContainer } = createModalDialog({
+    title: "Clash Matrix",
+    icon: appIcons.TABLE,
+    width: "95vw",
+    height: "95vh",
+    maxWidth: "1600px",
+    maxHeight: "1200px",
+    onClose: () => {
+      activeMatrixDialog = null;
+      if (currentMatrixComponent && currentMatrixComponent.parentElement) {
+        currentMatrixComponent.remove();
+      }
+    },
+  });
+
+  activeMatrixDialog = dialog;
+
+  const style = document.createElement("style");
+  style.textContent = `
+    .matrix-scroll-wrapper bim-table {
+      --bim-ui_size-16xl: 1.85rem;
+    }
+    .matrix-scroll-wrapper bim-table::part(cell) { overflow: visible !important; }
+  `;
+  dialog.appendChild(style);
+
+  if (currentMatrixComponent) {
+    currentMatrixComponent.style.width = "100%";
+    currentMatrixComponent.style.height = "100%";
+    currentMatrixComponent.style.flex = "1";
+    currentMatrixComponent.style.display = "flex";
+    currentMatrixComponent.style.flexDirection = "column";
+    currentMatrixComponent.style.minHeight = "0";
+    currentMatrixComponent.style.overflow = "hidden";
+    contentContainer.appendChild(currentMatrixComponent);
+  }
+
+  document.body.appendChild(dialog);
+  dialog.showModal();
+
+  setTimeout(() => {
+    if (currentUpdateTableFn) {
+      currentUpdateTableFn(false);
+    }
+  }, 0);
+};
 
 // 수동으로 Discipline 정렬 순서를 지정 (배열에 맞춰 정렬되며 ETC는 항상 맨 끝)
-const disciplineOrder = ["STRUC", "ARCH", "MECH", "ELEC", "PIPE"];
+const disciplineOrder = ["STRUC", "ARCH", "HVAC", "MECH", "ELEC", "PIPE", "CIVIL"];
 const getRank = (item: string) => {
   if (item === "ETC") return 1000; // ETC는 무조건 가장 마지막
   const idx = disciplineOrder.indexOf(item);
   return idx === -1 ? 999 : idx; // 목록에 없는 분야는 ETC 바로 앞에 배치
 };
 
-const openDisciplineMapModal = () => {
-  const { dialog, header, contentContainer, closeButton } = createModalDialog({
-    title: "Discipline Group Mapping Guide",
-    width: "85vw",
-    height: "80vh",
-    maxWidth: "900px",
-    maxHeight: "700px",
-  });
+export interface CategoryItemInfo {
+  level: 1 | 2 | 3;
+  rawKey: string;
+  discipline: string;
+  entity: string;
+  predefinedType: string;
+  fullPath: string;
+}
 
-  const style = document.createElement("style");
-  style.textContent = `
-    .modal-scroll-wrapper::-webkit-scrollbar {
-      width: 6px;
+const disciplineColors: Record<string, { bg: string; text: string; border: string }> = {
+  STRUC: { bg: "rgba(51, 154, 240, 0.15)", text: "#74c0fc", border: "rgba(51, 154, 240, 0.4)" },
+  ARCH:  { bg: "rgba(204, 93, 232, 0.15)", text: "#da77f2", border: "rgba(204, 93, 232, 0.4)" },
+  HVAC:  { bg: "rgba(32, 201, 151, 0.15)", text: "#63e6be", border: "rgba(32, 201, 151, 0.4)" },
+  MECH:  { bg: "rgba(255, 146, 43, 0.15)", text: "#ffa94d", border: "rgba(255, 146, 43, 0.4)" },
+  ELEC:  { bg: "rgba(252, 196, 25, 0.15)", text: "#ffe066", border: "rgba(252, 196, 25, 0.4)" },
+  PIPE:  { bg: "rgba(81, 207, 102, 0.15)", text: "#8ce99a", border: "rgba(81, 207, 102, 0.4)" },
+  CIVIL: { bg: "rgba(132, 94, 247, 0.15)", text: "#b197fc", border: "rgba(132, 94, 247, 0.4)" },
+  ETC:   { bg: "rgba(134, 142, 150, 0.15)", text: "#adb5bd", border: "rgba(134, 142, 150, 0.4)" },
+};
+
+const getDisciplineStyle = (disc: string) => {
+  return disciplineColors[disc] || disciplineColors.ETC;
+};
+
+export interface CellStatus {
+  badge: "New" | "Hold" | "Exclude";
+  text: string;
+  bg: string;
+  color: string;
+  cursor: string;
+}
+
+const getCellStatus = (count: number, cellItems?: any[]): CellStatus => {
+  let badge: "New" | "Hold" | "Exclude" = "New";
+  if (cellItems && cellItems.length > 0) {
+    const hasNew = cellItems.some(item => ((item.raw && item.raw.badge) || item.Badge || "New") === "New");
+    if (hasNew) {
+      badge = "New";
+    } else {
+      const hasHold = cellItems.some(item => ((item.raw && item.raw.badge) || item.Badge || "New") === "Hold");
+      badge = hasHold ? "Hold" : "Exclude";
     }
-    .modal-scroll-wrapper::-webkit-scrollbar-track {
-      background: var(--bim-ui_bg-base);
-    }
-    .modal-scroll-wrapper::-webkit-scrollbar-thumb {
-      background: var(--bim-ui_bg-contrast-20);
-      border-radius: 3px;
-    }
-    .modal-scroll-wrapper::-webkit-scrollbar-thumb:hover {
-      background: var(--bim-ui_bg-contrast-40);
-    }
-    .discipline-card {
-      border: 1px solid var(--bim-ui_bg-contrast-20);
-      border-radius: 6px;
-      padding: 1rem;
-      background: var(--bim-ui_bg-contrast-10);
-      transition: transform 0.2s, border-color 0.2s;
-    }
-    .discipline-card:hover {
-      transform: translateY(-2px);
-      border-color: var(--bim-ui_main-base);
-    }
-    .discipline-title {
-      font-size: 0.9rem;
-      font-weight: bold;
-      margin-bottom: 0.75rem;
-      color: var(--bim-ui_main-contrast);
-      border-bottom: 1px solid var(--bim-ui_bg-contrast-20);
-      padding-bottom: 0.25rem;
-    }
-    .entity-badge {
-      display: inline-block;
-      font-size: 0.75rem;
-      padding: 0.25rem 0.5rem;
-      margin: 0.15rem;
-      background-color: var(--bim-ui_bg-contrast-20);
-      color: var(--bim-ui_gray-10);
-      border-radius: 4px;
-      transition: background-color 0.2s, color 0.2s;
-    }
-    .entity-badge.highlighted {
-      background-color: var(--bim-ui_main-base);
-      color: #ffffff;
-    }
-  `;
-  dialog.appendChild(style);
-
-  // Search input
-  const searchInput = document.createElement("input");
-  searchInput.placeholder = "Search IFC Category (e.g. BEAM, PUMP)...";
-  searchInput.style.padding = "0.35rem 0.75rem";
-  searchInput.style.fontSize = "0.75rem";
-  searchInput.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
-  searchInput.style.borderRadius = "4px";
-  searchInput.style.backgroundColor = "var(--bim-ui_bg-contrast-10)";
-  searchInput.style.color = "var(--bim-ui_main-contrast)";
-  searchInput.style.width = "250px";
-  searchInput.style.marginLeft = "auto";
-  searchInput.style.marginRight = "0.75rem";
-  header.insertBefore(searchInput, closeButton);
-
-  // Body Container
-  const bodyDiv = document.createElement("div");
-  bodyDiv.className = "modal-scroll-wrapper";
-  bodyDiv.style.flex = "1";
-  bodyDiv.style.overflowY = "auto";
-  bodyDiv.style.display = "grid";
-  bodyDiv.style.gridTemplateColumns = "repeat(auto-fill, minmax(250px, 1fr))";
-  bodyDiv.style.gap = "1rem";
-  bodyDiv.style.padding = "0.25rem";
-
-  // Render cards
-  const cards: { cardEl: HTMLDivElement; badges: { badgeEl: HTMLSpanElement; text: string }[] }[] = [];
-
-  for (const [disc, entities] of Object.entries(clashDisciplineMap)) {
-    const card = document.createElement("div");
-    card.className = "discipline-card";
-
-    const discTitle = document.createElement("div");
-    discTitle.className = "discipline-title";
-    discTitle.textContent = `${disc} (${entities.length})`;
-    card.appendChild(discTitle);
-
-    const badgeContainer = document.createElement("div");
-    badgeContainer.style.display = "flex";
-    badgeContainer.style.flexWrap = "wrap";
-
-    const badgeList: { badgeEl: HTMLSpanElement; text: string }[] = [];
-
-    entities.forEach(entity => {
-      const badge = document.createElement("span");
-      badge.className = "entity-badge";
-      badge.textContent = entity;
-      badgeContainer.appendChild(badge);
-      badgeList.push({ badgeEl: badge, text: entity.toUpperCase() });
-    });
-
-    card.appendChild(badgeContainer);
-    bodyDiv.appendChild(card);
-
-    cards.push({ cardEl: card, badges: badgeList });
   }
 
-  contentContainer.appendChild(bodyDiv);
+  if (count === 0) {
+    return { badge, text: "OK", bg: "hsl(147, 65%, 40%)", color: "#ffffff", cursor: "default" };
+  }
+  if (badge === "Exclude") {
+    return { badge, text: "E", bg: "hsl(205, 65%, 40%)", color: "#ffffff", cursor: "default" };
+  }
+  if (badge === "Hold") {
+    return { badge, text: "H", bg: "hsl(45, 65%, 40%)", color: "#ffffff", cursor: "pointer" };
+  }
+  return { badge, text: count.toString(), bg: "hsl(0, 65%, 40%)", color: "#ffffff", cursor: "pointer" };
+};
 
-  // Search filter handler
-  searchInput.addEventListener("input", () => {
-    const query = searchInput.value.trim().toUpperCase();
+const renderDisciplineBadge = (disc: string, isVertical = false) => {
+  const style = getDisciplineStyle(disc);
+  const padding = isVertical ? "4px 2px" : "1px 6px";
+  const margin = isVertical ? "margin-bottom: 6px;" : "";
+  return BUI.html`
+    <span style="display: inline-flex; align-items: center; justify-content: center; padding: ${padding}; font-size: 0.58rem; font-weight: 700; border-radius: 3px; background-color: ${style.bg}; color: ${style.text}; border: 1px solid ${style.border}; ${margin} letter-spacing: 0.5px; flex-shrink: 0;">
+      ${disc}
+    </span>
+  `;
+};
 
-    cards.forEach(({ cardEl, badges }) => {
-      let visibleCount = 0;
+const compareMatrixItems = (a: string, b: string, level: 1 | 2 | 3): number => {
+  const infoA = parseItemInfo(a, level);
+  const infoB = parseItemInfo(b, level);
 
-      badges.forEach(({ badgeEl, text }) => {
-        if (!query) {
-          badgeEl.style.display = "inline-block";
-          badgeEl.classList.remove("highlighted");
-          visibleCount++;
-        } else if (text.includes(query)) {
-          badgeEl.style.display = "inline-block";
-          badgeEl.classList.add("highlighted");
-          visibleCount++;
-        } else {
-          badgeEl.style.display = "none";
-          badgeEl.classList.remove("highlighted");
-        }
-      });
+  if (infoA.discipline !== infoB.discipline) {
+    const rankDiff = getRank(infoA.discipline) - getRank(infoB.discipline);
+    return rankDiff !== 0 ? rankDiff : infoA.discipline.localeCompare(infoB.discipline);
+  }
 
-      if (visibleCount > 0) {
-        cardEl.style.display = "block";
+  if (level >= 2 && infoA.entity !== infoB.entity) {
+    return infoA.entity.localeCompare(infoB.entity);
+  }
+
+  if (level === 3) {
+    return infoA.predefinedType.localeCompare(infoB.predefinedType);
+  }
+
+  return 0;
+};
+
+const openMatrixContextMenu = (
+  e: MouseEvent,
+  c1: string,
+  c2: string,
+  matrixLevel: 1 | 2 | 3,
+  catsByDiscipline: Record<string, string[]>,
+  onBadgeChanged?: (pairs: [string, string][], badge: string) => void
+) => {
+  e.preventDefault();
+  if (selectedCell || !onBadgeChanged) return;
+
+  const existingMenu = document.getElementById("clash-matrix-context-menu");
+  if (existingMenu) existingMenu.remove();
+
+  const menu = document.createElement("div");
+  menu.id = "clash-matrix-context-menu";
+  menu.style.position = "fixed";
+  menu.style.left = `${e.clientX}px`;
+  menu.style.top = `${e.clientY}px`;
+  menu.style.zIndex = "9999";
+  menu.style.background = "var(--bim-ui_bg-base)";
+  menu.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
+  menu.style.borderRadius = "4px";
+  menu.style.boxShadow = "0 2px 10px rgba(0,0,0,0.5)";
+  menu.style.display = "flex";
+  menu.style.flexDirection = "column";
+  menu.style.overflow = "hidden";
+
+  const options = [
+    { label: "New", value: "New", color: "hsl(0, 65%, 40%)" },
+    { label: "Hold", value: "Hold", color: "hsl(45, 65%, 40%)" },
+    { label: "Exclude", value: "Exclude", color: "hsl(205, 65%, 40%)" }
+  ];
+
+  options.forEach(opt => {
+    const btn = document.createElement("bim-button") as any;
+    btn.label = opt.label;
+    btn.style.color = opt.color;
+    btn.style.setProperty("--bim-ui_bg-contrast-100", opt.color);
+    btn.style.margin = "0";
+    btn.style.borderRadius = "0";
+    btn.style.borderBottom = "1px solid var(--bim-ui_bg-contrast-20)";
+    btn.style.background = "transparent";
+    btn.style.width = "100px";
+
+    btn.onmouseover = () => btn.style.background = "var(--bim-ui_bg-contrast-20)";
+    btn.onmouseout = () => btn.style.background = "transparent";
+
+    btn.addEventListener("click", () => {
+      let pairs: [string, string][] = [];
+      if (matrixLevel === 2 || matrixLevel === 3) {
+        pairs = [[c1, c2]];
       } else {
-        cardEl.style.display = "none";
+        const cats1 = catsByDiscipline[c1] || [];
+        const cats2 = catsByDiscipline[c2] || [];
+        const uniquePairs = new Set<string>();
+        for (const catA of cats1) {
+          for (const catB of cats2) {
+            const key1 = `${catA.toUpperCase()}|${catB.toUpperCase()}`;
+            const key2 = `${catB.toUpperCase()}|${catA.toUpperCase()}`;
+            if (!uniquePairs.has(key1) && !uniquePairs.has(key2)) {
+              uniquePairs.add(key1);
+              uniquePairs.add(key2);
+              pairs.push([catA, catB]);
+            }
+          }
+        }
       }
+
+      if (pairs.length > 0) {
+        onBadgeChanged(pairs, opt.value);
+      }
+      menu.remove();
     });
+    menu.appendChild(btn);
   });
 
-  document.body.appendChild(dialog);
-  dialog.showModal();
+  const targetContainer = currentTable?.closest("dialog") || document.body;
+  targetContainer.appendChild(menu);
+
+  const closeMenu = (evt: Event) => {
+    if (!menu.contains(evt.target as Node)) {
+      menu.remove();
+      document.removeEventListener("click", closeMenu);
+      document.removeEventListener("contextmenu", closeMenu);
+    }
+  };
+  setTimeout(() => {
+    document.addEventListener("click", closeMenu);
+    document.addEventListener("contextmenu", closeMenu);
+  }, 0);
+};
+
+const parseItemInfo = (key: string, level: 1 | 2 | 3): CategoryItemInfo => {
+  if (level === 1) {
+    return {
+      level: 1,
+      rawKey: key,
+      discipline: key,
+      entity: "",
+      predefinedType: "",
+      fullPath: key,
+    };
+  } else if (level === 2) {
+    const disc = getDiscipline(key);
+    return {
+      level: 2,
+      rawKey: key,
+      discipline: disc,
+      entity: key,
+      predefinedType: "",
+      fullPath: `[${disc}] ${key}`,
+    };
+  } else {
+    const [entity, pt = "NOTDEFINED"] = key.split("__");
+    const disc = getDiscipline(entity);
+    return {
+      level: 3,
+      rawKey: key,
+      discipline: disc,
+      entity,
+      predefinedType: pt,
+      fullPath: `[${disc}] ${entity} > ${pt}`,
+    };
+  }
 };
 
 export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (state) => {
@@ -190,6 +310,51 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
   const updateTable = (animate: boolean = false) => {
     if (!currentTable) return;
     const table = currentTable;
+
+    if (!(table as any)._hasMatrixListeners) {
+      (table as any)._hasMatrixListeners = true;
+      table.style.setProperty("--bim-ui_size-16xl", "1.85rem");
+      table.addEventListener("cellcreated", (e: any) => {
+        const cell = e.detail?.cell;
+        if (cell) {
+          cell.style.padding = "2px 3px";
+          cell.style.overflow = "visible";
+          const headerType = cell.rowData?._headerType;
+          if (headerType === "DISC") {
+            cell.style.minHeight = "48px";
+            cell.style.height = "48px";
+          } else if (headerType === "ENTITY") {
+            cell.style.minHeight = "75px";
+            cell.style.height = "75px";
+          } else if (headerType === "TYPE") {
+            cell.style.minHeight = "75px";
+            cell.style.height = "75px";
+          } else {
+            cell.style.minHeight = "1.85rem";
+            cell.style.height = "1.85rem";
+          }
+        }
+      });
+      table.addEventListener("rowcreated", (e: any) => {
+        const row = e.detail?.row;
+        if (row && !row.isHeader) {
+          const headerType = row.data?._headerType;
+          if (headerType === "DISC") {
+            row.style.minHeight = "48px";
+            row.style.height = "48px";
+          } else if (headerType === "ENTITY") {
+            row.style.minHeight = "75px";
+            row.style.height = "75px";
+          } else if (headerType === "TYPE") {
+            row.style.minHeight = "75px";
+            row.style.height = "75px";
+          } else {
+            row.style.minHeight = "1.85rem";
+            row.style.height = "1.85rem";
+          }
+        }
+      });
+    }
 
     // 데이터가 비워졌을 때 내부 캐시와 테이블을 확실하게 초기화합니다.
     if (!hasData) {
@@ -211,8 +376,8 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
       table.style.animation = "matrixFadeIn 0.3s ease-out";
     }
 
-    // 숨겨둔 카테고리 데이터가 오른쪽 끝에 자동 생성되는 현상 방지
-    table.hiddenColumns = [];
+    // 숨겨둔 내부 데이터가 오른쪽 끝에 자동 컬럼으로 생성되는 현상 완전 방지
+    table.hiddenColumns = ["_rowItem", "_headerType", "_Category", "_itemKey", "_rowInfo"];
 
     const clashItemsMap: Record<string, Record<string, OBC.ModelIdMap>> = {};
     const clashMatrix: Record<string, Record<string, number>> = {};
@@ -227,10 +392,45 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
       catsByDiscipline[disc].push(cat);
     }
 
-    if (matrixViewMode === "Entity") {
+    // 3수준(PredefinedType) 구성을 위해 clashData에 존재하는 엔티티별 PredefinedType 수집
+    const entityPredefinedTypes = new Map<string, Set<string>>();
+    if (matrixLevel === 3) {
+      for (const row of clashData) {
+        const d = row.data;
+        if (!d) continue;
+        const c1 = d.Entity1;
+        const c2 = d.Entity2;
+        const rawPt1 = d.PredefinedType1 || (d.raw?.id1 as any)?.predefinedType;
+        const rawPt2 = d.PredefinedType2 || (d.raw?.id2 as any)?.predefinedType;
+        const pt1 = (!rawPt1 || rawPt1 === "$" || rawPt1 === "*") ? "NOTDEFINED" : String(rawPt1).trim().toUpperCase();
+        const pt2 = (!rawPt2 || rawPt2 === "$" || rawPt2 === "*") ? "NOTDEFINED" : String(rawPt2).trim().toUpperCase();
+        if (c1 && c1 !== "Unknown") {
+          if (!entityPredefinedTypes.has(c1)) entityPredefinedTypes.set(c1, new Set());
+          entityPredefinedTypes.get(c1)!.add(pt1);
+        }
+        if (c2 && c2 !== "Unknown") {
+          if (!entityPredefinedTypes.has(c2)) entityPredefinedTypes.set(c2, new Set());
+          entityPredefinedTypes.get(c2)!.add(pt2);
+        }
+      }
+    }
+
+    if (matrixLevel === 2) {
       for (const cat of allCategories) itemsSet.add(cat);
-    } else {
+    } else if (matrixLevel === 1) {
       for (const cat of allCategories) itemsSet.add(getDiscipline(cat));
+    } else if (matrixLevel === 3) {
+      for (const cat of allCategories) {
+        const pts = entityPredefinedTypes.get(cat);
+        if (pts && pts.size > 0) {
+          for (const pt of pts) itemsSet.add(`${cat}__${pt}`);
+        } else {
+          itemsSet.add(`${cat}__NOTDEFINED`);
+        }
+      }
+      for (const [entity, pts] of entityPredefinedTypes.entries()) {
+        for (const pt of pts) itemsSet.add(`${entity}__${pt}`);
+      }
     }
 
     for (const row of clashData) {
@@ -239,16 +439,22 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
 
       let cat1 = d.Entity1 || "Unknown";
       let cat2 = d.Entity2 || "Unknown";
+      let rawPt1 = d.PredefinedType1 || (d.raw?.id1 as any)?.predefinedType;
+      let rawPt2 = d.PredefinedType2 || (d.raw?.id2 as any)?.predefinedType;
+      let pt1 = (!rawPt1 || rawPt1 === "$" || rawPt1 === "*") ? "NOTDEFINED" : String(rawPt1).trim().toUpperCase();
+      let pt2 = (!rawPt2 || rawPt2 === "$" || rawPt2 === "*") ? "NOTDEFINED" : String(rawPt2).trim().toUpperCase();
       const res = d.raw;
 
-      let key1 = matrixViewMode === "Entity" ? cat1 : getDiscipline(cat1);
-      let key2 = matrixViewMode === "Entity" ? cat2 : getDiscipline(cat2);
+      let key1 = matrixLevel === 2 ? cat1 : (matrixLevel === 1 ? getDiscipline(cat1) : `${cat1}__${pt1}`);
+      let key2 = matrixLevel === 2 ? cat2 : (matrixLevel === 1 ? getDiscipline(cat2) : `${cat2}__${pt2}`);
 
       if (key1 > key2) {
         [key1, key2] = [key2, key1];
         [cat1, cat2] = [cat2, cat1];
+        [pt1, pt2] = [pt2, pt1];
       } else if (key1 === key2 && cat1 > cat2) {
         [cat1, cat2] = [cat2, cat1];
+        [pt1, pt2] = [pt2, pt1];
       }
 
       itemsSet.add(key1);
@@ -271,49 +477,76 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
       clashDataMap[key1][key2].push(row.data);
     }
 
-    const sortedItems = Array.from(itemsSet).sort((a, b) => {
-      if (matrixViewMode === "Entity") {
-        const discA = getDiscipline(a);
-        const discB = getDiscipline(b);
-        if (discA !== discB) {
-          const rankA = getRank(discA);
-          const rankB = getRank(discB);
-          if (rankA !== rankB) return rankA - rankB;
-          return discA.localeCompare(discB);
-        }
-        return a.localeCompare(b);
-      }
-      const rankA = getRank(a);
-      const rankB = getRank(b);
-      if (rankA !== rankB) return rankA - rankB;
-      return a.localeCompare(b);
-    });
+    const sortedItems = Array.from(itemsSet).sort((a, b) => compareMatrixItems(a, b, matrixLevel));
 
     currentSortedItems = sortedItems;
     currentClashMatrix = clashMatrix;
     currentClashDataMap = clashDataMap;
 
-    // 카테고리 갯수에 비례하여 테이블의 전체 최소 너비 설정 (횡 스크롤 유도)
-    table.style.minWidth = `calc(${sortedItems.length * 3.6}rem + 8rem)`;
+    const headerCols: { name: string; width: string }[] = [];
+    let totalHeaderColWidth = 0;
+
+    if (matrixLevel === 3) {
+      headerCols.push({ name: "_Cat_Type", width: "7.5rem" });
+      headerCols.push({ name: "_Cat_Entity", width: "7rem" });
+      headerCols.push({ name: "_Cat_Disc", width: "5rem" });
+      totalHeaderColWidth = 19.5;
+    } else if (matrixLevel === 2) {
+      headerCols.push({ name: "_Cat_Entity", width: "7.5rem" });
+      headerCols.push({ name: "_Cat_Disc", width: "5rem" });
+      totalHeaderColWidth = 12.5;
+    } else {
+      headerCols.push({ name: "_Cat_Disc", width: "5.5rem" });
+      totalHeaderColWidth = 5.5;
+    }
+
+    // 카테고리 갯수 및 헤더 열 너비에 비례하여 테이블의 전체 최소 너비 설정 (횡 스크롤 유도)
+    table.style.minWidth = `calc(${sortedItems.length * 3.6}rem + ${totalHeaderColWidth}rem)`;
 
     table.columns = [
       ...sortedItems.map(item => ({ name: item, width: "3.5rem" })),
-      { name: "_Category", width: "8rem" },
+      ...headerCols,
     ];
 
-    const onCellClick = async (c1: string, c2: string) => {
-      if (selectedCell && selectedCell.c1 === c1 && selectedCell.c2 === c2) {
+    const updateSelectionLabel = () => {
+      if (!selectionLabel) return;
+      if (!selectedCell) {
+        selectionLabel.textContent = "None";
+        return;
+      }
+      const info1 = parseItemInfo(selectedCell.c1, matrixLevel);
+      const info2 = parseItemInfo(selectedCell.c2, matrixLevel);
+      selectionLabel.textContent = `${info1.fullPath} vs ${info2.fullPath}`;
+    };
+
+    const onCellClick = async (c1: string, c2: string, e?: MouseEvent) => {
+      const isAlreadySelected = selectedCell && selectedCell.c1 === c1 && selectedCell.c2 === c2;
+
+      // 이전 선택된 셀 테두리 복원 (인라인 스타일 및 클래스 원복)
+      if (selectedCellEl) {
+        selectedCellEl.style.border = "3px solid transparent";
+        selectedCellEl.classList.remove("matrix-cell-selected");
+        selectedCellEl = null;
+      }
+
+      if (isAlreadySelected) {
         selectedCell = null;
-        if (selectionLabel) selectionLabel.textContent = "None";
-        updateTable(false);
+        updateSelectionLabel();
         await highlighter.clear("select");
         if (state.onCellClicked) state.onCellClicked(null);
         return;
       }
 
       selectedCell = { c1, c2 };
-      if (selectionLabel) selectionLabel.textContent = `${c1} vs ${c2}`;
-      updateTable(false);
+      updateSelectionLabel();
+
+      // 클릭된 엘리먼트에 직접 3px 흰색 테두리 즉각 적용 (Shadow DOM 제약 없이 0ms 즉시 하이라이트)
+      const targetEl = (e?.currentTarget as HTMLElement) || (e?.target as HTMLElement)?.closest("[data-matrix-cell]") as HTMLElement | null;
+      if (targetEl) {
+        targetEl.style.border = "3px solid #ffffff";
+        targetEl.classList.add("matrix-cell-selected");
+        selectedCellEl = targetEl;
+      }
 
       const items = clashItemsMap[c1]?.[c2];
       if (items && !OBC.ModelIdMapUtils.isEmpty(items)) {
@@ -335,10 +568,35 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
 
     const dataTransform: Record<string, any> = {};
 
-    dataTransform["_Category"] = (value: any, row: any) => {
-      if (row._Category === "@@HEADER@@") return BUI.html`<div style="height: 120px;"></div>`;
+    dataTransform["_Cat_Disc"] = (value: any, row: any) => {
+      if (row._headerType) {
+        return BUI.html`<div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 0.6rem; color: var(--bim-ui_gray-10); font-weight: 600;">${row._headerType === "DISC" ? "Discipline" : ""}</div>`;
+      }
+      const disc = value || "ETC";
       return BUI.html`
-        <div style="display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 100%; padding-right: 0.5rem; font-weight: normal; color: var(--bim-ui_main-contrast); font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${value}">
+        <div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 1.85rem; padding: 0 4px; box-sizing: border-box;" title="[${disc}]">
+          ${renderDisciplineBadge(disc)}
+        </div>
+      `;
+    };
+
+    dataTransform["_Cat_Entity"] = (value: any, row: any) => {
+      if (row._headerType) {
+        return BUI.html`<div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 0.6rem; color: var(--bim-ui_gray-10); font-weight: 600;">${row._headerType === "ENTITY" ? "Entity" : ""}</div>`;
+      }
+      return BUI.html`
+        <div style="display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 1.85rem; padding: 0 6px; font-size: 0.65rem; color: var(--bim-ui_main-contrast); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box;" title="${value}">
+          ${value}
+        </div>
+      `;
+    };
+
+    dataTransform["_Cat_Type"] = (value: any, row: any) => {
+      if (row._headerType) {
+        return BUI.html`<div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 0.6rem; color: var(--bim-ui_gray-10); font-weight: 600;">${row._headerType === "TYPE" ? "Type" : ""}</div>`;
+      }
+      return BUI.html`
+        <div style="display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 1.85rem; padding: 0 6px; font-size: 0.65rem; color: var(--bim-ui_main-contrast); font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box;" title="${value}">
           ${value}
         </div>
       `;
@@ -346,21 +604,38 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
 
     for (let j = 0; j < sortedItems.length; j++) {
       const colItem = sortedItems[j];
+      const colInfo = parseItemInfo(colItem, matrixLevel);
+
       dataTransform[colItem] = (value: any, row: any) => {
-        if (row._Category === "@@HEADER@@") {
-          return BUI.html`
-            <div style="display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 120px; padding-top: 12px; padding-bottom: 4px; box-sizing: border-box; font-size: 0.65rem; font-weight: normal; color: var(--bim-ui_main-contrast); writing-mode: vertical-rl; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${value}">
-              ${value}
-            </div>
-          `;
+        if (row._headerType) {
+          if (row._headerType === "DISC") {
+            return BUI.html`
+              <div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 48px; padding: 4px 1px; box-sizing: border-box; writing-mode: vertical-rl; white-space: nowrap; overflow: hidden;" title="[${colInfo.discipline}]">
+                ${renderDisciplineBadge(colInfo.discipline, true)}
+              </div>
+            `;
+          } else if (row._headerType === "ENTITY") {
+            return BUI.html`
+              <div style="display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 75px; padding-top: 6px; padding-bottom: 4px; box-sizing: border-box; font-size: 0.65rem; font-weight: 500; color: var(--bim-ui_main-contrast); writing-mode: vertical-rl; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${colInfo.entity}">
+                ${colInfo.entity}
+              </div>
+            `;
+          } else if (row._headerType === "TYPE") {
+            return BUI.html`
+              <div style="display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 75px; padding-top: 6px; padding-bottom: 4px; box-sizing: border-box; font-size: 0.65rem; font-weight: normal; color: var(--bim-ui_gray-10); writing-mode: vertical-rl; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${colInfo.predefinedType}">
+                ${colInfo.predefinedType}
+              </div>
+            `;
+          }
         }
 
-        const rowItem = row._Category;
+        const rowItem = row._rowItem;
         const i = sortedItems.indexOf(rowItem);
 
         if (j > i) {
+          const infoRow = parseItemInfo(rowItem, matrixLevel);
           return BUI.html`
-            <div title="${rowItem} vs ${colItem}" style="display: flex; width: 100%; height: 100%; min-height: 1.5rem; align-items: center; justify-content: center; background-color: transparent; color: var(--bim-ui_gray-5); font-size: 0.65rem; font-weight: normal; cursor: default; box-sizing: border-box;">
+            <div title="${infoRow.fullPath} vs ${colInfo.fullPath}" style="display: flex; width: 100%; height: 1.55rem; min-height: 1.55rem; max-height: 1.55rem; align-items: center; justify-content: center; background-color: transparent; color: var(--bim-ui_gray-5); font-size: 0.65rem; font-weight: normal; cursor: default; box-sizing: border-box;">
               -
             </div>
           `;
@@ -368,147 +643,29 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
 
         const c1 = rowItem < colItem ? rowItem : colItem;
         const c2 = rowItem < colItem ? colItem : rowItem;
-
         const count = value as number;
-
-        let cellBadge = "New";
         const cellItems = clashDataMap[c1]?.[c2];
-        if (cellItems && cellItems.length > 0) {
-          const hasNew = cellItems.some(item => {
-            const badge = (item.raw && item.raw.badge) || item.Badge || "New";
-            return badge === "New";
-          });
-          if (hasNew) {
-            cellBadge = "New";
-          } else {
-            const hasHold = cellItems.some(item => {
-              const badge = (item.raw && item.raw.badge) || item.Badge || "New";
-              return badge === "Hold";
-            });
-            cellBadge = hasHold ? "Hold" : "Exclude";
-          }
-        }
-
-        let displayValue = "-";
-        let bgColor = "transparent";
-        let textColor = "var(--bim-ui_main-contrast)";
-        let cursor = "default";
-
-        if (count === 0) {
-          displayValue = "OK";
-          bgColor = "hsl(147, 65%, 40%)"; // 초록색
-          textColor = "#ffffff";
-        } else if (cellBadge === "Exclude") {
-          displayValue = "E";
-          bgColor = "hsl(205, 65%, 40%)"; // 파란색 (Exclude)
-          textColor = "#ffffff";
-        } else if (cellBadge === "Hold") {
-          displayValue = "H";
-          bgColor = "hsl(45, 65%, 40%)"; // 노란색 (Hold)
-          textColor = "#ffffff";
-          cursor = "pointer";
-        } else {
-          displayValue = count.toString();
-          bgColor = "hsl(0, 65%, 40%)"; // 빨간색
-          textColor = "#ffffff";
-          cursor = "pointer";
-        }
+        const status = getCellStatus(count, cellItems);
 
         const isSelected = selectedCell?.c1 === c1 && selectedCell?.c2 === c2;
         const border = isSelected ? `3px solid #ffffff` : "3px solid transparent";
+        const selectedClass = isSelected ? "matrix-cell-selected" : "";
+
+        const info1 = parseItemInfo(c1, matrixLevel);
+        const info2 = parseItemInfo(c2, matrixLevel);
+        const tooltipTitle = `${info1.fullPath} vs ${info2.fullPath}${selectedCell ? ' (선택 해제 후 상태 변경 가능)' : ' (우클릭하여 상태 변경 메뉴 호출)'}`;
 
         return BUI.html`
           <div 
-            title="${c1} vs ${c2}${selectedCell ? ' (선택 해제 후 상태 변경 가능)' : ' (우클릭하여 상태 변경 메뉴 호출)'}"
-            @click=${() => { if (count > 0 && cellBadge !== "Exclude") onCellClick(c1, c2); }}
-            @contextmenu=${(e: MouseEvent) => {
-            e.preventDefault();
-            if (selectedCell) return;
-            if (state.onBadgeChanged) {
-              const existingMenu = document.getElementById("clash-matrix-context-menu");
-              if (existingMenu) existingMenu.remove();
-
-              const menu = document.createElement("div");
-              menu.id = "clash-matrix-context-menu";
-              menu.style.position = "fixed";
-              menu.style.left = e.clientX + "px";
-              menu.style.top = e.clientY + "px";
-              menu.style.zIndex = "9999";
-              menu.style.background = "var(--bim-ui_bg-base)";
-              menu.style.border = "1px solid var(--bim-ui_bg-contrast-20)";
-              menu.style.borderRadius = "4px";
-              menu.style.boxShadow = "0 2px 10px rgba(0,0,0,0.5)";
-              menu.style.display = "flex";
-              menu.style.flexDirection = "column";
-              menu.style.overflow = "hidden";
-
-              const options = [
-                { label: "New", value: "New", color: "hsl(0, 65%, 40%)" },
-                { label: "Hold", value: "Hold", color: "hsl(45, 65%, 40%)" },
-                { label: "Exclude", value: "Exclude", color: "hsl(205, 65%, 40%)" }
-              ];
-
-              options.forEach(opt => {
-                const btn = document.createElement("bim-button") as any;
-                btn.label = opt.label;
-                btn.style.color = opt.color;
-                btn.style.setProperty("--bim-ui_bg-contrast-100", opt.color);
-                btn.style.margin = "0";
-                btn.style.borderRadius = "0";
-                btn.style.borderBottom = "1px solid var(--bim-ui_bg-contrast-20)";
-                btn.style.background = "transparent";
-                btn.style.width = "100px";
-
-                btn.onmouseover = () => btn.style.background = "var(--bim-ui_bg-contrast-20)";
-                btn.onmouseout = () => btn.style.background = "transparent";
-
-                btn.addEventListener("click", () => {
-                  let pairs: [string, string][] = [];
-                  if (matrixViewMode === "Entity") {
-                    pairs = [[c1, c2]];
-                  } else {
-                    const cats1 = catsByDiscipline[c1] || [];
-                    const cats2 = catsByDiscipline[c2] || [];
-                    const uniquePairs = new Set<string>();
-                    for (const catA of cats1) {
-                      for (const catB of cats2) {
-                        const key1 = catA.toUpperCase() + "|" + catB.toUpperCase();
-                        const key2 = catB.toUpperCase() + "|" + catA.toUpperCase();
-                        if (!uniquePairs.has(key1) && !uniquePairs.has(key2)) {
-                          uniquePairs.add(key1);
-                          uniquePairs.add(key2);
-                          pairs.push([catA, catB]);
-                        }
-                      }
-                    }
-                  }
-
-                  if (pairs.length > 0) {
-                    state.onBadgeChanged!(pairs, opt.value);
-                  }
-                  menu.remove();
-                });
-                menu.appendChild(btn);
-              });
-
-              document.body.appendChild(menu);
-
-              const closeMenu = (evt: Event) => {
-                if (!menu.contains(evt.target as Node)) {
-                  menu.remove();
-                  document.removeEventListener("click", closeMenu);
-                  document.removeEventListener("contextmenu", closeMenu);
-                }
-              };
-              setTimeout(() => {
-                document.addEventListener("click", closeMenu);
-                document.addEventListener("contextmenu", closeMenu);
-              }, 0);
-            }
-          }}
-            style="display: flex; width: 100%; height: 100%; min-height: 1.5rem; align-items: center; justify-content: center; background-color: ${bgColor}; color: ${textColor}; font-size: 0.65rem; font-weight: normal; border-radius: 4px; cursor: ${cursor}; border: ${border}; transition: filter 0.2s, border 0.2s; box-sizing: border-box;"
+            ${BUI.ref((el) => { if (isSelected && el) selectedCellEl = el as HTMLElement; })}
+            data-matrix-cell="${c1}|${c2}"
+            class="${selectedClass}"
+            title="${tooltipTitle}"
+            @click=${(e: MouseEvent) => { if (count > 0 && status.badge !== "Exclude") onCellClick(c1, c2, e); }}
+            @contextmenu=${(e: MouseEvent) => openMatrixContextMenu(e, c1, c2, matrixLevel, catsByDiscipline, state.onBadgeChanged)}
+            style="display: flex; width: 100%; height: 1.55rem; min-height: 1.55rem; max-height: 1.55rem; align-items: center; justify-content: center; background-color: ${status.bg}; color: ${status.color}; font-size: 0.65rem; font-weight: normal; border-radius: 4px; cursor: ${status.cursor}; border: ${border}; transition: filter 0.2s, border 0.2s; box-sizing: border-box;"
             onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter='none'">
-            ${displayValue}
+            ${status.text}
           </div>
         `;
       };
@@ -516,23 +673,56 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
 
     table.dataTransform = dataTransform;
 
-    const headerRow: any = { _Category: "@@HEADER@@" };
-    for (const colItem of sortedItems) {
-      headerRow[colItem] = colItem;
+    const normalRows = sortedItems.map((rowItem, i) => {
+      const rowInfo = parseItemInfo(rowItem, matrixLevel);
+      const row: any = {
+        _rowItem: rowItem,
+      };
+
+      if (matrixLevel === 3) {
+        row._Cat_Type = rowInfo.predefinedType;
+        row._Cat_Entity = rowInfo.entity;
+        row._Cat_Disc = rowInfo.discipline;
+      } else if (matrixLevel === 2) {
+        row._Cat_Entity = rowInfo.entity;
+        row._Cat_Disc = rowInfo.discipline;
+      } else {
+        row._Cat_Disc = rowInfo.discipline;
+      }
+
+      for (let j = 0; j < sortedItems.length; j++) {
+        const colItem = sortedItems[j];
+        const c1 = rowItem < colItem ? rowItem : colItem;
+        const c2 = rowItem < colItem ? colItem : rowItem;
+        row[colItem] = j > i ? "-" : (clashMatrix[c1]?.[c2] || 0);
+      }
+      return { data: row };
+    });
+
+    const headerRows: any[] = [];
+    if (matrixLevel === 3) {
+      const typeRow: any = { _headerType: "TYPE" };
+      for (const colItem of sortedItems) {
+        typeRow[colItem] = parseItemInfo(colItem, matrixLevel).predefinedType;
+      }
+      headerRows.push({ data: typeRow });
     }
+    if (matrixLevel === 2 || matrixLevel === 3) {
+      const entityRow: any = { _headerType: "ENTITY" };
+      for (const colItem of sortedItems) {
+        entityRow[colItem] = parseItemInfo(colItem, matrixLevel).entity;
+      }
+      headerRows.push({ data: entityRow });
+    }
+    const discRow: any = { _headerType: "DISC" };
+    for (const colItem of sortedItems) {
+      discRow[colItem] = parseItemInfo(colItem, matrixLevel).discipline;
+    }
+    headerRows.push({ data: discRow });
 
     const tableData = [
-      ...sortedItems.map((rowItem, i) => {
-        const row: any = { _Category: rowItem };
-        for (let j = 0; j < sortedItems.length; j++) {
-          const colItem = sortedItems[j];
-          const c1 = rowItem < colItem ? rowItem : colItem;
-          const c2 = rowItem < colItem ? colItem : rowItem;
-          row[colItem] = j > i ? "-" : (clashMatrix[c1]?.[c2] || 0);
-        }
-        return { data: row };
-      }),
-      { data: headerRow }
+      ...normalRows,
+      ...headerRows
     ];
 
     table.data = tableData;
@@ -559,12 +749,40 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
       return;
     }
 
-    const headers = ["", ...currentSortedItems];
-    const csvRows = [headers.join(",")];
+    const csvRows: string[] = [];
+    const escapeCsv = (val: string) => {
+      if (val === undefined || val === null) return "";
+      const str = String(val);
+      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
 
+    const colInfos = currentSortedItems.map(item => parseItemInfo(item, matrixLevel));
+
+    if (matrixLevel === 3) {
+      csvRows.push(["Discipline", "Entity", "Type", ...colInfos.map(c => escapeCsv(c.discipline))].join(","));
+      csvRows.push(["", "", "", ...colInfos.map(c => escapeCsv(c.entity))].join(","));
+      csvRows.push(["", "", "", ...colInfos.map(c => escapeCsv(c.predefinedType))].join(","));
+    } else if (matrixLevel === 2) {
+      csvRows.push(["Discipline", "Entity", ...colInfos.map(c => escapeCsv(c.discipline))].join(","));
+      csvRows.push(["", "", ...colInfos.map(c => escapeCsv(c.entity))].join(","));
+    } else {
+      csvRows.push(["Discipline", ...colInfos.map(c => escapeCsv(c.discipline))].join(","));
+    }
+
+    // 데이터 행 생성
     for (let i = 0; i < currentSortedItems.length; i++) {
       const rowItem = currentSortedItems[i];
-      const rowValues = [rowItem];
+      const rowInfo = colInfos[i];
+      const rowPrefix = matrixLevel === 3
+        ? [rowInfo.discipline, rowInfo.entity, rowInfo.predefinedType]
+        : matrixLevel === 2
+        ? [rowInfo.discipline, rowInfo.entity]
+        : [rowInfo.discipline];
+
+      const rowValues = rowPrefix.map(escapeCsv);
 
       for (let j = 0; j < currentSortedItems.length; j++) {
         const colItem = currentSortedItems[j];
@@ -574,29 +792,12 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
         } else {
           const c1 = rowItem < colItem ? rowItem : colItem;
           const c2 = rowItem < colItem ? colItem : rowItem;
-
           const count = currentClashMatrix[c1]?.[c2] || 0;
-
-          let cellBadge = "New";
           const cellItems = currentClashDataMap[c1]?.[c2];
-          if (cellItems && cellItems.length > 0) {
-            const hasNew = cellItems.some(item => {
-              const badge = (item.raw && item.raw.badge) || item.Badge || "New";
-              return badge === "New";
-            });
-            if (hasNew) {
-              cellBadge = "New";
-            } else {
-              const hasHold = cellItems.some(item => {
-                const badge = (item.raw && item.raw.badge) || item.Badge || "New";
-                return badge === "Hold";
-              });
-              cellBadge = hasHold ? "Hold" : "Exclude";
-            }
-          }
+          const status = getCellStatus(count, cellItems);
 
-          if (cellBadge === "Exclude") rowValues.push("Excluded");
-          else if (cellBadge === "Hold") rowValues.push("Hold");
+          if (status.badge === "Exclude") rowValues.push("Excluded");
+          else if (status.badge === "Hold") rowValues.push("Hold");
           else if (count === 0) rowValues.push("0");
           else rowValues.push(count.toString());
         }
@@ -623,52 +824,42 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
     modelNamesSet.delete("Unknown");
     const modelNames = modelNamesSet.size > 0 ? Array.from(modelNamesSet).join("_") : "UnknownModel";
 
-    a.download = `clash_matrix-${modelNames}-${matrixViewMode}.csv`;
+    a.download = `clash_matrix-${modelNames}-Level${matrixLevel}_${matrixViewMode}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const onMatrixModeChange = (e: Event) => {
-    const target = e.target as HTMLInputElement;
-    matrixViewMode = target.value;
+  let levelGroupEl: HTMLElement | null = null;
+
+  const setLevelUI = (lvl: 1 | 2 | 3) => {
+    if (levelGroupEl) {
+      const buttons = levelGroupEl.querySelectorAll<HTMLButtonElement>(".level-btn");
+      buttons.forEach((btn, idx) => {
+        if (idx + 1 === lvl) {
+          btn.classList.add("active");
+        } else {
+          btn.classList.remove("active");
+        }
+      });
+    }
+  };
+
+  const onLevelChange = (level: 1 | 2 | 3) => {
+    if (matrixLevel === level) return;
+    matrixLevel = level;
+    matrixViewMode = level === 1 ? "Discipline" : (level === 2 ? "Entity" : "PredefinedType");
+    setLevelUI(level);
+
+    selectedCell = null;
+    selectedCellEl = null;
+    if (selectionLabel) selectionLabel.textContent = "None";
+    highlighter.clear("select");
+    if (state.onCellClicked) state.onCellClicked(null);
+
     updateTable(true);
   };
 
-  const openExpandModal = () => {
-    if (!currentTable) return;
-
-    const originalParent = currentTable.parentElement;
-
-    const { dialog, contentContainer } = createModalDialog({
-      title: "Clash Matrix",
-      width: "95vw",
-      height: "95vh",
-      maxWidth: "1600px",
-      maxHeight: "1200px",
-      onClose: () => {
-        if (originalParent && currentTable) {
-          originalParent.appendChild(currentTable);
-        }
-      },
-    });
-
-    const style = document.createElement("style");
-    style.textContent = `
-      .matrix-scroll-wrapper bim-table::part(cell) { overflow: visible !important; }
-    `;
-    dialog.appendChild(style);
-
-    const tableContainer = document.createElement("div");
-    tableContainer.style.flex = "1";
-    tableContainer.style.overflow = "auto";
-    tableContainer.className = "matrix-scroll-wrapper";
-
-    tableContainer.appendChild(currentTable);
-    contentContainer.appendChild(tableContainer);
-
-    document.body.appendChild(dialog);
-    dialog.showModal();
-  };
+  currentUpdateTableFn = updateTable;
 
   return BUI.html`
     <div style="display: flex; flex-direction: column; width: 100%; height: 100%; padding: 0.5rem; box-sizing: border-box; overflow: hidden;">
@@ -693,8 +884,34 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
           0% { opacity: 0.5; transform: translateY(4px); }
           100% { opacity: 1; transform: translateY(0); }
         }
+        .matrix-scroll-wrapper bim-table {
+          --bim-ui_size-16xl: 1.85rem;
+        }
         bim-table::part(cell) {
           overflow: visible !important;
+        }
+        .matrix-level-group button.level-btn {
+          background: transparent;
+          color: var(--bim-ui_gray-10);
+          border: none;
+          padding: 0.2rem 0.65rem;
+          font-size: 0.75rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          outline: none;
+        }
+        .matrix-level-group button.level-btn:not(:last-child) {
+          border-right: 1px solid var(--bim-ui_bg-contrast-20);
+        }
+        .matrix-level-group button.level-btn:hover {
+          background: var(--bim-ui_bg-contrast-20);
+          color: var(--bim-ui_main-contrast);
+        }
+        .matrix-level-group button.level-btn.active {
+          background: var(--bim-ui_main-base);
+          color: #ffffff;
+          font-weight: bold;
         }
       </style>
       <bim-label style="text-align: center; padding: 1rem; color: var(--bim-ui_gray-5); display: ${hasData ? 'none' : 'block'};">
@@ -702,25 +919,26 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
       </bim-label>
       <div style="display: ${hasData ? 'flex' : 'none'}; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; padding: 0.25rem 0.5rem; background-color: var(--bim-ui_bg-contrast-10); border-radius: 4px; flex-shrink: 0;">
         <div style="display: flex; gap: 0.5rem; align-items: center;">
-          <bim-label style="font-size: 0.75rem; color: var(--bim-ui_gray-10); margin: 0; font-weight: normal; margin-right: 0.25rem;">Clash Matrix :</bim-label>
-          <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
-            <input type="radio" name="matrixMode" value="Entity" ?checked=${matrixViewMode === "Entity"} @change=${onMatrixModeChange} style="margin: 0; cursor: pointer; accent-color: var(--bim-ui_main-base);">
-            <bim-label style="pointer-events: none; margin: 0; font-size: 0.75rem;">Entity</bim-label>
-          </label>
-          <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer; margin-left: 0.25rem;">
-            <input type="radio" name="matrixMode" value="Discipline" ?checked=${matrixViewMode === "Discipline"} @change=${onMatrixModeChange} style="margin: 0; cursor: pointer; accent-color: var(--bim-ui_main-base);">
-            <bim-label style="pointer-events: none; margin: 0; font-size: 0.75rem;">Discipline</bim-label>
-          </label>
-          <bim-button @click=${openDisciplineMapModal} icon=${appIcons.HELP} title="Discipline Mapping Guide"></bim-button>
+          <bim-label style="font-size: 0.75rem; color: var(--bim-ui_gray-10); margin: 0; font-weight: normal; margin-right: 0.25rem;">Level :</bim-label>
+          <div ${BUI.ref(el => { levelGroupEl = el as HTMLElement; })} class="matrix-level-group" style="display: inline-flex; border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; overflow: hidden; background: var(--bim-ui_bg-contrast-10);">
+            <button type="button" class="level-btn ${matrixLevel === 1 ? 'active' : ''}" @click=${() => onLevelChange(1)} title="Discipline">Discipline</button>
+            <button type="button" class="level-btn ${matrixLevel === 2 ? 'active' : ''}" @click=${() => onLevelChange(2)} title="Entity">Entity</button>
+            <button type="button" class="level-btn ${matrixLevel === 3 ? 'active' : ''}" @click=${() => onLevelChange(3)} title="PredefinedType">PredefinedType</button>
+          </div>
         </div>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
           <bim-label ${BUI.ref(e => {
-    selectionLabel = e;
-    if (selectionLabel) {
-      selectionLabel.textContent = selectedCell ? `${selectedCell.c1} vs ${selectedCell.c2}` : "None";
-    }
-  })} style="color: var(--bim-ui_main-contrast); margin: 0;"></bim-label>
-          <bim-button @click=${openExpandModal} icon=${appIcons.EXPAND} tooltip-title="Expand Matrix"></bim-button>
+            selectionLabel = e;
+            if (selectionLabel) {
+              if (selectedCell) {
+                const info1 = parseItemInfo(selectedCell.c1, matrixLevel);
+                const info2 = parseItemInfo(selectedCell.c2, matrixLevel);
+                selectionLabel.textContent = `${info1.fullPath} vs ${info2.fullPath}`;
+              } else {
+                selectionLabel.textContent = "None";
+              }
+            }
+          })} style="color: var(--bim-ui_main-contrast); margin: 0; font-size: 0.75rem;"></bim-label>
           <bim-button @click=${onExportCSV} icon=${appIcons.EXPORT} title="Export to CSV"></bim-button>
         </div>
       </div>
@@ -733,6 +951,14 @@ export const clashMatrixTemplate: BUI.StatefullComponent<ClashMatrixState> = (st
   `;
 };
 
-export const clashMatrix = (state: ClashMatrixState) => {
-  return BUI.Component.create<HTMLDivElement, ClashMatrixState>(clashMatrixTemplate, state);
+export const clashMatrix = (
+  state: ClashMatrixState
+): [HTMLDivElement, (state?: Partial<ClashMatrixState>) => void, () => void] => {
+  const [component, update] = BUI.Component.create<HTMLDivElement, ClashMatrixState>(
+    clashMatrixTemplate,
+    state
+  );
+  currentMatrixComponent = component;
+  (component as any).openModal = openClashMatrixModal;
+  return [component, update, openClashMatrixModal];
 };

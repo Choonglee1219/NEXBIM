@@ -26,6 +26,8 @@ export const modelTreePanelTemplate: BUI.StatefullComponent<
 
   spatialTreeTable.preserveStructureOnFilter = true;
   entityTreeTable.preserveStructureOnFilter = true;
+  spatialTreeTable.hiddenColumns = ["modelId", "localId", "children", "categoryPrefix", "category", "hasChildren"];
+  entityTreeTable.hiddenColumns = ["modelId", "localId", "children"];
 
   let tabsElement: BUI.Tabs;
   let searchInputSpatial: BUI.TextInput | undefined;
@@ -173,6 +175,7 @@ export const modelTreePanelTemplate: BUI.StatefullComponent<
           if (typeof importer.addAllRelations === "function") importer.addAllRelations();
           importer.includeUniqueAttributes = true;
           importer.includeRelationNames = true;
+          importer.replaceSiteElevation = false;
         },
       });
       (newModel as any).name = newModelName;

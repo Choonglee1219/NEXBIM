@@ -24,7 +24,7 @@ export const spatialTree = (state: SpatialTreeState, autoUpdate = true) => {
   >(spatialTreeTemplate, state);
 
   const [table, update] = element;
-  table.hiddenColumns = ["modelId", "localId", "children", "categoryPrefix", "category"];
+  table.hiddenColumns = ["modelId", "localId", "children", "categoryPrefix", "category", "hasChildren"];
   table.columns = ["Name"];
   table.headersHidden = true;
 
@@ -34,7 +34,7 @@ export const spatialTree = (state: SpatialTreeState, autoUpdate = true) => {
     fragments.list.onItemSet.add(() =>
       update({ models: fragments.list.values() }),
     );
-    fragments.list.onItemDeleted.add(() => 
+    fragments.list.onItemDeleted.add(() =>
       update({ models: fragments.list.values() })
     );
   }

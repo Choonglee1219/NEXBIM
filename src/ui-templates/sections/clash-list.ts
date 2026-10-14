@@ -3,6 +3,7 @@ import * as OBC from "@thatopen/components";
 import * as THREE from "three";
 import { ClashService, ClashResult, clashMatrix } from "../../bim-components/ClashService";
 import { Highlighter } from "../../bim-components/Highlighter";
+import { extractPredefinedType } from "../../bim-components/ClashService/src/clash-grouping";
 import { tableButtonStyle, appIcons, createPaginationTemplate, PaginationRefs, setupBIMTable } from "../../globals";
 import { restoreModelMaterials } from "../toolbars/viewer-toolbar";
 
@@ -16,6 +17,7 @@ let cachedFlatData: any[] = [];
 let rawValidResults: ClashResult[] | null = null;
 let itemNamesCache = new Map<string, string>();
 let itemGuidsCache = new Map<string, string>();
+let itemPredefinedTypesCache = new Map<string, string>();
 let modelNamesCache = new Map<string, string>();
 let cachedAllCategories: string[] = [];
 let cachedClashMode = "Hard";
@@ -169,7 +171,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     return result;
   };
 
-  const applyFilters = () => {
+  const applyFilters = (shouldUpdateMatrix = false) => {
     let matrixClashData: any[] = [];
 
     if (!rawValidResults) {
@@ -213,14 +215,20 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
           const cat2 = (res.id2 as any).category;
           const name1 = itemNamesCache.get(`${res.id1.modelId}-${res.id1.expressID}`) || "Unknown";
           const name2 = itemNamesCache.get(`${res.id2.modelId}-${res.id2.expressID}`) || "Unknown";
+          const pt1 = itemPredefinedTypesCache.get(`${res.id1.modelId}-${res.id1.expressID}`) || (res.id1 as any).predefinedType || "NOTDEFINED";
+          const pt2 = itemPredefinedTypesCache.get(`${res.id2.modelId}-${res.id2.expressID}`) || (res.id2 as any).predefinedType || "NOTDEFINED";
+          (res.id1 as any).predefinedType = pt1;
+          (res.id2 as any).predefinedType = pt2;
           return {
             id: `clash-${groupCounter}-${i}`,
             Badge: (res as any).badge || "New",
             Model1: modelNamesCache.get(res.id1.modelId),
             Entity1: cat1,
+            PredefinedType1: pt1,
             Object1: name1,
             Model2: modelNamesCache.get(res.id2.modelId),
             Entity2: cat2,
+            PredefinedType2: pt2,
             Object2: name2,
             Position: `${res.position.x.toFixed(2)}, ${res.position.y.toFixed(2)}, ${res.position.z.toFixed(2)}`,
             Action: "",
@@ -353,8 +361,12 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
 
     updatePage();
 
-    if (updateMatrixFn) {
-      updateMatrixFn({ components, clashData: matrixClashData, allCategories: cachedAllCategories });
+    if (shouldUpdateMatrix && updateMatrixFn) {
+      updateMatrixFn({
+        components,
+        clashData: matrixClashData,
+        allCategories: cachedAllCategories,
+      });
     }
     updateMarkers();
   };
@@ -380,7 +392,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
         { name: "Position", width: "2fr" },
         { name: "Action", width: "110px" },
       ];
-      clashTable.hiddenColumns = ["id", "raw", "rawGroup", "isGroup"];
+      clashTable.hiddenColumns = ["id", "raw", "rawGroup", "isGroup", "PredefinedType1", "PredefinedType2"];
       clashTable.data = filteredClashData.slice(start, end);
     }
 
@@ -500,7 +512,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
             rawValidResults = rawValidResults.filter(r => r !== res);
             clashTable.selection.clear();
             if (deleteBtn) deleteBtn.disabled = true;
-            applyFilters();
+            applyFilters(true);
           }
         }} title="Delete Clash"></bim-button>
           <bim-button style=${tableButtonStyle || ''} icon=${appIcons.SAVE} @click=${(e: Event) => { e.stopPropagation(); clashService.saveToTopic(res); }} title="Create Topic"></bim-button>
@@ -642,6 +654,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
           const itemsData = await model.getItemsData(idsArray, {
             attributesDefault: true,
             relationsDefault: { attributes: false, relations: false },
+            relations: { IsTypedBy: { attributes: true, relations: false } },
           });
 
           for (let i = 0; i < itemsData.length; i++) {
@@ -657,8 +670,10 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
             } else if (itemAny.GlobalId) {
               guid = typeof itemAny.GlobalId === "object" && itemAny.GlobalId.value !== undefined ? String(itemAny.GlobalId.value) : String(itemAny.GlobalId);
             }
+            const pt = extractPredefinedType(itemAny);
             itemNamesCache.set(`${modelId}-${expressId}`, name);
             itemGuidsCache.set(`${modelId}-${expressId}`, guid);
+            itemPredefinedTypesCache.set(`${modelId}-${expressId}`, pt);
           }
         } catch (e) {
           console.warn("Error fetching item names:", e);
@@ -708,7 +723,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     rawValidResults = validResults;
     currentPage = 0;
     matrixCellFilterSet = null;
-    applyFilters();
+    applyFilters(true);
 
     if (btn) btn.loading = false;
 
@@ -840,7 +855,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     clashTable.selection.clear();
     if (deleteBtn) deleteBtn.disabled = true;
 
-    applyFilters();
+    applyFilters(true);
   };
 
   const clearClashDataSilent = async () => {
@@ -849,6 +864,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     cachedAllCategories = [];
     itemNamesCache.clear();
     itemGuidsCache.clear();
+    itemPredefinedTypesCache.clear();
     modelNamesCache.clear();
     clashTable.selection.clear();
     if (deleteBtn) deleteBtn.disabled = true;
@@ -858,7 +874,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     badgeFilter = "All";
     if (badgeFilterDropdown) badgeFilterDropdown.value = ["All"];
     matrixCellFilterSet = null;
-    applyFilters();
+    applyFilters(true);
     if (isMarkersVisible) {
       isMarkersVisible = false;
       if (markerBtn) markerBtn.checked = false;
@@ -969,7 +985,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
     URL.revokeObjectURL(url);
   };
 
-  const [matrixPanel, updateMatrix] = clashMatrix({
+  const [_matrixPanel, updateMatrix, openMatrixModal] = clashMatrix({
     components,
     clashData: filteredClashData,
     allCategories: cachedAllCategories,
@@ -981,7 +997,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
         matrixCellFilterSet = null;
       }
       currentPage = 0;
-      applyFilters();
+      applyFilters(false);
     },
     onBadgeChanged: (pairs: [string, string][], badge: string) => {
       if (pairs.length === 0) return;
@@ -990,27 +1006,37 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
         for (const res of rawValidResults) {
           const cat1 = String((res.id1 as any).category || "").toUpperCase();
           const cat2 = String((res.id2 as any).category || "").toUpperCase();
+          const pt1 = String((res.id1 as any).predefinedType || "NOTDEFINED").toUpperCase();
+          const pt2 = String((res.id2 as any).predefinedType || "NOTDEFINED").toUpperCase();
+          const full1 = `${cat1}__${pt1}`;
+          const full2 = `${cat2}__${pt2}`;
+
           for (const [pc1, pc2] of pairs) {
-            if ((cat1 === pc1.toUpperCase() && cat2 === pc2.toUpperCase()) ||
-              (cat1 === pc2.toUpperCase() && cat2 === pc1.toUpperCase())) {
-              (res as any).badge = badge;
+            const upc1 = pc1.toUpperCase().replace(":", "__");
+            const upc2 = pc2.toUpperCase().replace(":", "__");
+            const isPredefinedMatch = upc1.includes("__");
+            if (isPredefinedMatch) {
+              if ((full1 === upc1 && full2 === upc2) || (full1 === upc2 && full2 === upc1)) {
+                (res as any).badge = badge;
+              }
+            } else {
+              if ((cat1 === upc1 && cat2 === upc2) || (cat1 === upc2 && cat2 === upc1)) {
+                (res as any).badge = badge;
+              }
             }
           }
         }
       }
-      applyFilters();
+      applyFilters(true);
       setTimeout(() => updatePage(), 0);
     }
   });
   updateMatrixFn = updateMatrix;
-  matrixPanel.style.minWidth = "0";
-  matrixPanel.style.width = "100%";
-  matrixPanel.style.boxSizing = "border-box";
 
   return BUI.html`
     <bim-panel-section ${BUI.ref((el) => {
     clashSection = el as BUI.PanelSection;
-    setTimeout(() => applyFilters(), 0);
+    setTimeout(() => applyFilters(true), 0);
   })} fixed label="Clash List ( Total(0) = New(0) + Hold(0) + Exclude(0) )" icon=${appIcons.CLASH}>
       <div style="display: flex; flex-direction: column; gap: 0.5rem; height: 100%;">
         <div style="display: flex; gap: 0.5rem; flex-shrink: 0; align-items: center; position: relative; z-index: 10;">
@@ -1046,6 +1072,7 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
             <bim-button label="Run Clash" icon=${appIcons.CLASH} @click=${runClash} style="flex: 1; background-color: var(--bim-ui_main-base); color: var(--bim-ui_main-contrast); font-weight: bold;"></bim-button>
             <bim-button ${BUI.ref(e => deleteBtn = e as BUI.Button)} label="Delete" icon=${appIcons.DELETE} @click=${onDeleteSelected} disabled style="flex: 1;"></bim-button>
             <bim-button label="Clear" icon=${appIcons.CLEAR} @click=${onClearAll} style="flex: 1;"></bim-button>
+            <bim-button label="Matrix" icon=${appIcons.TABLE} @click=${openMatrixModal} style="flex: 1;" title="Open Clash Matrix Modal"></bim-button>
             <bim-checkbox ${BUI.ref(e => markerBtn = e as any)} label="Markers" .checked=${isMarkersVisible} @change=${onMarkersChange} style="padding: 0.5rem; white-space: nowrap;" title="간섭 위치 마커 표시 여부"></bim-checkbox>
             <bim-button label="To Topic" icon=${appIcons.SAVE} @click=${saveAllToTopics} style="flex: 1;"></bim-button>
             <bim-button label="Export" icon=${appIcons.EXPORT} @click=${onExportCSV} style="flex: 1;"></bim-button>
@@ -1084,15 +1111,8 @@ export const clashListPanelTemplate: BUI.StatefullComponent<ClashListPanelState>
             ${createPaginationTemplate(onPrevPage, onNextPage, paginationRefs)}
           </div>
         </div>
-        <div style="display: flex; flex: 1; gap: 0.5rem; min-height: 0; overflow: hidden;">
-          <div style="flex: 1; display: flex; flex-direction: column; min-height: 250px; border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; overflow: hidden; min-width: 0;">
-            ${clashTable}
-          </div>
-          <div style="display: flex; flex-direction: column; flex: 1; min-width: 0; border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; overflow: hidden;">
-            <div style="display: flex; flex-direction: column; width: 100%; flex: 1; min-width: 0; box-sizing: border-box; overflow: hidden;">
-              ${matrixPanel}
-            </div>
-          </div>
+        <div style="flex: 1; display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--bim-ui_bg-contrast-20); border-radius: 4px; overflow: hidden; min-width: 0;">
+          ${clashTable}
         </div>
       </div>
     </bim-panel-section>
